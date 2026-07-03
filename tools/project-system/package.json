@@ -2,12 +2,18 @@
 	"name": "wp-starter-project-system",
 	"version": "0.1.0",
 	"private": true,
-	"description": "Design-milestone (M0) tooling for the wp-starter project lifecycle system. Ships the schemas, templates, presets, and a deterministic design validator. The lifecycle CLI itself is implemented in later phases.",
+	"description": "Project lifecycle system for wp-starter: isolated lead workspaces, promotion, baselines, and success metrics. Phase 1 ships `lead init` / `lead inspect`; later phases add promotion, baselines, and metrics.",
 	"type": "module",
+	"bin": {
+		"wp-starter": "./bin/wp-starter.mjs"
+	},
+	"engines": {
+		"node": ">=22"
+	},
 	"scripts": {
 		"validate": "node validate-design.mjs"
 	},
-	"devDependencies": {
+	"dependencies": {
 		"ajv": "^8.17.1",
 		"ajv-formats": "^3.0.1",
 		"js-yaml": "^4.1.0"

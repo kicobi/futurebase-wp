@@ -1,40 +1,62 @@
-# Project lifecycle system (design)
+# Project lifecycle system
 
 Structured lifecycle for WordPress projects originating through Codeable and
 direct client work: isolated lead workspaces → promotion → baseline capture →
 success metrics → launch comparison → follow-up → case study.
 
-> **Status: M0 — design only.** This directory currently ships the *design*:
-> versioned schemas, workspace/agent templates, presets, an anonymized worked
-> example, and a deterministic validator. **No lifecycle CLI is implemented
-> yet.** The command surface below is the agreed design; commands are built in
-> later phases (see `ARCHITECTURE.md` → Roadmap). The canonical narrative lives
-> in [`docs/project-lifecycle.md`](../../docs/project-lifecycle.md) and
+> **Status: Phase 1.** The design (versioned schemas, templates, presets,
+> validator) is in place, and the first commands are **implemented**:
+> `wp-starter lead init` and `wp-starter lead inspect`. Later commands
+> (`lead promote`, `baseline`, `metrics`, `final`, …) are designed but not yet
+> built — see `ARCHITECTURE.md` → Roadmap. Canonical narrative:
+> [`docs/project-lifecycle.md`](../../docs/project-lifecycle.md) and
 > [`docs/baseline-system.md`](../../docs/baseline-system.md).
 
-## What's here now
+## What's here
 
 ```text
-VERSION                 # system_version (semver) for the whole design
-schemas/                # JSON Schemas — single source of truth (each carries $id + schema_version)
+bin/wp-starter.mjs      # CLI entry point
+cli/dispatch.mjs        # command router
+commands/lead/          # init, inspect (implemented)
+lib/                    # yaml, slug, paths, output, validate, starter-context
+schemas/                # JSON Schemas — single source of truth ($id + schema_version)
 presets/                # meaningful presets only (others listed below as planned)
 templates/lead/         # lead workspace skeleton + lead-stage agent instructions
 templates/active/       # active-project overlay (managed section — does NOT replace root files)
 examples/sample-redesign/  # anonymized worked example; validates against every schema
-validate-design.mjs     # deterministic schema + fixture validator (the M0 check)
-package.json            # devDeps for the validator only (ajv, ajv-formats, js-yaml)
+validate-design.mjs     # deterministic schema + fixture validator
+package.json            # deps: ajv, ajv-formats, js-yaml
 ```
 
-## Validate the design
+## Install & use (Phase 1)
 
 ```bash
 cd tools/project-system
 npm install
-npm run validate      # or: node validate-design.mjs
+
+# create an isolated lead workspace under ~/Sites/leads/<slug>/
+node bin/wp-starter.mjs lead init "Acme Client" --type redesign
+
+# report on it (or list all leads with a bare `lead`)
+node bin/wp-starter.mjs lead inspect acme-client
+
+# optional: link it so `wp-starter …` works from anywhere
+npm link   # then: wp-starter lead init "Acme Client" --type redesign
 ```
 
-The validator compiles every schema and validates the worked example and every
-template `project.yml`. Exit `0` = all valid.
+`lead init` creates the dossier skeleton, copies the lead-stage agent
+instructions, writes a schema-valid `project.yml`, and generates
+`references/wp-starter-context.md` from a **read-only** inspection of the
+starter. It does **not** initialize git unless `--git` is passed, and never
+touches the shared starter.
+
+## Validate the design
+
+```bash
+node validate-design.mjs      # compiles every schema, validates fixtures + templates
+```
+
+Exit `0` = all valid.
 
 ## Design principle
 
@@ -42,18 +64,19 @@ template `project.yml`. Exit `0` = all valid.
 > reports, screenshots, surveys, and agent workflows all read from and write to
 > that record.
 
-## CLI command surface (design — not yet implemented)
+## CLI command surface
 
 Every command supports interactive and non-interactive use, `--json` structured
-output, and clear exit codes.
+output, and clear exit codes. **✓ = implemented (Phase 1); the rest are designed.**
 
 **Lead (meta layer — operates across projects):**
 ```
-wp-starter lead init "Client Name" --type new|redesign [--platform codeable|direct|other]
-                                    [--workspace-root <path>] [--git|--no-git]
+✓ wp-starter lead init "Client Name" --type new|redesign [--platform codeable|direct|other]
+                                    [--slug <slug>] [--workspace-root <path>]
+                                    [--starter-path <path>] [--git|--no-git]
                                     [--json] [--non-interactive]
-wp-starter lead inspect  <slug>
-wp-starter lead promote  <slug> [--org <o>] [--name <n>] [--dest <path>]
+✓ wp-starter lead inspect  [<slug>]   # bare `lead` lists all workspaces
+  wp-starter lead promote  <slug> [--org <o>] [--name <n>] [--dest <path>]
                                 [--template <owner/repo>] [--dry-run] [--confirm]
                                 [--json] [--non-interactive]
 wp-starter lead archive  <slug>

@@ -70,10 +70,10 @@ failure · `6` privacy/safety violation.
 
 ## Roadmap
 
-- **M0 (now):** schemas + templates + presets + example + validator + rename
+- **M0 (done):** schemas + templates + presets + example + validator + rename
   exclusion. No lifecycle CLI.
-- **Phase 1:** `lead init`, templates, `wp-starter-context.md` generator,
-  `lead inspect`.
+- **Phase 1 (done):** `lead init`, templates, `wp-starter-context.md` generator,
+  `lead inspect` — the CLI (`bin/`, `cli/`, `commands/lead/`, `lib/`).
 - **Phase 2:** `lead promote` (wrap gh + rename, confirmation gate, checkpointed
   recovery), `lead archive`, `.project/` scaffold, secret scanner.
 - **Phase 3:** baseline MVP — Playwright screenshots, Lighthouse, axe, crawl,
