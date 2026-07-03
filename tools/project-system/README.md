@@ -4,12 +4,15 @@ Structured lifecycle for WordPress projects originating through Codeable and
 direct client work: isolated lead workspaces → promotion → baseline capture →
 success metrics → launch comparison → follow-up → case study.
 
-> **Status: Phase 2.** The full lead lifecycle is **implemented**:
-> `wp-starter lead init`, `lead inspect`, `lead promote`, and `lead archive`
-> (with a confirmation gate, secret scanner, and checkpointed recovery). Later
-> commands (`baseline`, `metrics`, `final`, `compare`, `case-study`) are
-> designed but not yet built — see `ARCHITECTURE.md` → Roadmap. Canonical
-> narrative: [`docs/project-lifecycle.md`](../../docs/project-lifecycle.md) and
+> **Status: Phase 3.** The full lead lifecycle (`lead init/inspect/promote/archive`)
+> **and** the baseline MVP (`baseline init/run/inspect/report`) are implemented.
+> The baseline runs `crawl` (built-in fetch), `screenshots` (Playwright),
+> `lighthouse`, `axe` (axe-core), and `manual` modules into dated, immutable runs
+> with an HTML report. Browser tooling is resolved from the host project's
+> `node_modules` and degrades gracefully when absent. Later commands
+> (`metrics`, `final`, `compare`, `case-study`) are designed but not yet built —
+> see `ARCHITECTURE.md` → Roadmap. Canonical narrative:
+> [`docs/project-lifecycle.md`](../../docs/project-lifecycle.md) and
 > [`docs/baseline-system.md`](../../docs/baseline-system.md).
 
 ## What's here
@@ -87,14 +90,19 @@ output, and clear exit codes. **✓ = implemented; the rest are designed.**
 wp-starter project init | inspect | status | validate
 ```
 
-**Baseline:**
+**Baseline (per-project — run inside an active project):**
 ```
-wp-starter baseline init --type new|redesign
-wp-starter baseline inspect
-wp-starter baseline run [--module public|screenshots|lighthouse|axe|crawl|wordpress|hosting|analytics|journeys]
-wp-starter baseline report
-   flags: --config <path> --json --dry-run --non-interactive --force --run-id <id> --url <url> --page <name=url>
+✓ wp-starter baseline init [--type new|redesign] [--url <base>] [--page name=url] [--force]
+✓ wp-starter baseline inspect
+✓ wp-starter baseline run [--module crawl|screenshots|lighthouse|axe|manual] [--url <base>] [--dry-run]
+✓ wp-starter baseline report [--run-id <id>]
+   flags: --project-root <path> --json
 ```
+Runs write dated, immutable evidence under `.project/baseline/<run-id>/`
+(`summary.json` + per-module evidence) plus an HTML report in `.project/reports/`.
+`crawl` uses built-in `fetch`; `screenshots`/`axe` use Playwright + axe-core;
+`lighthouse` spawns the Lighthouse CLI pointed at Playwright's Chromium. Any
+module whose tooling is absent reports `unavailable` without failing the run.
 
 **Metrics:**
 ```

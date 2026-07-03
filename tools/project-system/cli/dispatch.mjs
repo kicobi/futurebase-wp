@@ -13,6 +13,10 @@ import { leadInit } from '../commands/lead/init.mjs';
 import { leadInspect } from '../commands/lead/inspect.mjs';
 import { leadPromote } from '../commands/lead/promote.mjs';
 import { leadArchive } from '../commands/lead/archive.mjs';
+import { baselineInit } from '../commands/baseline/init.mjs';
+import { baselineRun } from '../commands/baseline/run.mjs';
+import { baselineInspect } from '../commands/baseline/inspect.mjs';
+import { baselineReport } from '../commands/baseline/report.mjs';
 
 const OPTIONS = {
 	type: { type: 'string' },
@@ -26,6 +30,12 @@ const OPTIONS = {
 	dest: { type: 'string' },
 	template: { type: 'string' },
 	reason: { type: 'string' },
+	// baseline
+	'project-root': { type: 'string' },
+	url: { type: 'string' },
+	page: { type: 'string', multiple: true },
+	module: { type: 'string', multiple: true },
+	'run-id': { type: 'string' },
 	'dry-run': { type: 'boolean', default: false },
 	confirm: { type: 'boolean', default: false },
 	resume: { type: 'boolean', default: false },
@@ -49,6 +59,11 @@ Usage:
   wp-starter lead promote <slug> [--dry-run] [--confirm]
   wp-starter lead archive <slug> [--reason lost|abandoned]
 
+  wp-starter baseline init [--type new|redesign] [--url <base>] [--page name=url]
+  wp-starter baseline run [--module crawl|screenshots|lighthouse|axe|manual]
+  wp-starter baseline inspect
+  wp-starter baseline report [--run-id <id>]
+
 Flags:
   --type new|redesign            project type (required for init)
   --platform codeable|direct|other   default: codeable
@@ -62,12 +77,14 @@ Flags:
   promote:  --org <o> --name <n> --dest <path> --template <owner/repo>
             --dry-run --confirm --resume --skip-secret-scan
   archive:  --reason lost|abandoned --dry-run
+  baseline: --project-root <path> --url <base> --page name=url --module <m>
+            --run-id <id> --dry-run
 
   -h, --help                     show this help
   --version                      print the system version
 
-Designed but not yet implemented: project *, baseline *, metrics *, final *,
-compare, case-study. See README.md.
+Designed but not yet implemented: project *, metrics *, final *, compare,
+case-study. See README.md.
 `;
 
 export async function main(argv) {
@@ -111,6 +128,21 @@ export async function main(argv) {
 				return leadInspect([], flags);
 			default:
 				die(`unknown 'lead' command: ${command}\n\n${HELP}`, EXIT.INVALID_CONFIG);
+		}
+	}
+
+	if (group === 'baseline') {
+		switch (command) {
+			case 'init':
+				return baselineInit(rest, flags);
+			case 'run':
+				return baselineRun(rest, flags);
+			case 'inspect':
+				return baselineInspect(rest, flags);
+			case 'report':
+				return baselineReport(rest, flags);
+			default:
+				die(`unknown 'baseline' command: ${command}\n\n${HELP}`, EXIT.INVALID_CONFIG);
 		}
 	}
 

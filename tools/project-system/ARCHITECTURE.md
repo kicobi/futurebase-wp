@@ -77,8 +77,10 @@ failure · `6` privacy/safety violation.
 - **Phase 2 (done):** `lead promote` (wrap gh + rename, confirmation gate,
   checkpointed recovery, `--resume`), `lead archive`, `.project/` scaffold,
   secret scanner (`lib/secret-scan`, `lib/proc`).
-- **Phase 3:** baseline MVP — Playwright screenshots, Lighthouse, axe, crawl,
-  HTML report; new + redesign modes.
+- **Phase 3 (done):** baseline MVP — `crawl` (fetch), `screenshots` (Playwright),
+  `lighthouse`, `axe` (axe-core), `manual`; dated immutable runs, schema-valid
+  `summary.json`, HTML/MD report; new + redesign modes. Browser tooling resolved
+  from the host project (`lib/browser`) with graceful degradation.
 - **Phase 4:** metrics engine (suggest / validate / client-message).
 - **Phase 5:** WordPress + workflow inventory (WP-CLI; reuse the
   `perf_inspect.mjs` pattern), timed editorial tasks, journeys.

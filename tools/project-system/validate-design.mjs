@@ -37,6 +37,7 @@ const FIXTURE_SCHEMA = {
 	'observations.yml': 'observations.schema.json',
 	'journeys.yml': 'journeys.schema.json',
 	'summary.json': 'baseline-run.schema.json',
+	'baseline.config.yml': 'baseline-config.schema.json',
 };
 
 function loadFile(path) {

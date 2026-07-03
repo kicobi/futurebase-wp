@@ -1,4 +1,4 @@
-// lib/validate.mjs — validate a project config against project.schema.json.
+// lib/validate.mjs — validate documents against the project-system schemas.
 //
 // Reuses the same schemas the design validator (validate-design.mjs) checks, so
 // runtime validation and the committed fixtures can never disagree.
@@ -9,21 +9,25 @@ import addFormats from 'ajv-formats';
 import { schemasDir } from './paths.mjs';
 import { readJson } from './yaml.mjs';
 
-let _project = null;
+const cache = new Map();
 
-function projectValidator() {
-	if (_project) return _project;
+function validator(schemaFile) {
+	if (cache.has(schemaFile)) return cache.get(schemaFile);
 	const ajv = new Ajv({ allErrors: true, strict: false });
 	addFormats(ajv);
-	const schema = readJson(join(schemasDir, 'project.schema.json'));
-	_project = ajv.compile(schema);
-	return _project;
+	const fn = ajv.compile(readJson(join(schemasDir, schemaFile)));
+	cache.set(schemaFile, fn);
+	return fn;
 }
 
 // Returns { valid: boolean, errors: string[] }.
-export function validateProject(data) {
-	const validate = projectValidator();
-	if (validate(data)) return { valid: true, errors: [] };
-	const errors = (validate.errors || []).map((e) => `${e.instancePath || '/'} ${e.message}`);
+export function validateAgainst(schemaFile, data) {
+	const fn = validator(schemaFile);
+	if (fn(data)) return { valid: true, errors: [] };
+	const errors = (fn.errors || []).map((e) => `${e.instancePath || '/'} ${e.message}`);
 	return { valid: false, errors };
 }
+
+export const validateProject = (data) => validateAgainst('project.schema.json', data);
+export const validateBaselineConfig = (data) => validateAgainst('baseline-config.schema.json', data);
+export const validateBaselineRun = (data) => validateAgainst('baseline-run.schema.json', data);
