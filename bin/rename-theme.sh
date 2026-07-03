@@ -196,11 +196,13 @@ while IFS= read -r f; do TARGETS+=("$f"); done < <(
 	scan_roots=(functions.php style.css composer.json package.json phpcs.xml.dist)
 	[ -f README.md ] && scan_roots+=(README.md)
 	[ -f CLAUDE.md ] && scan_roots+=(CLAUDE.md)
-	# This is an ALLOWLIST — only these roots are scanned. tools/ is
-	# deliberately absent: tools/project-system/ (the project lifecycle system)
-	# ships templates carrying literal `wp-starter` / `studiokicobi/wp-starter`
-	# references that are the starter's own identity, not client slugs to
-	# rewrite. Do NOT add `tools` here. See docs/project-lifecycle.md.
+	# This is an ALLOWLIST -- only these roots are scanned. tools/ is
+	# deliberately absent: the tools/project-system project lifecycle system
+	# ships templates carrying literal wp-starter and studiokicobi/wp-starter
+	# references that form the identity of the starter itself, not client
+	# slugs to rewrite. Do NOT add tools here. See docs/project-lifecycle.md.
+	# Keep this comment free of quotes, apostrophes, backticks, and parens:
+	# macOS bash 3.2 miscounts them inside a process substitution.
 	for d in patterns templates parts docs src inc bin; do
 		[ -d "$d" ] && scan_roots+=("$d")
 	done
@@ -316,6 +318,14 @@ raw_leftover=$(grep -rn "${OLD_SLUG}\|${OLD_SNAKE}_" \
 # they are not flagged as unexpected or listed as "update these by hand".
 raw_leftover=$(printf '%s\n' "$raw_leftover" \
 	| grep -vE -- "--template [^[:space:]]+/${OLD_SLUG}\b" \
+	|| true)
+
+# CLI-command references like `wp-starter lead init` name the project-system
+# CLI tool, whose command stays `wp-starter` in every project. They must
+# survive rename. Filter them out so docs and CLAUDE.md that document the
+# lifecycle commands are not flagged as gaps.
+raw_leftover=$(printf '%s\n' "$raw_leftover" \
+	| grep -vE -- "${OLD_SLUG} (lead|project|baseline|metrics|final|compare|init|inspect|promote|archive)" \
 	|| true)
 
 # Expected leftovers: URLs pointing at the template's origin repo.

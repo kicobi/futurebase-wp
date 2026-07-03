@@ -4,12 +4,12 @@ Structured lifecycle for WordPress projects originating through Codeable and
 direct client work: isolated lead workspaces → promotion → baseline capture →
 success metrics → launch comparison → follow-up → case study.
 
-> **Status: Phase 1.** The design (versioned schemas, templates, presets,
-> validator) is in place, and the first commands are **implemented**:
-> `wp-starter lead init` and `wp-starter lead inspect`. Later commands
-> (`lead promote`, `baseline`, `metrics`, `final`, …) are designed but not yet
-> built — see `ARCHITECTURE.md` → Roadmap. Canonical narrative:
-> [`docs/project-lifecycle.md`](../../docs/project-lifecycle.md) and
+> **Status: Phase 2.** The full lead lifecycle is **implemented**:
+> `wp-starter lead init`, `lead inspect`, `lead promote`, and `lead archive`
+> (with a confirmation gate, secret scanner, and checkpointed recovery). Later
+> commands (`baseline`, `metrics`, `final`, `compare`, `case-study`) are
+> designed but not yet built — see `ARCHITECTURE.md` → Roadmap. Canonical
+> narrative: [`docs/project-lifecycle.md`](../../docs/project-lifecycle.md) and
 > [`docs/baseline-system.md`](../../docs/baseline-system.md).
 
 ## What's here
@@ -67,7 +67,7 @@ Exit `0` = all valid.
 ## CLI command surface
 
 Every command supports interactive and non-interactive use, `--json` structured
-output, and clear exit codes. **✓ = implemented (Phase 1); the rest are designed.**
+output, and clear exit codes. **✓ = implemented; the rest are designed.**
 
 **Lead (meta layer — operates across projects):**
 ```
@@ -76,10 +76,10 @@ output, and clear exit codes. **✓ = implemented (Phase 1); the rest are design
                                     [--starter-path <path>] [--git|--no-git]
                                     [--json] [--non-interactive]
 ✓ wp-starter lead inspect  [<slug>]   # bare `lead` lists all workspaces
-  wp-starter lead promote  <slug> [--org <o>] [--name <n>] [--dest <path>]
+✓ wp-starter lead promote  <slug> [--org <o>] [--name <n>] [--dest <path>]
                                 [--template <owner/repo>] [--dry-run] [--confirm]
-                                [--json] [--non-interactive]
-wp-starter lead archive  <slug>
+                                [--resume] [--skip-secret-scan] [--json] [--non-interactive]
+✓ wp-starter lead archive  <slug> [--reason lost|abandoned] [--dry-run]
 ```
 
 **Project (per-project — run inside an active project):**

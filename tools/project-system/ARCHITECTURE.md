@@ -74,8 +74,9 @@ failure · `6` privacy/safety violation.
   exclusion. No lifecycle CLI.
 - **Phase 1 (done):** `lead init`, templates, `wp-starter-context.md` generator,
   `lead inspect` — the CLI (`bin/`, `cli/`, `commands/lead/`, `lib/`).
-- **Phase 2:** `lead promote` (wrap gh + rename, confirmation gate, checkpointed
-  recovery), `lead archive`, `.project/` scaffold, secret scanner.
+- **Phase 2 (done):** `lead promote` (wrap gh + rename, confirmation gate,
+  checkpointed recovery, `--resume`), `lead archive`, `.project/` scaffold,
+  secret scanner (`lib/secret-scan`, `lib/proc`).
 - **Phase 3:** baseline MVP — Playwright screenshots, Lighthouse, axe, crawl,
   HTML report; new + redesign modes.
 - **Phase 4:** metrics engine (suggest / validate / client-message).

@@ -11,6 +11,8 @@ import { EXIT, die } from '../lib/output.mjs';
 import { TOOL_ROOT } from '../lib/paths.mjs';
 import { leadInit } from '../commands/lead/init.mjs';
 import { leadInspect } from '../commands/lead/inspect.mjs';
+import { leadPromote } from '../commands/lead/promote.mjs';
+import { leadArchive } from '../commands/lead/archive.mjs';
 
 const OPTIONS = {
 	type: { type: 'string' },
@@ -18,6 +20,17 @@ const OPTIONS = {
 	slug: { type: 'string' },
 	'workspace-root': { type: 'string' },
 	'starter-path': { type: 'string' },
+	// promote / archive
+	org: { type: 'string' },
+	name: { type: 'string' },
+	dest: { type: 'string' },
+	template: { type: 'string' },
+	reason: { type: 'string' },
+	'dry-run': { type: 'boolean', default: false },
+	confirm: { type: 'boolean', default: false },
+	resume: { type: 'boolean', default: false },
+	'skip-secret-scan': { type: 'boolean', default: false },
+	// shared
 	git: { type: 'boolean', default: false },
 	'no-git': { type: 'boolean', default: false },
 	json: { type: 'boolean', default: false },
@@ -33,6 +46,8 @@ Usage:
   wp-starter lead init "<Client Name>" --type new|redesign [flags]
   wp-starter lead inspect [<slug>]
   wp-starter lead                       # list lead workspaces
+  wp-starter lead promote <slug> [--dry-run] [--confirm]
+  wp-starter lead archive <slug> [--reason lost|abandoned]
 
 Flags:
   --type new|redesign            project type (required for init)
@@ -43,11 +58,16 @@ Flags:
   --git / --no-git               initialize git in the lead (default: no-git)
   --json                         machine-readable output
   --non-interactive              never prompt; fail if a required value is missing
+
+  promote:  --org <o> --name <n> --dest <path> --template <owner/repo>
+            --dry-run --confirm --resume --skip-secret-scan
+  archive:  --reason lost|abandoned --dry-run
+
   -h, --help                     show this help
   --version                      print the system version
 
-Designed but not yet implemented: lead promote, lead archive, project *,
-baseline *, metrics *, final *, compare, case-study. See README.md.
+Designed but not yet implemented: project *, baseline *, metrics *, final *,
+compare, case-study. See README.md.
 `;
 
 export async function main(argv) {
@@ -82,6 +102,10 @@ export async function main(argv) {
 				return leadInit(rest, flags);
 			case 'inspect':
 				return leadInspect(rest, flags);
+			case 'promote':
+				return leadPromote(rest, flags);
+			case 'archive':
+				return leadArchive(rest, flags);
 			case undefined:
 				// bare `lead` lists workspaces
 				return leadInspect([], flags);

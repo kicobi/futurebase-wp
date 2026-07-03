@@ -6,7 +6,7 @@ measured, and closed-out project — and where its knowledge lives at each stage
 > **Status:** the tooling that automates this lives in
 > [`tools/project-system/`](../tools/project-system/) and is currently at **M0
 > (design only)** — schemas, templates, presets, and a validator are in place;
-> the `wp-starter …` CLI commands referenced below are built in later phases.
+> the `wp-starter lead …` CLI commands referenced below are built in later phases.
 > This document is the canonical narrative; agent instruction files link here.
 
 ## The shape
