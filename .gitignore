@@ -30,3 +30,6 @@ auth.json
 
 # Local settings overrides
 /.claude/settings.local.json
+
+# Private planning docs — pricing, internal notes, scope drafts, client history. Never commit.
+/planning/
