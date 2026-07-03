@@ -1,0 +1,55 @@
+# Preset: catalogue-directory
+# A manufacturer/product catalogue or directory rebuild — many structured
+# entries editors must maintain, often replacing a PDF or hand-built workflow.
+# (The synthetic worked example under examples/sample-redesign uses this shape.)
+preset: catalogue-directory
+title: Catalogue / directory rebuild
+project_type: redesign
+
+modules:
+  public: true
+  wordpress: true
+  hosting: false
+  analytics: false
+  manual: true
+
+representative_pages:
+  - home
+  - catalogue-landing
+  - catalogue-archive
+  - catalogue-detail
+  - search
+  - contact
+
+metric_suggestions:
+  - id: editorial-time
+    title: Reduce the time to add or update a catalogue entry
+    category: outcome
+  - id: catalogue-search-success
+    title: Increase successful catalogue searches / reduce zero-result searches
+    category: outcome
+  - id: entry-discovery
+    title: Improve discovery of individual catalogue entries
+    category: outcome
+  - id: mobile-performance
+    title: Improve mobile performance of catalogue templates
+    category: outcome
+  - id: editor-independence
+    title: Editors maintain entries without developer help
+    category: outcome
+
+journey_templates:
+  - update-catalogue-entry
+  - find-catalogue-entry
+  - submit-contact-enquiry
+
+manual_questions:
+  - Where does the catalogue data live today (PDF, spreadsheet, CMS)?
+  - Who maintains entries, and how long does one update take?
+  - Is there a single source of truth for entry data?
+  - Which entries or fields change most often?
+
+report_emphasis:
+  - editorial task time (add/update an entry)
+  - catalogue search and discovery
+  - before/after performance

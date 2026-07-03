@@ -1,0 +1,90 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "https://wp-starter.local/schemas/project.schema.json",
+	"title": "Project config (project.yml)",
+	"description": "Machine-readable config for a lead workspace or an active project. The `stage` field discriminates the two. Credentials must never appear here — see docs/baseline-system.md (Privacy).",
+	"type": "object",
+	"required": ["schema_version", "project"],
+	"additionalProperties": false,
+	"properties": {
+		"schema_version": {
+			"type": "integer",
+			"const": 1,
+			"description": "Schema major version this document targets. Bumped only on breaking changes."
+		},
+		"project": {
+			"type": "object",
+			"required": ["name", "slug", "stage", "type"],
+			"additionalProperties": false,
+			"properties": {
+				"name": { "type": "string", "minLength": 1 },
+				"slug": {
+					"type": "string",
+					"pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+					"description": "Lowercase, dashes only. Matches bin/rename-theme.sh's slug rule."
+				},
+				"stage": { "type": "string", "enum": ["lead", "active"] },
+				"status": {
+					"type": "string",
+					"enum": ["assessing", "proposed", "won", "lost", "abandoned", "promoted", "in-progress", "launched", "closed"]
+				},
+				"type": { "type": "string", "enum": ["new", "redesign"] },
+				"platform": { "type": "string", "enum": ["codeable", "direct", "other"] },
+				"created_at": { "type": "string", "format": "date" }
+			}
+		},
+		"starter": {
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"source_path": { "type": "string", "description": "Human-facing path to the wp-starter checkout used. Not machine-authoritative." },
+				"template_commit": {
+					"type": "string",
+					"description": "Commit the CREATED project repo was generated from (template provenance), not merely local wp-starter HEAD."
+				},
+				"promoted_at": { "type": "string", "format": "date-time" }
+			}
+		},
+		"promoted_to": {
+			"type": "string",
+			"description": "For a promoted lead: the remote repo the lead became (e.g. studiokicobi/acme-client)."
+		},
+		"urls": {
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"production": { "type": ["string", "null"] },
+				"staging": { "type": ["string", "null"] }
+			}
+		},
+		"baseline": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["mode"],
+			"properties": {
+				"mode": { "type": "string", "enum": ["new", "redesign"] },
+				"modules": {
+					"type": "object",
+					"additionalProperties": { "type": "boolean" },
+					"description": "Which baseline modules are in scope. Keys: public, wordpress, hosting, analytics, manual."
+				}
+			}
+		},
+		"privacy": {
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"local_only": { "type": "boolean" },
+				"allow_git": { "type": "boolean" },
+				"allow_credentials_in_project": {
+					"type": "boolean",
+					"description": "Must be false. Enforced by review + a future secret scanner; the schema alone cannot guarantee no secrets leak into free text."
+				}
+			}
+		},
+		"preset": {
+			"type": "string",
+			"description": "Preset slug from tools/project-system/presets/. Influences enabled modules and metric suggestions."
+		}
+	}
+}

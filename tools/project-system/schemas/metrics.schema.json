@@ -1,0 +1,74 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "https://wp-starter.local/schemas/metrics.schema.json",
+	"title": "Success metrics document",
+	"description": "A versioned document object (not a bare array) holding the agreed success metrics for a project.",
+	"type": "object",
+	"required": ["schema_version", "kind", "items"],
+	"additionalProperties": false,
+	"properties": {
+		"schema_version": { "type": "integer", "const": 1 },
+		"kind": { "type": "string", "const": "metrics" },
+		"items": {
+			"type": "array",
+			"items": { "$ref": "#/definitions/metric" }
+		}
+	},
+	"definitions": {
+		"metric": {
+			"type": "object",
+			"required": ["id", "title", "category", "evidence_type", "owner", "baseline", "target"],
+			"additionalProperties": false,
+			"properties": {
+				"id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+				"title": { "type": "string", "minLength": 1 },
+				"category": { "type": "string", "enum": ["delivery", "outcome", "satisfaction"] },
+				"rationale": { "type": "string" },
+				"evidence_type": {
+					"type": "string",
+					"enum": ["automated", "analytics", "timed_task", "survey", "client_reported", "manual_observation", "business_data", "system_log"]
+				},
+				"owner": { "type": "string", "enum": ["developer", "client", "shared", "automated", "third_party"] },
+				"baseline": {
+					"type": "object",
+					"required": ["status"],
+					"additionalProperties": false,
+					"properties": {
+						"status": {
+							"type": "string",
+							"enum": ["measured", "estimated_by_client", "inferred", "unavailable", "not_applicable", "establish_after_launch"]
+						},
+						"value": { "type": ["number", "string"] },
+						"unit": { "type": "string" },
+						"measured_at": { "type": "string" },
+						"note": { "type": "string" }
+					}
+				},
+				"target": {
+					"type": "object",
+					"required": ["type"],
+					"additionalProperties": false,
+					"properties": {
+						"type": {
+							"type": "string",
+							"enum": ["numeric", "pass_fail", "directional", "comparative", "qualitative", "establish_baseline"]
+						},
+						"operator": { "type": "string", "enum": ["less_than", "less_or_equal", "greater_than", "greater_or_equal", "equal"] },
+						"value": { "type": ["number", "string"] },
+						"unit": { "type": "string" },
+						"direction": { "type": "string", "enum": ["improve", "maintain", "reduce"] },
+						"expected": { "type": "string" }
+					}
+				},
+				"measure_at": {
+					"type": "array",
+					"items": {
+						"type": "string",
+						"enum": ["kickoff", "before_development", "pre_launch", "launch", "handoff", "7_days", "30_days", "90_days", "custom"]
+					}
+				},
+				"source": { "type": "array", "items": { "type": "string" } }
+			}
+		}
+	}
+}

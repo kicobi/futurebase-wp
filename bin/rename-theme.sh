@@ -196,6 +196,11 @@ while IFS= read -r f; do TARGETS+=("$f"); done < <(
 	scan_roots=(functions.php style.css composer.json package.json phpcs.xml.dist)
 	[ -f README.md ] && scan_roots+=(README.md)
 	[ -f CLAUDE.md ] && scan_roots+=(CLAUDE.md)
+	# This is an ALLOWLIST — only these roots are scanned. tools/ is
+	# deliberately absent: tools/project-system/ (the project lifecycle system)
+	# ships templates carrying literal `wp-starter` / `studiokicobi/wp-starter`
+	# references that are the starter's own identity, not client slugs to
+	# rewrite. Do NOT add `tools` here. See docs/project-lifecycle.md.
 	for d in patterns templates parts docs src inc bin; do
 		[ -d "$d" ] && scan_roots+=("$d")
 	done
@@ -294,6 +299,8 @@ echo
 leftover_roots=(functions.php style.css composer.json package.json phpcs.xml.dist)
 [ -f README.md ] && leftover_roots+=(README.md)
 [ -f CLAUDE.md ] && leftover_roots+=(CLAUDE.md)
+# Same allowlist as the scan above — tools/ is intentionally excluded so
+# tools/project-system/ template references are not flagged as leftovers.
 for d in patterns templates parts docs src inc bin; do
 	[ -d "$d" ] && leftover_roots+=("$d")
 done

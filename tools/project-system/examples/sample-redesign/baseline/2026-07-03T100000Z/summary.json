@@ -1,0 +1,48 @@
+{
+	"schema_version": 1,
+	"run_id": "2026-07-03T100000Z",
+	"project_type": "redesign",
+	"kind": "baseline",
+	"status": "completed_with_warnings",
+	"started_at": "2026-07-03T10:00:00Z",
+	"finished_at": "2026-07-03T10:06:12Z",
+	"modules": [
+		{
+			"module": "screenshots",
+			"status": "complete",
+			"evidence_path": "screenshots/",
+			"tool": "playwright",
+			"tool_version": "1.48.0"
+		},
+		{
+			"module": "lighthouse",
+			"status": "complete",
+			"evidence_path": "lighthouse/",
+			"tool": "lighthouse",
+			"tool_version": "12.2.1"
+		},
+		{
+			"module": "axe",
+			"status": "complete_with_warnings",
+			"evidence_path": "accessibility/",
+			"tool": "axe-core",
+			"tool_version": "4.10.0"
+		},
+		{
+			"module": "crawl",
+			"status": "complete",
+			"evidence_path": "crawl/"
+		},
+		{
+			"module": "wordpress",
+			"status": "unavailable",
+			"reason": "WordPress access is not configured"
+		},
+		{
+			"module": "manual",
+			"status": "complete",
+			"evidence_path": "notes/"
+		}
+	],
+	"report": "../../reports/baseline-2026-07-03.html"
+}

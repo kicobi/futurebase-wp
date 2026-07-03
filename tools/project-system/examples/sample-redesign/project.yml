@@ -1,0 +1,37 @@
+# Anonymized worked example — a synthetic manufacturer-catalogue redesign.
+# No identifiable client data. Validates against schemas/project.schema.json.
+schema_version: 1
+
+project:
+  name: Acme Supply Catalogue
+  slug: acme-supply
+  stage: active
+  status: in-progress
+  type: redesign
+  platform: codeable
+  created_at: "2026-07-03"
+
+starter:
+  source_path: /Users/example/Sites/wp-starter
+  template_commit: "0000000000000000000000000000000000000000"
+  promoted_at: "2026-07-03T10:00:00Z"
+
+urls:
+  production: https://example.com
+  staging: null
+
+baseline:
+  mode: redesign
+  modules:
+    public: true
+    wordpress: false
+    hosting: false
+    analytics: false
+    manual: true
+
+privacy:
+  local_only: true
+  allow_git: true
+  allow_credentials_in_project: false
+
+preset: catalogue-directory
