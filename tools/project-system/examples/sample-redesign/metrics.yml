@@ -1,0 +1,63 @@
+# Validates against schemas/metrics.schema.json — a versioned document object.
+schema_version: 1
+kind: metrics
+items:
+  - id: editorial-time
+    title: Reduce the time required to update a catalogue entry
+    category: outcome
+    rationale: The current PDF workflow is slow and requires specialist help.
+    evidence_type: timed_task
+    owner: shared
+    baseline:
+      status: measured
+      value: 45
+      unit: minutes
+      measured_at: kickoff
+    target:
+      type: numeric
+      operator: less_than
+      value: 10
+      unit: minutes
+    measure_at:
+      - handoff
+      - 30_days
+    source:
+      - client-interview
+      - timed-baseline-task
+
+  - id: mobile-performance
+    title: Improve mobile performance of the catalogue landing page
+    category: outcome
+    rationale: The current page ships 5.8 MB and scores poorly on mobile.
+    evidence_type: automated
+    owner: developer
+    baseline:
+      status: measured
+      value: 54
+      unit: lighthouse-performance
+      measured_at: before_development
+    target:
+      type: directional
+      direction: improve
+    measure_at:
+      - launch
+      - 30_days
+    source:
+      - lighthouse-baseline
+
+  - id: catalogue-enquiries
+    title: Track qualified enquiries from catalogue detail pages
+    category: outcome
+    rationale: No analytics were installed before the project, so there is no prior figure.
+    evidence_type: analytics
+    owner: client
+    baseline:
+      status: establish_after_launch
+      note: Analytics were not installed before the project.
+    target:
+      type: establish_baseline
+    measure_at:
+      - 30_days
+      - 90_days
+    source:
+      - post-launch-analytics

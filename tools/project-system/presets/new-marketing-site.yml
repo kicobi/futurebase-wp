@@ -1,0 +1,53 @@
+# Preset: new-marketing-site
+# A brand-new marketing/brochure site where there is little or no prior web
+# presence to measure. The baseline captures the starting BUSINESS state.
+preset: new-marketing-site
+title: New marketing site
+project_type: new
+
+modules:
+  public: false      # little/no existing site to audit
+  wordpress: false
+  hosting: false
+  analytics: false
+  manual: true       # business + content-readiness capture is the core
+
+# For a new site, "representative pages" is the planned page list, not existing.
+planned_pages:
+  - home
+  - about
+  - services
+  - contact
+  - legal
+
+metric_suggestions:
+  - id: qualified-enquiries
+    title: Qualified enquiries via the site
+    category: outcome
+  - id: form-completion
+    title: Contact-form completion rate
+    category: outcome
+  - id: page-performance
+    title: Launch mobile performance meets target
+    category: delivery
+  - id: editor-independence
+    title: Client can publish/update pages without developer help
+    category: outcome
+  - id: client-satisfaction
+    title: Client satisfaction with the new site
+    category: satisfaction
+
+journey_templates:
+  - submit-contact-enquiry
+  - publish-a-page
+
+manual_questions:
+  - What does the client do today instead of using the future site?
+  - How are enquiries handled right now?
+  - Which content is ready, draft, or missing?
+  - Which outcomes should become measurable after launch?
+
+report_emphasis:
+  - content readiness
+  - what will be measurable post-launch
+  - delivery checklist

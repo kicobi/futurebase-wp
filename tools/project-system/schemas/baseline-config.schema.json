@@ -1,0 +1,45 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "https://wp-starter.local/schemas/baseline-config.schema.json",
+	"title": "Baseline config (.project/baseline.config.yml)",
+	"description": "Declares what a baseline run captures: target URL, representative pages, enabled modules, and screenshot viewports.",
+	"type": "object",
+	"required": ["schema_version", "kind", "mode"],
+	"additionalProperties": false,
+	"properties": {
+		"schema_version": { "type": "integer", "const": 1 },
+		"kind": { "type": "string", "const": "baseline-config" },
+		"mode": { "type": "string", "enum": ["new", "redesign"] },
+		"base_url": { "type": ["string", "null"], "description": "Origin for relative page URLs. May be null for new-site projects with no existing site." },
+		"pages": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"required": ["name", "url"],
+				"additionalProperties": false,
+				"properties": {
+					"name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+					"url": { "type": "string", "minLength": 1 },
+					"critical": { "type": "boolean" }
+				}
+			}
+		},
+		"modules": {
+			"type": "array",
+			"items": { "type": "string", "enum": ["crawl", "screenshots", "lighthouse", "axe", "manual"] }
+		},
+		"viewports": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"required": ["name", "width", "height"],
+				"additionalProperties": false,
+				"properties": {
+					"name": { "type": "string" },
+					"width": { "type": "integer", "minimum": 200 },
+					"height": { "type": "integer", "minimum": 200 }
+				}
+			}
+		}
+	}
+}

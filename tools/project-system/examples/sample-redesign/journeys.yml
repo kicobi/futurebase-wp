@@ -1,0 +1,32 @@
+# Validates against schemas/journeys.schema.json.
+schema_version: 1
+kind: journeys
+items:
+  - id: submit-contact-enquiry
+    name: Submit a contact enquiry
+    owner: visitor
+    steps:
+      - Visit contact page
+      - Complete required fields
+      - Submit form
+      - Confirm success message
+      - Confirm delivery
+    measure_at:
+      - baseline
+      - pre_launch
+      - launch
+
+  - id: update-catalogue-entry
+    name: Update a catalogue entry
+    owner: editor
+    steps:
+      - Log in
+      - Find the entry
+      - Edit territory information
+      - Publish changes
+      - Confirm front-end result
+    metrics:
+      - completion
+      - time
+      - assistance_required
+      - errors

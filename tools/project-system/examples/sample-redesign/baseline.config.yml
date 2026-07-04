@@ -1,0 +1,25 @@
+# Validates against schemas/baseline-config.schema.json.
+# `wp-starter baseline init` generates this inside a project's .project/.
+schema_version: 1
+kind: baseline-config
+mode: redesign
+base_url: https://example.com
+pages:
+  - name: home
+    url: /
+    critical: true
+  - name: contact
+    url: /contact
+modules:
+  - crawl
+  - screenshots
+  - lighthouse
+  - axe
+  - manual
+viewports:
+  - name: desktop
+    width: 1280
+    height: 800
+  - name: mobile
+    width: 390
+    height: 844

@@ -1,0 +1,66 @@
+# Preset: redesign
+# A generic visual redesign / rebuild / migration of an existing WordPress site.
+# A preset seeds defaults; every value is editable per project.
+preset: redesign
+title: Redesign / rebuild of an existing site
+project_type: redesign
+
+# Baseline modules enabled by default for this preset.
+modules:
+  public: true
+  wordpress: true
+  hosting: false
+  analytics: false
+  manual: true
+
+# Pages that typically cover the major templates. `lead init` / `baseline init`
+# prompt to confirm and add project-critical pages.
+representative_pages:
+  - home
+  - standard-page
+  - service-page
+  - archive
+  - single-post
+  - contact
+  - search
+  - "404"
+
+# Success-metric ideas to propose to the client (see docs/baseline-system.md).
+metric_suggestions:
+  - id: mobile-performance
+    title: Improve mobile Core Web Vitals on key templates
+    category: outcome
+    evidence_type: automated
+  - id: axe-violations
+    title: Reduce automated accessibility violations to zero on tested pages
+    category: outcome
+    evidence_type: automated
+  - id: broken-links
+    title: Eliminate broken internal links
+    category: delivery
+    evidence_type: automated
+  - id: editorial-time
+    title: Reduce the time to complete a common editorial task
+    category: outcome
+    evidence_type: timed_task
+    owner: shared
+  - id: client-satisfaction
+    title: Client satisfaction with the rebuilt site
+    category: satisfaction
+
+# Journey templates to seed .project/metrics/journeys.yml.
+journey_templates:
+  - submit-contact-enquiry
+  - update-content-entry
+
+# Questions the manual baseline should always ask for this preset.
+manual_questions:
+  - What must not change (URLs, integrations, content)?
+  - Which editorial tasks are hardest today?
+  - Which user journeys must not regress?
+
+report_emphasis:
+  - before/after performance
+  - before/after accessibility
+  - editorial task time
+  - non-regression of critical journeys

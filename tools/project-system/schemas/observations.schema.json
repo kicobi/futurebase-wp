@@ -1,0 +1,35 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "https://wp-starter.local/schemas/observations.schema.json",
+	"title": "Observations document",
+	"description": "A versioned document object of agent/human interpretations. Kept SEPARATE from measured metric values (facts-vs-interpretation boundary).",
+	"type": "object",
+	"required": ["schema_version", "kind", "items"],
+	"additionalProperties": false,
+	"properties": {
+		"schema_version": { "type": "integer", "const": 1 },
+		"kind": { "type": "string", "const": "observations" },
+		"items": {
+			"type": "array",
+			"items": { "$ref": "#/definitions/observation" }
+		}
+	},
+	"definitions": {
+		"observation": {
+			"type": "object",
+			"required": ["id", "type", "title", "confidence", "created_by", "created_at"],
+			"additionalProperties": false,
+			"properties": {
+				"id": { "type": "string", "pattern": "^obs-[0-9a-z-]+$" },
+				"type": { "type": "string", "enum": ["agent-observation", "human-observation"] },
+				"severity": { "type": "string", "enum": ["info", "minor", "important", "critical"] },
+				"title": { "type": "string", "minLength": 1 },
+				"detail": { "type": "string" },
+				"evidence": { "type": "array", "items": { "type": "string" } },
+				"confidence": { "type": "string", "enum": ["high", "medium", "low"] },
+				"created_by": { "type": "string" },
+				"created_at": { "type": "string", "format": "date-time" }
+			}
+		}
+	}
+}

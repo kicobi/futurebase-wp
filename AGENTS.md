@@ -38,6 +38,22 @@ Treat pre-block-editor patterns as legacy unless the task explicitly targets leg
    - theme vs plugin boundaries
    - test and lint commands
 
+## Project lifecycle & lead workspaces
+
+This repo carries the **project lifecycle system** in `tools/project-system/` —
+isolated lead workspaces, promotion into active projects, baselines, and success
+metrics. See `docs/project-lifecycle.md` and `docs/baseline-system.md`.
+
+- Prospective client work does **not** happen in this repo. New client planning
+  lives in a local, isolated lead workspace under `~/Sites/leads/<slug>/`
+  (`wp-starter lead init`). Keep client-specific analysis there.
+- `/planning/` (gitignored) is for starter-development scratch only.
+- An awarded lead is **promoted** (`wp-starter lead promote <slug>`), which wraps
+  the existing template + `npm run rename` flow and copies the dossier into
+  `.project/`. Do not convert a lead by hand.
+- `bin/rename-theme.sh` does not scan `tools/` — templates there carry literal
+  starter-identity references, not client slugs.
+
 ## WordPress defaults
 
 - Reusable custom blocks belong in a plugin unless the task is explicitly theme-only.

@@ -18,6 +18,15 @@ Start with classification, then use the matching skill:
 - PHP static analysis: `wp-phpstan`
 - disposable local environments / repros: `wp-playground`
 
+## Project lifecycle & lead workspaces
+
+This repo also carries the **project lifecycle system** in [tools/project-system/](tools/project-system/) — isolated lead workspaces, promotion into active projects, baselines, and success metrics. See [docs/project-lifecycle.md](docs/project-lifecycle.md) and [docs/baseline-system.md](docs/baseline-system.md).
+
+- **Prospective client work does not happen in this repo.** New client planning (briefs, discovery, scope, estimates) lives in a local, isolated lead workspace under `~/Sites/leads/<slug>/`, created by `wp-starter lead init`. Keep client-specific analysis there — never mix it into the shared starter.
+- **`/planning/` (gitignored) is for starter-development scratch only**, not client planning.
+- When a lead is awarded, it is **promoted** (`wp-starter lead promote <slug>`), which wraps the existing template + `npm run rename` flow, copies the lead dossier into `.project/`, and switches agent instructions to active-project mode. Do not convert a lead by hand.
+- `bin/rename-theme.sh` deliberately does not scan `tools/` — templates there carry literal starter-identity references, not client slugs.
+
 ## Repo assumptions
 
 Unless the task says otherwise:

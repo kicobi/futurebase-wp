@@ -1,0 +1,28 @@
+# Validates against schemas/observations.schema.json.
+# Observations are interpretations — kept separate from measured metric values.
+schema_version: 1
+kind: observations
+items:
+  - id: obs-001
+    type: agent-observation
+    severity: important
+    title: Catalogue data has no single source of truth
+    detail: >-
+      Entries are maintained in a PDF and re-keyed into the site, so the two
+      drift. This is an interpretation, not a measured fact.
+    evidence:
+      - brief/client-responses.md
+      - baseline/2026-07-03T100000Z/screenshots/catalogue-landing.png
+    confidence: high
+    created_by: claude-code
+    created_at: "2026-07-03T10:00:00Z"
+
+  - id: obs-002
+    type: human-observation
+    severity: minor
+    title: Editors avoid touching the catalogue for fear of breaking layout
+    evidence:
+      - brief/client-responses.md
+    confidence: medium
+    created_by: colin
+    created_at: "2026-07-03T11:30:00Z"

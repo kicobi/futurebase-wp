@@ -2,6 +2,9 @@
 /node_modules/
 /vendor/
 
+# project-system design validator deps (dev-only; see tools/project-system/)
+/tools/project-system/node_modules/
+
 # Build artifacts: committed in this template (matches upstream them.es/starter-fse).
 # Generated projects can flip this if they add a CI build step.
 /.dist/
