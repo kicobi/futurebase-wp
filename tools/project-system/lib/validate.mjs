@@ -29,5 +29,6 @@ export function validateAgainst(schemaFile, data) {
 }
 
 export const validateProject = (data) => validateAgainst('project.schema.json', data);
+export const validateMetrics = (data) => validateAgainst('metrics.schema.json', data);
 export const validateBaselineConfig = (data) => validateAgainst('baseline-config.schema.json', data);
 export const validateBaselineRun = (data) => validateAgainst('baseline-run.schema.json', data);

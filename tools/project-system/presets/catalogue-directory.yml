@@ -25,6 +25,8 @@ metric_suggestions:
   - id: editorial-time
     title: Reduce the time to add or update a catalogue entry
     category: outcome
+    evidence_type: timed_task
+    owner: shared
   - id: catalogue-search-success
     title: Increase successful catalogue searches / reduce zero-result searches
     category: outcome
@@ -34,9 +36,11 @@ metric_suggestions:
   - id: mobile-performance
     title: Improve mobile performance of catalogue templates
     category: outcome
+    evidence_type: automated
   - id: editor-independence
     title: Editors maintain entries without developer help
     category: outcome
+    evidence_type: client_reported
 
 journey_templates:
   - update-catalogue-entry

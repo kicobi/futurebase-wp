@@ -4,14 +4,17 @@ Structured lifecycle for WordPress projects originating through Codeable and
 direct client work: isolated lead workspaces → promotion → baseline capture →
 success metrics → launch comparison → follow-up → case study.
 
-> **Status: Phase 3.** The full lead lifecycle (`lead init/inspect/promote/archive`)
-> **and** the baseline MVP (`baseline init/run/inspect/report`) are implemented.
-> The baseline runs `crawl` (built-in fetch), `screenshots` (Playwright),
-> `lighthouse`, `axe` (axe-core), and `manual` modules into dated, immutable runs
-> with an HTML report. Browser tooling is resolved from the host project's
-> `node_modules` and degrades gracefully when absent. Later commands
-> (`metrics`, `final`, `compare`, `case-study`) are designed but not yet built —
-> see `ARCHITECTURE.md` → Roadmap. Canonical narrative:
+> **Status: Phase 4.** Implemented: the full lead lifecycle
+> (`lead init/inspect/promote/archive`), the baseline MVP
+> (`baseline init/run/inspect/report`), and the success-metrics engine
+> (`metrics suggest/review/validate/baseline/client-message`). The baseline runs
+> `crawl` (fetch), `screenshots` (Playwright), `lighthouse`, `axe` (axe-core),
+> and `manual` into dated, immutable runs with an HTML report; browser tooling is
+> resolved from the host project's `node_modules` and degrades gracefully.
+> Metrics are preset-driven, launch/post-launch aware, and generate a
+> client-facing success message. Later commands (`final`, `compare`,
+> `case-study`, `metrics survey`) are designed but not yet built — see
+> `ARCHITECTURE.md` → Roadmap. Canonical narrative:
 > [`docs/project-lifecycle.md`](../../docs/project-lifecycle.md) and
 > [`docs/baseline-system.md`](../../docs/baseline-system.md).
 
@@ -104,12 +107,18 @@ Runs write dated, immutable evidence under `.project/baseline/<run-id>/`
 `lighthouse` spawns the Lighthouse CLI pointed at Playwright's Chromium. Any
 module whose tooling is absent reports `unavailable` without failing the run.
 
-**Metrics:**
+**Metrics (per-project):**
 ```
-wp-starter metrics suggest | review | validate | baseline | client-message
-wp-starter metrics survey --period 30-days
-wp-starter metrics report
+✓ wp-starter metrics suggest [--preset <name>] [--dry-run]   # merge preset metric drafts
+✓ wp-starter metrics review                                  # launch vs post-launch table
+✓ wp-starter metrics validate                                # schema + semantic checks
+✓ wp-starter metrics baseline --id <id> --value <v> [--unit <u>] [--at <when>]
+✓ wp-starter metrics client-message [--write]                # spec §11.1 client wording
+  wp-starter metrics survey --period 30-days                 # Phase 7
 ```
+Metrics live in `.project/metrics/metrics.yml` (versioned document). Suggestions
+expand preset entries into schema-valid drafts with category-driven defaults for
+evidence type, owner, target, and timing; `suggest` is idempotent (matched by id).
 
 **Final / comparison:**
 ```

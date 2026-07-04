@@ -81,7 +81,9 @@ failure · `6` privacy/safety violation.
   `lighthouse`, `axe` (axe-core), `manual`; dated immutable runs, schema-valid
   `summary.json`, HTML/MD report; new + redesign modes. Browser tooling resolved
   from the host project (`lib/browser`) with graceful degradation.
-- **Phase 4:** metrics engine (suggest / validate / client-message).
+- **Phase 4 (done):** metrics engine (`suggest`/`review`/`validate`/`baseline`/
+  `client-message`) — preset-driven drafts, launch/post-launch split, semantic
+  checks (`lib/metrics`).
 - **Phase 5:** WordPress + workflow inventory (WP-CLI; reuse the
   `perf_inspect.mjs` pattern), timed editorial tasks, journeys.
 - **Phase 6:** final run, comparison, client/internal reports, case-study export.

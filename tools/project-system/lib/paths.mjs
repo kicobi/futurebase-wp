@@ -27,6 +27,7 @@ export function leadDir(slug, override) {
 	return join(leadsRoot(override), slug);
 }
 
-// Template + schema locations inside the tool.
+// Template + schema + preset locations inside the tool.
 export const templatesDir = join(TOOL_ROOT, 'templates');
 export const schemasDir = join(TOOL_ROOT, 'schemas');
+export const presetsDir = join(TOOL_ROOT, 'presets');

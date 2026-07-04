@@ -17,6 +17,11 @@ import { baselineInit } from '../commands/baseline/init.mjs';
 import { baselineRun } from '../commands/baseline/run.mjs';
 import { baselineInspect } from '../commands/baseline/inspect.mjs';
 import { baselineReport } from '../commands/baseline/report.mjs';
+import { metricsSuggest } from '../commands/metrics/suggest.mjs';
+import { metricsReview } from '../commands/metrics/review.mjs';
+import { metricsValidate } from '../commands/metrics/validate.mjs';
+import { metricsBaseline } from '../commands/metrics/baseline.mjs';
+import { metricsClientMessage } from '../commands/metrics/client-message.mjs';
 
 const OPTIONS = {
 	type: { type: 'string' },
@@ -36,6 +41,14 @@ const OPTIONS = {
 	page: { type: 'string', multiple: true },
 	module: { type: 'string', multiple: true },
 	'run-id': { type: 'string' },
+	// metrics
+	id: { type: 'string' },
+	value: { type: 'string' },
+	unit: { type: 'string' },
+	at: { type: 'string' },
+	status: { type: 'string' },
+	preset: { type: 'string' },
+	write: { type: 'boolean', default: false },
 	'dry-run': { type: 'boolean', default: false },
 	confirm: { type: 'boolean', default: false },
 	resume: { type: 'boolean', default: false },
@@ -64,6 +77,12 @@ Usage:
   wp-starter baseline inspect
   wp-starter baseline report [--run-id <id>]
 
+  wp-starter metrics suggest [--preset <name>] [--dry-run]
+  wp-starter metrics review
+  wp-starter metrics validate
+  wp-starter metrics baseline --id <id> --value <v> [--unit <u>] [--at <when>]
+  wp-starter metrics client-message [--write]
+
 Flags:
   --type new|redesign            project type (required for init)
   --platform codeable|direct|other   default: codeable
@@ -79,12 +98,14 @@ Flags:
   archive:  --reason lost|abandoned --dry-run
   baseline: --project-root <path> --url <base> --page name=url --module <m>
             --run-id <id> --dry-run
+  metrics:  --preset <name> --id <id> --value <v> --unit <u> --at <when>
+            --status <s> --write --dry-run
 
   -h, --help                     show this help
   --version                      print the system version
 
-Designed but not yet implemented: project *, metrics *, final *, compare,
-case-study. See README.md.
+Designed but not yet implemented: project *, final *, compare, case-study,
+metrics survey/report. See README.md.
 `;
 
 export async function main(argv) {
@@ -143,6 +164,23 @@ export async function main(argv) {
 				return baselineReport(rest, flags);
 			default:
 				die(`unknown 'baseline' command: ${command}\n\n${HELP}`, EXIT.INVALID_CONFIG);
+		}
+	}
+
+	if (group === 'metrics') {
+		switch (command) {
+			case 'suggest':
+				return metricsSuggest(rest, flags);
+			case 'review':
+				return metricsReview(rest, flags);
+			case 'validate':
+				return metricsValidate(rest, flags);
+			case 'baseline':
+				return metricsBaseline(rest, flags);
+			case 'client-message':
+				return metricsClientMessage(rest, flags);
+			default:
+				die(`unknown 'metrics' command: ${command}\n\n${HELP}`, EXIT.INVALID_CONFIG);
 		}
 	}
 

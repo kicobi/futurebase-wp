@@ -30,15 +30,20 @@ metric_suggestions:
   - id: mobile-performance
     title: Improve mobile Core Web Vitals on key templates
     category: outcome
+    evidence_type: automated
   - id: axe-violations
     title: Reduce automated accessibility violations to zero on tested pages
     category: outcome
+    evidence_type: automated
   - id: broken-links
     title: Eliminate broken internal links
     category: delivery
+    evidence_type: automated
   - id: editorial-time
     title: Reduce the time to complete a common editorial task
     category: outcome
+    evidence_type: timed_task
+    owner: shared
   - id: client-satisfaction
     title: Client satisfaction with the rebuilt site
     category: satisfaction
