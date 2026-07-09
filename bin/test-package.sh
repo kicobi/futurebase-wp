@@ -59,7 +59,8 @@ for forbidden in \
 	"$slug/vendor/" \
 	"$slug/docs/" \
 	"$slug/src/" \
-	"$slug/assets/" \
+	"$slug/fixtures/" \
+	"$slug/.artifacts/" \
 	"$slug/bin/" \
 	"$slug/scripts/" \
 	"$slug/package.json" \
@@ -73,6 +74,26 @@ for forbidden in \
 	if printf "%s\n" "$entries" | grep -Fq "$forbidden"; then
 		fail "zip contains dev-only entry: $forbidden"
 	fi
+done
+
+# assets/ is dev source (SCSS/JS) and must not ship — except assets/images/,
+# which carries runtime pattern placeholders referenced via get_theme_file_uri().
+dev_assets=$(printf "%s\n" "$entries" | grep -E "^$slug/assets/" | grep -vE "^$slug/assets/(images/|images$|$)" || true)
+if [ -n "$dev_assets" ]; then
+	printf "%s\n" "$dev_assets" >&2
+	fail "zip contains dev-only asset sources (only assets/images/ may ship)"
+fi
+
+# Every assets/images/ file a shipped pattern references must be in the zip —
+# a packaged pattern pointing at a missing placeholder 404s on install.
+pattern_entries=$(printf "%s\n" "$entries" | grep -E "^$slug/patterns/.+\.php$" || true)
+for pattern_entry in $pattern_entries; do
+	refs=$(unzip -p "$zip_path" "$pattern_entry" | grep -oE "assets/images/[A-Za-z0-9._-]+" | sort -u || true)
+	for ref in $refs; do
+		if ! printf "%s\n" "$entries" | grep -Fxq "$slug/$ref"; then
+			fail "$pattern_entry references $ref but the zip does not contain it"
+		fi
+	done
 done
 
 if ! unzip -p "$zip_path" "$slug/style.css" | grep -qE "^Text Domain:[[:space:]]+$slug$"; then

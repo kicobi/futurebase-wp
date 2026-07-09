@@ -110,6 +110,19 @@ if [ -f "$tmpl" ]; then
 	grep -q 'wp-starter' "$tmpl" 2>/dev/null || problems+=("tools/project-system template literal 'wp-starter' was rewritten (exclusion broken)")
 fi
 
+# Demo fixture + scorecard tooling must never hardcode the theme slug —
+# they derive it at runtime (pattern registry / style.css), so no 'wp-starter'
+# literal may survive a rename in these paths. rename-theme.sh does not scan
+# them; this asserts they never need it to.
+for probe in fixtures bin/demo-content.sh bin/scorecard.sh bin/smoke-render.sh bin/smoke-render.php; do
+	target="$WT2/$probe"
+	[ -e "$target" ] || continue
+	leftovers=$(grep -rInl -- 'wp-starter' "$target" 2>/dev/null || true)
+	if [ -n "$leftovers" ]; then
+		problems+=("$probe still contains a 'wp-starter' literal after rename (derive the slug at runtime instead)")
+	fi
+done
+
 if [ "${#problems[@]}" -gt 0 ]; then
 	FAILED=1
 	echo "rename non-regression: FAIL — real rename ($REAL_SLUG):"

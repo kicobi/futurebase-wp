@@ -21,6 +21,7 @@
 	},
 	"private": true,
 	"devDependencies": {
+		"@lhci/cli": "^0.15.1",
 		"@wordpress/env": "^11.4.0",
 		"@wordpress/prettier-config": "^4.44.0",
 		"@wordpress/scripts": "^32.0.0",
@@ -53,6 +54,8 @@
 		"block:new": "./bin/new-block.sh",
 		"cpt:new": "./bin/new-cpt.sh",
 		"a11y": "./bin/a11y-wp-env.sh",
+		"demo:import": "./bin/demo-content.sh",
+		"scorecard": "./bin/scorecard.sh",
 		"env:start": "wp-env start --auto-port",
 		"env:stop": "wp-env stop",
 		"env:destroy": "wp-env destroy",
