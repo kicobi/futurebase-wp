@@ -61,3 +61,16 @@ npm run scorecard -- --force   # imports demo content (destructive), then audits
 `LHCI_RUNS=1 npm run scorecard -- --force` is a faster local smoke run.
 CI runs `.github/workflows/scorecard.yml` on pushes to main, nightly, release
 tags, and PRs labeled `scorecard`.
+
+**Measuring the public demo site (the publishable numbers):**
+
+```sh
+npm run scorecard -- --url=https://<demo-host>
+```
+
+Remote mode skips wp-env and the import — the fixture must already be
+imported on the host (`wp site empty --uploads --yes && wp eval-file
+<theme>/fixtures/import-demo.php` over SSH; `bin/demo-content.sh` refuses
+non-localhost targets by design). The script verifies `/about/` exists before
+spending ~50 Lighthouse runs. Artifacts land in
+`.artifacts/scorecard/<date>-<host>/`.

@@ -14,6 +14,12 @@
 # Usage:  npm run scorecard -- --force     (local; --force forwarded to the
 #                                           destructive demo import)
 #         bin/scorecard.sh                 (CI; $CI skips the guard)
+#         npm run scorecard -- --url=https://demo.example.com
+#                                           (remote: measure a public site that
+#                                            already carries the demo fixture —
+#                                            no wp-env, no import. This is the
+#                                            mode that produces PUBLISHABLE
+#                                            numbers.)
 #
 # Env: LHCI_RUNS=1 overrides numberOfRuns for a quick local smoke run.
 
@@ -23,9 +29,11 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 FORCE_ARGS=()
+REMOTE_URL=""
 for arg in "$@"; do
 	case "$arg" in
 		--force) FORCE_ARGS+=( "--force" ) ;;
+		--url=*) REMOTE_URL="${arg#--url=}" ;;
 		*) echo "error: unknown argument: $arg" >&2; exit 2 ;;
 	esac
 done
@@ -35,23 +43,40 @@ if ! command -v npx > /dev/null 2>&1; then
 	exit 1
 fi
 
-WP_URL=$(
-	npx --silent wp-env run cli wp option get home --skip-themes --skip-plugins 2>/dev/null \
-		| grep -oE '^https?://[^[:space:]]+$' \
-		| head -1 \
-		|| true
-)
-if [ -z "$WP_URL" ]; then
-	echo "error: wp-env is not reachable; start it with 'npm run env:start'" >&2
-	exit 1
-fi
-WP_URL="${WP_URL%/}"
-if ! curl -fsS --max-time 5 "$WP_URL/" > /dev/null 2>&1; then
-	echo "error: wp-env URL is not responding: $WP_URL" >&2
-	exit 1
-fi
+if [ -n "$REMOTE_URL" ]; then
+	WP_URL="${REMOTE_URL%/}"
+	if ! curl -fsS --max-time 10 "$WP_URL/" > /dev/null 2>&1; then
+		echo "error: remote URL is not responding: $WP_URL" >&2
+		exit 1
+	fi
+	# The remote site must already carry the demo fixture — import it on the
+	# host (wp site empty --uploads --yes && wp eval-file .../fixtures/
+	# import-demo.php). /about/ is the cheapest proof before ~50 Lighthouse runs.
+	if ! curl -fsS --max-time 10 "$WP_URL/about/" > /dev/null 2>&1; then
+		echo "error: $WP_URL/about/ not found — import the demo fixture on the host first" >&2
+		exit 5
+	fi
+	RUN_LABEL="$(date +%Y-%m-%d)-$(printf "%s" "$WP_URL" | sed -E 's#^https?://##; s#[^A-Za-z0-9.-]#-#g')"
+else
+	WP_URL=$(
+		npx --silent wp-env run cli wp option get home --skip-themes --skip-plugins 2>/dev/null \
+			| grep -oE '^https?://[^[:space:]]+$' \
+			| head -1 \
+			|| true
+	)
+	if [ -z "$WP_URL" ]; then
+		echo "error: wp-env is not reachable; start it with 'npm run env:start'" >&2
+		exit 1
+	fi
+	WP_URL="${WP_URL%/}"
+	if ! curl -fsS --max-time 5 "$WP_URL/" > /dev/null 2>&1; then
+		echo "error: wp-env URL is not responding: $WP_URL" >&2
+		exit 1
+	fi
 
-./bin/demo-content.sh ${FORCE_ARGS[@]+"${FORCE_ARGS[@]}"}
+	./bin/demo-content.sh ${FORCE_ARGS[@]+"${FORCE_ARGS[@]}"}
+	RUN_LABEL="$(date +%Y-%m-%d)"
+fi
 
 # Page set: one URL per shipped template family. Slugs are the deterministic
 # fixture slugs created by fixtures/import-demo.php — keep the two in sync.
@@ -68,7 +93,7 @@ LHCI_URLS=(
 # The 404 page is pa11y-only: LHCI on non-200 responses is unreliable.
 PA11Y_URLS=( "${LHCI_URLS[@]}" "$WP_URL/this-page-does-not-exist/" )
 
-ART_DIR="$ROOT/.artifacts/scorecard/$(date +%Y-%m-%d)"
+ART_DIR="$ROOT/.artifacts/scorecard/$RUN_LABEL"
 mkdir -p "$ART_DIR"
 
 lhci_url_flags=()
