@@ -32,3 +32,4 @@ export const validateProject = (data) => validateAgainst('project.schema.json', 
 export const validateMetrics = (data) => validateAgainst('metrics.schema.json', data);
 export const validateBaselineConfig = (data) => validateAgainst('baseline-config.schema.json', data);
 export const validateBaselineRun = (data) => validateAgainst('baseline-run.schema.json', data);
+export const validateSurveyResults = (data) => validateAgainst('survey-results.schema.json', data);

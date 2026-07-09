@@ -90,5 +90,7 @@ failure · `6` privacy/safety violation.
 - **Phase 6 (done):** shared capture engine (`commands/capture.mjs`) for
   `baseline` + `final`, before/after `compare` (`lib/compare`) with internal +
   client-safe reports, and `project case-study` export.
-- **Phase 7:** surveys + 30/90-day follow-up.
+- **Phase 7 (done):** surveys (`metrics survey`) + follow-up report
+  (`metrics follow-up`) — baseline/30/90-day scale deltas, metric checklist
+  (`lib/survey`, `survey-results` schema).
 - **Phase 8:** optional integrations (Workledger, analytics APIs) — out of MVP.
