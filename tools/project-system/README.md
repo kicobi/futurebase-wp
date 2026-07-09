@@ -12,8 +12,7 @@ success metrics → launch comparison → follow-up → case study.
 > follow-up (`metrics survey/follow-up`). Baseline and final share one capture
 > engine so their runs diff like-for-like; browser + WP-CLI tooling is resolved
 > from the host project and degrades gracefully. Remaining (out of MVP):
-> `project init/inspect/status/validate` and Phase 8 integrations (Workledger,
-> analytics APIs). Canonical narrative:
+> Phase 8 integrations (Workledger, analytics APIs). Canonical narrative:
 > [`docs/project-lifecycle.md`](../../docs/project-lifecycle.md) and
 > [`docs/baseline-system.md`](../../docs/baseline-system.md).
 
@@ -87,10 +86,17 @@ output, and clear exit codes. **✓ = implemented; the rest are designed.**
 ✓ wp-starter lead archive  <slug> [--reason lost|abandoned] [--dry-run]
 ```
 
-**Project (per-project — run inside an active project):**
+**Project record (per-project):**
 ```
-wp-starter project init | inspect | status | validate
+✓ wp-starter project init [--name <n>] [--slug <s>] [--type new|redesign] [--force]
+✓ wp-starter project inspect     # record dashboard
+✓ wp-starter project status      # lifecycle checklist + next step
+✓ wp-starter project validate    # schema + structural + secret scan (exit 6 on a leak)
 ```
+`init` retrofits a `.project/` record onto a repo not created via `lead promote`
+(infers name/slug/type from package.json / style.css). `validate` schema-checks
+every structured doc, enforces `privacy.allow_credentials_in_project: false`, and
+secret-scans the committed record (private/credentials/auth are excluded).
 
 **Baseline (per-project — run inside an active project):**
 ```
