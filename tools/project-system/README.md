@@ -11,8 +11,11 @@ success metrics → launch comparison → follow-up → case study.
 > (`metrics …`), before/after `compare`, `project case-study`, and surveys +
 > follow-up (`metrics survey/follow-up`). Baseline and final share one capture
 > engine so their runs diff like-for-like; browser + WP-CLI tooling is resolved
-> from the host project and degrades gracefully. Remaining (out of MVP):
-> Phase 8 integrations (Workledger, analytics APIs). Canonical narrative:
+> from the host project and degrades gracefully. Phase 8 has begun with
+> `project tasks` (lifecycle task generation for Workledger / GitHub); the
+> remaining Phase 8 items (analytics-API connectors, automated survey delivery,
+> scheduled reminders, anonymized benchmarking) are future work. Canonical
+> narrative:
 > [`docs/project-lifecycle.md`](../../docs/project-lifecycle.md) and
 > [`docs/baseline-system.md`](../../docs/baseline-system.md).
 
@@ -92,7 +95,13 @@ output, and clear exit codes. **✓ = implemented; the rest are designed.**
 ✓ wp-starter project inspect     # record dashboard
 ✓ wp-starter project status      # lifecycle checklist + next step
 ✓ wp-starter project validate    # schema + structural + secret scan (exit 6 on a leak)
+✓ wp-starter project tasks [--format markdown|json|github] [--launch-date <date>]
 ```
+`tasks` generates the state-aware lifecycle task tree (spec §24) — Markdown
+checklist, a JSON sync payload (project/task id, milestone, owner, due date,
+measurement status — ready for Workledger or another tracker), or ready-to-run
+`gh issue create` commands for the pending tasks. It never creates issues or
+calls a tracker itself.
 `init` retrofits a `.project/` record onto a repo not created via `lead promote`
 (infers name/slug/type from package.json / style.css). `validate` schema-checks
 every structured doc, enforces `privacy.allow_credentials_in_project: false`, and
