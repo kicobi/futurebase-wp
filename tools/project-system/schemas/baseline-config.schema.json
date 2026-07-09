@@ -26,7 +26,16 @@
 		},
 		"modules": {
 			"type": "array",
-			"items": { "type": "string", "enum": ["crawl", "screenshots", "lighthouse", "axe", "manual"] }
+			"items": { "type": "string", "enum": ["crawl", "screenshots", "lighthouse", "axe", "wordpress", "manual"] }
+		},
+		"wordpress": {
+			"type": "object",
+			"additionalProperties": false,
+			"description": "WP-CLI invocation for the wordpress module.",
+			"properties": {
+				"cli": { "type": "string", "description": "Command to invoke WP-CLI, e.g. 'wp' or 'npx wp-env run cli wp'." },
+				"cwd": { "type": "string", "description": "Working directory to run WP-CLI from." }
+			}
 		},
 		"viewports": {
 			"type": "array",

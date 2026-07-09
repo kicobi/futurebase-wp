@@ -1,8 +1,8 @@
 // lib/metrics.mjs — load/save success metrics, expand preset suggestions,
 // and run semantic validation beyond the JSON Schema.
 
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { presetsDir } from './paths.mjs';
 import { readYaml, writeYaml } from './yaml.mjs';
 import { validateMetrics } from './validate.mjs';
@@ -18,7 +18,9 @@ export function loadMetrics(projectDir) {
 }
 
 export function saveMetrics(projectDir, doc) {
-	writeYaml(metricsPath(projectDir), doc);
+	const p = metricsPath(projectDir);
+	mkdirSync(dirname(p), { recursive: true });
+	writeYaml(p, doc);
 }
 
 export function loadProject(projectDir) {

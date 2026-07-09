@@ -4,19 +4,16 @@ Structured lifecycle for WordPress projects originating through Codeable and
 direct client work: isolated lead workspaces → promotion → baseline capture →
 success metrics → launch comparison → follow-up → case study.
 
-> **Status: Phase 4.** Implemented: the full lead lifecycle
-> (`lead init/inspect/promote/archive`), the baseline MVP
-> (`baseline init/run/inspect/report`), and the success-metrics engine
-> (`metrics suggest/review/validate/baseline/client-message`). The baseline runs
-> `crawl` (fetch), `screenshots` (Playwright), `lighthouse`, `axe` (axe-core),
-> and `manual` into dated, immutable runs with an HTML report; browser tooling is
-> resolved from the host project's `node_modules` and degrades gracefully.
-> Metrics are preset-driven, launch/post-launch aware, and generate a
-> client-facing success message. Later commands (`final`, `compare`,
-> `case-study`, `metrics survey`) are designed but not yet built — see
-> `ARCHITECTURE.md` → Roadmap. Canonical narrative:
-> [`docs/project-lifecycle.md`](../../docs/project-lifecycle.md) and
-> [`docs/baseline-system.md`](../../docs/baseline-system.md).
+> **Status: Phase 6.** Implemented end-to-end: the lead lifecycle
+> (`lead init/inspect/promote/archive`), the baseline + final capture
+> (`baseline …`, `final …`) with `crawl`, `screenshots`, `lighthouse`, `axe`,
+> `wordpress` (WP-CLI), and `manual` modules, the success-metrics engine
+> (`metrics …`), before/after `compare`, and `project case-study` export. Baseline
+> and final share one capture engine so their runs diff like-for-like; browser +
+> WP-CLI tooling is resolved from the host project and degrades gracefully.
+> Remaining: `metrics survey` (Phase 7) and `project init/inspect/status/validate`.
+> Canonical narrative: [`docs/project-lifecycle.md`](../../docs/project-lifecycle.md)
+> and [`docs/baseline-system.md`](../../docs/baseline-system.md).
 
 ## What's here
 
@@ -97,15 +94,17 @@ wp-starter project init | inspect | status | validate
 ```
 ✓ wp-starter baseline init [--type new|redesign] [--url <base>] [--page name=url] [--force]
 ✓ wp-starter baseline inspect
-✓ wp-starter baseline run [--module crawl|screenshots|lighthouse|axe|manual] [--url <base>] [--dry-run]
+✓ wp-starter baseline run [--module crawl|screenshots|lighthouse|axe|wordpress|manual] [--url <base>] [--dry-run]
 ✓ wp-starter baseline report [--run-id <id>]
    flags: --project-root <path> --json
 ```
 Runs write dated, immutable evidence under `.project/baseline/<run-id>/`
 (`summary.json` + per-module evidence) plus an HTML report in `.project/reports/`.
 `crawl` uses built-in `fetch`; `screenshots`/`axe` use Playwright + axe-core;
-`lighthouse` spawns the Lighthouse CLI pointed at Playwright's Chromium. Any
-module whose tooling is absent reports `unavailable` without failing the run.
+`lighthouse` spawns the Lighthouse CLI pointed at Playwright's Chromium;
+`wordpress` shells out to WP-CLI (`config.wordpress.cli`, e.g. `npx wp-env run
+cli wp`). Any module whose tooling is absent reports `unavailable` without
+failing the run.
 
 **Metrics (per-project):**
 ```
@@ -120,12 +119,18 @@ Metrics live in `.project/metrics/metrics.yml` (versioned document). Suggestions
 expand preset entries into schema-valid drafts with category-driven defaults for
 evidence type, owner, target, and timing; `suggest` is idempotent (matched by id).
 
-**Final / comparison:**
+**Final / comparison (per-project):**
 ```
-wp-starter final run | report
-wp-starter compare
-wp-starter project case-study
+✓ wp-starter final run [--module <m>] [--dry-run]     # same engine as baseline, → .project/final/
+✓ wp-starter final report [--run-id <id>]
+✓ wp-starter compare [--baseline-run <id>] [--final-run <id>]   # before/after, internal + client-safe
+✓ wp-starter project case-study                       # editable Markdown draft
 ```
+`compare` diffs the latest baseline against the latest final run (crawl,
+Lighthouse, axe, WordPress) and writes `comparison-<id>.html` (internal),
+`comparison-<id>.md`, and `comparison-<id>-client.md` (plain-language, shows only
+improvements + agreed measures + what's left to measure). Metrics missing on
+either side are reported as "not comparable", never invented.
 
 ### Exit codes
 `0` success · `1` completed with warnings · `2` invalid configuration ·

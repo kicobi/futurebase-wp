@@ -22,6 +22,10 @@ import { metricsReview } from '../commands/metrics/review.mjs';
 import { metricsValidate } from '../commands/metrics/validate.mjs';
 import { metricsBaseline } from '../commands/metrics/baseline.mjs';
 import { metricsClientMessage } from '../commands/metrics/client-message.mjs';
+import { finalRun } from '../commands/final/run.mjs';
+import { finalReport } from '../commands/final/report.mjs';
+import { compare } from '../commands/compare.mjs';
+import { caseStudy } from '../commands/project/case-study.mjs';
 
 const OPTIONS = {
 	type: { type: 'string' },
@@ -49,6 +53,9 @@ const OPTIONS = {
 	status: { type: 'string' },
 	preset: { type: 'string' },
 	write: { type: 'boolean', default: false },
+	// compare
+	'baseline-run': { type: 'string' },
+	'final-run': { type: 'string' },
 	'dry-run': { type: 'boolean', default: false },
 	confirm: { type: 'boolean', default: false },
 	resume: { type: 'boolean', default: false },
@@ -83,6 +90,11 @@ Usage:
   wp-starter metrics baseline --id <id> --value <v> [--unit <u>] [--at <when>]
   wp-starter metrics client-message [--write]
 
+  wp-starter final run [--module <m>]        # capture the launch/pre-launch state
+  wp-starter final report [--run-id <id>]
+  wp-starter compare [--baseline-run <id>] [--final-run <id>]
+  wp-starter project case-study
+
 Flags:
   --type new|redesign            project type (required for init)
   --platform codeable|direct|other   default: codeable
@@ -100,11 +112,12 @@ Flags:
             --run-id <id> --dry-run
   metrics:  --preset <name> --id <id> --value <v> --unit <u> --at <when>
             --status <s> --write --dry-run
+  compare:  --baseline-run <id> --final-run <id>
 
   -h, --help                     show this help
   --version                      print the system version
 
-Designed but not yet implemented: project *, final *, compare, case-study,
+Designed but not yet implemented: project init/inspect/status/validate,
 metrics survey/report. See README.md.
 `;
 
@@ -181,6 +194,30 @@ export async function main(argv) {
 				return metricsClientMessage(rest, flags);
 			default:
 				die(`unknown 'metrics' command: ${command}\n\n${HELP}`, EXIT.INVALID_CONFIG);
+		}
+	}
+
+	if (group === 'final') {
+		switch (command) {
+			case 'run':
+				return finalRun(rest, flags);
+			case 'report':
+				return finalReport(rest, flags);
+			default:
+				die(`unknown 'final' command: ${command}\n\n${HELP}`, EXIT.INVALID_CONFIG);
+		}
+	}
+
+	if (group === 'compare') {
+		return compare(rest, flags);
+	}
+
+	if (group === 'project') {
+		switch (command) {
+			case 'case-study':
+				return caseStudy(rest, flags);
+			default:
+				die(`unknown 'project' command: ${command}\n\n${HELP}`, EXIT.INVALID_CONFIG);
 		}
 	}
 

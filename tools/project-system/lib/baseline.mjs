@@ -27,6 +27,7 @@ export function projectPaths(root) {
 		projectDir,
 		configPath: join(projectDir, 'baseline.config.yml'),
 		baselineDir: join(projectDir, 'baseline'),
+		finalDir: join(projectDir, 'final'),
 		reportsDir: join(projectDir, 'reports'),
 	};
 }

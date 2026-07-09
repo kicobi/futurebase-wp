@@ -32,6 +32,8 @@ function headlines(runDir, results) {
 	}
 	const axe = readJsonSafe(join(runDir, 'accessibility', 'summary.json'));
 	if (axe) lines.push(['axe violations', `critical ${axe.critical} · serious ${axe.serious} · moderate ${axe.moderate} · minor ${axe.minor} (${axe.pages} pages)`]);
+	const wp = readJsonSafe(join(runDir, 'wordpress', 'wordpress.json'));
+	if (wp) lines.push(['WordPress', `core ${wp.core_version} · PHP ${wp.php_version ?? '—'} · theme ${wp.active_theme ?? '—'} · ${wp.plugin_summary?.active ?? '?'} active plugins · ${(wp.post_types || []).length} post types`]);
 	const shots = results.find((r) => r.module === 'screenshots');
 	if (shots?.headline) lines.push(['Screenshots', `${shots.headline.captured} captured · ${shots.headline.failed} failed`]);
 	return lines;
@@ -45,14 +47,15 @@ const EVIDENCE = [
 	['notes', 'Manual notes'],
 ];
 
-export function generateReport({ runDir, reportsDir, summary, results, config, projectName }) {
+export function generateReport({ runDir, reportsDir, summary, results, config, projectName, kind = 'baseline' }) {
 	const head = headlines(runDir, results);
 	const runId = summary.run_id;
 	const evidence = EVIDENCE.filter(([p]) => existsSync(join(runDir, p)));
+	const Kind = kind.charAt(0).toUpperCase() + kind.slice(1);
 
 	// --- Markdown ---
 	const md = [];
-	md.push(`# Baseline — ${projectName}`);
+	md.push(`# ${Kind} — ${projectName}`);
 	md.push('');
 	md.push(`- Run: \`${runId}\``);
 	md.push(`- Mode: ${config.mode}  ·  Status: **${summary.status}**`);
@@ -83,7 +86,7 @@ export function generateReport({ runDir, reportsDir, summary, results, config, p
 	const headHtml = head.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('\n');
 	const evHtml = evidence.map(([p, label]) => `<li><a href="${esc(p)}">${esc(label)}</a> — <code>${esc(p)}</code></li>`).join('\n');
 	const html = `<!doctype html><html lang="en"><meta charset="utf8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Baseline — ${esc(projectName)}</title>
+<title>${esc(Kind)} — ${esc(projectName)}</title>
 <style>
 :root{--fg:#1a1a1a;--dim:#666;--line:#e2e2e2;--ok:#137333;--warn:#8a6d00;--bad:#b3261e}
 body{font:15px/1.5 system-ui,sans-serif;color:var(--fg);max-width:60rem;margin:2rem auto;padding:0 1rem}
@@ -94,7 +97,7 @@ th,td{text-align:left;padding:.4rem .6rem;border-bottom:1px solid var(--line);ve
 .s-failed{color:var(--bad)} .s-unavailable,.s-skipped,.s-pending{color:var(--dim)}
 .r{color:var(--dim);font-size:.85em} code{background:#f4f4f4;padding:.1em .3em;border-radius:3px}
 </style>
-<h1>Baseline — ${esc(projectName)}</h1>
+<h1>${esc(Kind)} — ${esc(projectName)}</h1>
 <p class="meta">Run <code>${esc(runId)}</code> · mode ${esc(config.mode)} · status <strong>${esc(summary.status)}</strong><br>Target: ${esc(config.base_url || '(new site — no existing URL)')}</p>
 <h2>Modules</h2>
 <table><thead><tr><th>Module</th><th>Status</th><th>Tool</th></tr></thead><tbody>${rows}</tbody></table>
@@ -106,7 +109,7 @@ ${head.length ? `<h2>Headline</h2><table><tbody>${headHtml}</tbody></table>` : '
 	writeFileSync(join(runDir, 'report.md'), mdText, 'utf8');
 	writeFileSync(join(runDir, 'report.html'), html, 'utf8');
 	mkdirSync(reportsDir, { recursive: true });
-	const reportName = `baseline-${runId}.html`;
+	const reportName = `${kind}-${runId}.html`;
 	writeFileSync(join(reportsDir, reportName), html, 'utf8');
 
 	return { reportRel: `../../reports/${reportName}` };
