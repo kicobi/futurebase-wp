@@ -93,4 +93,7 @@ failure · `6` privacy/safety violation.
 - **Phase 7 (done):** surveys (`metrics survey`) + follow-up report
   (`metrics follow-up`) — baseline/30/90-day scale deltas, metric checklist
   (`lib/survey`, `survey-results` schema).
-- **Phase 8:** optional integrations (Workledger, analytics APIs) — out of MVP.
+- **Phase 8 (in progress):** `project tasks` generates the lifecycle task tree
+  (`lib/tasks`) as Markdown / JSON sync payload / `gh issue create` commands.
+  Remaining: analytics-API connectors, automated survey delivery, scheduled
+  reminders, anonymized benchmarking.

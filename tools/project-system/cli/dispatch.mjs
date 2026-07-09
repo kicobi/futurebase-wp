@@ -32,6 +32,7 @@ import { projectInit } from '../commands/project/init.mjs';
 import { projectInspect } from '../commands/project/inspect.mjs';
 import { projectStatus } from '../commands/project/status.mjs';
 import { projectValidate } from '../commands/project/validate.mjs';
+import { projectTasks } from '../commands/project/tasks.mjs';
 
 const OPTIONS = {
 	type: { type: 'string' },
@@ -59,10 +60,12 @@ const OPTIONS = {
 	status: { type: 'string' },
 	preset: { type: 'string' },
 	write: { type: 'boolean', default: false },
-	// compare / survey
+	// compare / survey / tasks
 	'baseline-run': { type: 'string' },
 	'final-run': { type: 'string' },
 	period: { type: 'string' },
+	format: { type: 'string' },
+	'launch-date': { type: 'string' },
 	'dry-run': { type: 'boolean', default: false },
 	confirm: { type: 'boolean', default: false },
 	resume: { type: 'boolean', default: false },
@@ -105,6 +108,7 @@ Usage:
 
   wp-starter project init [--name <n>] [--slug <s>] [--type new|redesign]
   wp-starter project inspect | status | validate
+  wp-starter project tasks [--format markdown|json|github] [--launch-date <date>]
   wp-starter project case-study
 
 Flags:
@@ -239,6 +243,8 @@ export async function main(argv) {
 				return projectStatus(rest, flags);
 			case 'validate':
 				return projectValidate(rest, flags);
+			case 'tasks':
+				return projectTasks(rest, flags);
 			case 'case-study':
 				return caseStudy(rest, flags);
 			default:
