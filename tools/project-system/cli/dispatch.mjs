@@ -28,6 +28,10 @@ import { finalRun } from '../commands/final/run.mjs';
 import { finalReport } from '../commands/final/report.mjs';
 import { compare } from '../commands/compare.mjs';
 import { caseStudy } from '../commands/project/case-study.mjs';
+import { projectInit } from '../commands/project/init.mjs';
+import { projectInspect } from '../commands/project/inspect.mjs';
+import { projectStatus } from '../commands/project/status.mjs';
+import { projectValidate } from '../commands/project/validate.mjs';
 
 const OPTIONS = {
 	type: { type: 'string' },
@@ -98,6 +102,9 @@ Usage:
   wp-starter final run [--module <m>]        # capture the launch/pre-launch state
   wp-starter final report [--run-id <id>]
   wp-starter compare [--baseline-run <id>] [--final-run <id>]
+
+  wp-starter project init [--name <n>] [--slug <s>] [--type new|redesign]
+  wp-starter project inspect | status | validate
   wp-starter project case-study
 
 Flags:
@@ -119,12 +126,12 @@ Flags:
             --status <s> --write --dry-run
   compare:  --baseline-run <id> --final-run <id>
   survey:   --period baseline|30-days|90-days --write
+  project:  --name <n> --slug <s> --type new|redesign --force
 
   -h, --help                     show this help
   --version                      print the system version
 
-Designed but not yet implemented: project init/inspect/status/validate.
-See README.md.
+Phase 8 (Workledger / analytics integrations) is out of MVP scope.
 `;
 
 export async function main(argv) {
@@ -224,6 +231,14 @@ export async function main(argv) {
 
 	if (group === 'project') {
 		switch (command) {
+			case 'init':
+				return projectInit(rest, flags);
+			case 'inspect':
+				return projectInspect(rest, flags);
+			case 'status':
+				return projectStatus(rest, flags);
+			case 'validate':
+				return projectValidate(rest, flags);
 			case 'case-study':
 				return caseStudy(rest, flags);
 			default:
