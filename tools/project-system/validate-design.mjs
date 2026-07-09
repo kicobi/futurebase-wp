@@ -38,6 +38,7 @@ const FIXTURE_SCHEMA = {
 	'journeys.yml': 'journeys.schema.json',
 	'summary.json': 'baseline-run.schema.json',
 	'baseline.config.yml': 'baseline-config.schema.json',
+	'survey-30-days.yml': 'survey-results.schema.json',
 };
 
 function loadFile(path) {

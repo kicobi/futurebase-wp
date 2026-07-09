@@ -22,6 +22,8 @@ import { metricsReview } from '../commands/metrics/review.mjs';
 import { metricsValidate } from '../commands/metrics/validate.mjs';
 import { metricsBaseline } from '../commands/metrics/baseline.mjs';
 import { metricsClientMessage } from '../commands/metrics/client-message.mjs';
+import { metricsSurvey } from '../commands/metrics/survey.mjs';
+import { metricsFollowUp } from '../commands/metrics/follow-up.mjs';
 import { finalRun } from '../commands/final/run.mjs';
 import { finalReport } from '../commands/final/report.mjs';
 import { compare } from '../commands/compare.mjs';
@@ -53,9 +55,10 @@ const OPTIONS = {
 	status: { type: 'string' },
 	preset: { type: 'string' },
 	write: { type: 'boolean', default: false },
-	// compare
+	// compare / survey
 	'baseline-run': { type: 'string' },
 	'final-run': { type: 'string' },
+	period: { type: 'string' },
 	'dry-run': { type: 'boolean', default: false },
 	confirm: { type: 'boolean', default: false },
 	resume: { type: 'boolean', default: false },
@@ -89,6 +92,8 @@ Usage:
   wp-starter metrics validate
   wp-starter metrics baseline --id <id> --value <v> [--unit <u>] [--at <when>]
   wp-starter metrics client-message [--write]
+  wp-starter metrics survey --period baseline|30-days|90-days [--write]
+  wp-starter metrics follow-up               # combine survey periods + metric checklist
 
   wp-starter final run [--module <m>]        # capture the launch/pre-launch state
   wp-starter final report [--run-id <id>]
@@ -113,12 +118,13 @@ Flags:
   metrics:  --preset <name> --id <id> --value <v> --unit <u> --at <when>
             --status <s> --write --dry-run
   compare:  --baseline-run <id> --final-run <id>
+  survey:   --period baseline|30-days|90-days --write
 
   -h, --help                     show this help
   --version                      print the system version
 
-Designed but not yet implemented: project init/inspect/status/validate,
-metrics survey/report. See README.md.
+Designed but not yet implemented: project init/inspect/status/validate.
+See README.md.
 `;
 
 export async function main(argv) {
@@ -192,6 +198,10 @@ export async function main(argv) {
 				return metricsBaseline(rest, flags);
 			case 'client-message':
 				return metricsClientMessage(rest, flags);
+			case 'survey':
+				return metricsSurvey(rest, flags);
+			case 'follow-up':
+				return metricsFollowUp(rest, flags);
 			default:
 				die(`unknown 'metrics' command: ${command}\n\n${HELP}`, EXIT.INVALID_CONFIG);
 		}

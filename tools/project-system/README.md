@@ -4,16 +4,18 @@ Structured lifecycle for WordPress projects originating through Codeable and
 direct client work: isolated lead workspaces → promotion → baseline capture →
 success metrics → launch comparison → follow-up → case study.
 
-> **Status: Phase 6.** Implemented end-to-end: the lead lifecycle
-> (`lead init/inspect/promote/archive`), the baseline + final capture
+> **Status: Phases 1–7 complete (MVP).** The full lifecycle is implemented:
+> lead workspaces (`lead init/inspect/promote/archive`), baseline + final capture
 > (`baseline …`, `final …`) with `crawl`, `screenshots`, `lighthouse`, `axe`,
 > `wordpress` (WP-CLI), and `manual` modules, the success-metrics engine
-> (`metrics …`), before/after `compare`, and `project case-study` export. Baseline
-> and final share one capture engine so their runs diff like-for-like; browser +
-> WP-CLI tooling is resolved from the host project and degrades gracefully.
-> Remaining: `metrics survey` (Phase 7) and `project init/inspect/status/validate`.
-> Canonical narrative: [`docs/project-lifecycle.md`](../../docs/project-lifecycle.md)
-> and [`docs/baseline-system.md`](../../docs/baseline-system.md).
+> (`metrics …`), before/after `compare`, `project case-study`, and surveys +
+> follow-up (`metrics survey/follow-up`). Baseline and final share one capture
+> engine so their runs diff like-for-like; browser + WP-CLI tooling is resolved
+> from the host project and degrades gracefully. Remaining (out of MVP):
+> `project init/inspect/status/validate` and Phase 8 integrations (Workledger,
+> analytics APIs). Canonical narrative:
+> [`docs/project-lifecycle.md`](../../docs/project-lifecycle.md) and
+> [`docs/baseline-system.md`](../../docs/baseline-system.md).
 
 ## What's here
 
@@ -113,8 +115,13 @@ failing the run.
 ✓ wp-starter metrics validate                                # schema + semantic checks
 ✓ wp-starter metrics baseline --id <id> --value <v> [--unit <u>] [--at <when>]
 ✓ wp-starter metrics client-message [--write]                # spec §11.1 client wording
-  wp-starter metrics survey --period 30-days                 # Phase 7
+✓ wp-starter metrics survey --period baseline|30-days|90-days [--write]
+✓ wp-starter metrics follow-up                               # survey deltas + metric checklist
 ```
+Surveys write a human form (`survey-<p>.md`) + a results template (`survey-<p>.yml`)
+into `.project/follow-up/`; fill the `.yml`, then `follow-up` computes
+baseline→30/90-day satisfaction deltas, a success-metric status checklist, and
+links the automated before/after comparison.
 Metrics live in `.project/metrics/metrics.yml` (versioned document). Suggestions
 expand preset entries into schema-valid drafts with category-driven defaults for
 evidence type, owner, target, and timing; `suggest` is idempotent (matched by id).

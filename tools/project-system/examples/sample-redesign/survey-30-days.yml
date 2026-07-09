@@ -1,0 +1,24 @@
+# Validates against schemas/survey-results.schema.json.
+# `metrics survey --period 30-days --write` scaffolds this; answers are filled in
+# by the client/developer, then `metrics follow-up` combines periods.
+schema_version: 1
+kind: survey-results
+period: 30-days
+collected_at: "2026-08-01"
+respondent: Client
+items:
+  - id: ease-of-update
+    question: How easy is it to update the site?
+    value: 4
+  - id: confidence
+    question: How confident are you making changes yourself?
+    value: 4
+  - id: overall-satisfaction
+    question: How satisfied are you with the site / process overall?
+    value: 5
+  - id: tasks-easier
+    question: Which tasks are now easier?
+    value: Catalogue edits are quick now.
+  - id: needed-dev-support
+    question: Have you needed developer support since launch?
+    value: "No"
