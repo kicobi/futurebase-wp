@@ -1,16 +1,27 @@
 #!/usr/bin/env bash
 #
-# bin/test-rename.sh — non-regression smoke test for Issue #4.
+# bin/test-rename.sh — non-regression smoke test for bin/rename-theme.sh.
 #
-# Runs `bin/rename-theme.sh` in an isolated git worktree against a slug that
-# embeds the old slug as a substring, then asserts no double-suffix output
-# appears. The worktree is torn down regardless of pass/fail, so this is safe
-# to invoke from verify-theme.sh or locally against a dirty working tree.
+# Two phases, each in its own throwaway git worktree:
 #
-# Usage: bash bin/test-rename.sh
+#   1. Collision safety (Issue #4): rename to a slug that embeds the old slug
+#      as a substring must NOT produce double-suffix output.
+#   2. Real rename: rename to a normal slug must succeed CLEANLY (exit 0 — i.e.
+#      no "unexpected leftovers"), apply the snake_case prefix and text domain,
+#      and leave the tools/project-system templates untouched (they carry the
+#      starter's own identity, not client slugs).
 #
-# Wired into: bin/verify-theme.sh
-# Issue:      https://github.com/studiokicobi/wp-starter/issues/4
+# Phase 2 exists because phase 1 aborts early on the collision guard and never
+# exercises the main substitution/scan path — which is exactly how a shell
+# parse bug in that path (macOS bash 3.2 mishandling of quotes/backticks/parens
+# inside the process substitution) once shipped undetected.
+#
+# Worktrees are torn down regardless of pass/fail, so this is safe to run from
+# verify-theme.sh or locally against a dirty working tree.
+#
+# Usage:       bash bin/test-rename.sh
+# Wired into:  bin/verify-theme.sh
+# Issue:       https://github.com/studiokicobi/wp-starter/issues/4
 
 set -u
 
@@ -24,66 +35,93 @@ if ! grep -q 'wp-starter' style.css 2>/dev/null; then
 	exit 0
 fi
 
-TEST_SLUG="wp-starter-collision-probe"
-DOUBLED="${TEST_SLUG}-${TEST_SLUG#wp-starter-}"
-DOUBLED_SNAKE="$(echo "$DOUBLED" | tr '-' '_')"
-
-WORKTREE_DIR=""
-LOG=""
+WORKTREES=()
+LOG="$(mktemp -t wp-starter-rename-test-log.XXXXXX)"
 
 cleanup() {
 	local code=$?
-	if [ -n "$WORKTREE_DIR" ] && [ -d "$WORKTREE_DIR" ]; then
-		git worktree remove --force "$WORKTREE_DIR" > /dev/null 2>&1 || true
+	if [ "${#WORKTREES[@]}" -gt 0 ]; then
+		for wt in "${WORKTREES[@]}"; do
+			[ -n "$wt" ] && [ -d "$wt" ] && git worktree remove --force "$wt" > /dev/null 2>&1 || true
+		done
 	fi
 	[ -n "$LOG" ] && rm -f "$LOG" 2>/dev/null || true
 	exit $code
 }
 trap cleanup EXIT
 
-WORKTREE_DIR="$(mktemp -d -t wp-starter-rename-test.XXXXXX)"
-LOG="$(mktemp -t wp-starter-rename-test-log.XXXXXX)"
+# Create a detached worktree at HEAD and record it for cleanup. Sets NEW_WT.
+# NOTE: must run in the CURRENT shell (not $(...)) so WORKTREES accumulates.
+NEW_WT=""
+make_worktree() {
+	NEW_WT="$(mktemp -d -t wp-starter-rename-test.XXXXXX)"
+	if ! git worktree add --quiet --detach "$NEW_WT" HEAD > /dev/null 2>&1; then
+		echo "rename non-regression: FAIL (could not create worktree)"
+		exit 1
+	fi
+	WORKTREES+=("$NEW_WT")
+}
 
-# Detach so no branch is created; the worktree is a throwaway HEAD snapshot.
-if ! git worktree add --quiet --detach "$WORKTREE_DIR" HEAD > /dev/null 2>&1; then
-	echo "rename non-regression: FAIL (could not create worktree)"
-	exit 1
-fi
+FAILED=0
 
-# Run the rename. Non-zero exit is acceptable — the safety check is expected
-# to abort on a substring-collision slug. The key assertion is downstream:
-# the working tree must not contain any double-suffix strings.
-bash "$WORKTREE_DIR/bin/rename-theme.sh" "$TEST_SLUG" > "$LOG" 2>&1 || true
+# --- Phase 1: collision safety (Issue #4) -----------------------------------
+TEST_SLUG="wp-starter-collision-probe"
+DOUBLED="${TEST_SLUG}-${TEST_SLUG#wp-starter-}"
+DOUBLED_SNAKE="$(echo "$DOUBLED" | tr '-' '_')"
 
-doubled=$(
-	grep -rn \
-		--exclude-dir=node_modules \
-		--exclude-dir=vendor \
-		--exclude-dir=.git \
-		--exclude-dir=build \
-		-- "$DOUBLED" "$WORKTREE_DIR" 2>/dev/null \
-		| head -20 \
-		|| true
-)
-doubled_snake=$(
-	grep -rn \
-		--exclude-dir=node_modules \
-		--exclude-dir=vendor \
-		--exclude-dir=.git \
-		--exclude-dir=build \
-		-- "$DOUBLED_SNAKE" "$WORKTREE_DIR" 2>/dev/null \
-		| head -20 \
-		|| true
-)
+make_worktree
+WT1="$NEW_WT"
+
+# Non-zero exit is acceptable here — the safety check is expected to abort on a
+# substring-collision slug. The assertion is that no double-suffix appears.
+bash "$WT1/bin/rename-theme.sh" "$TEST_SLUG" > "$LOG" 2>&1 || true
+
+doubled=$(grep -rn --exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=.git --exclude-dir=build -- "$DOUBLED" "$WT1" 2>/dev/null | head -20 || true)
+doubled_snake=$(grep -rn --exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=.git --exclude-dir=build -- "$DOUBLED_SNAKE" "$WT1" 2>/dev/null | head -20 || true)
 
 if [ -n "$doubled" ] || [ -n "$doubled_snake" ]; then
+	FAILED=1
 	echo "rename non-regression: FAIL — double-suffix patterns found after rename:"
 	[ -n "$doubled" ]       && printf '%s\n' "$doubled"       | sed 's/^/    /'
 	[ -n "$doubled_snake" ] && printf '%s\n' "$doubled_snake" | sed 's/^/    /'
-	echo
-	echo "rename output (tail):"
+else
+	echo "  collision-safety: OK ($TEST_SLUG produced no double-suffix output)"
+fi
+
+# --- Phase 2: a real rename succeeds cleanly --------------------------------
+REAL_SLUG="acme-client-probe"
+REAL_SNAKE="acme_client_probe"
+
+make_worktree
+WT2="$NEW_WT"
+
+if bash "$WT2/bin/rename-theme.sh" "$REAL_SLUG" > "$LOG" 2>&1; then
+	RC=0
+else
+	RC=$?
+fi
+
+problems=()
+[ "$RC" -eq 0 ] || problems+=("rename exited $RC (expected 0 — 'unexpected leftovers' or a shell parse error)")
+grep -q "${REAL_SNAKE}_" "$WT2/functions.php" 2>/dev/null || problems+=("functions.php missing the ${REAL_SNAKE}_ prefix")
+grep -qi "text domain:[[:space:]]*${REAL_SLUG}" "$WT2/style.css" 2>/dev/null || problems+=("style.css Text Domain was not renamed to ${REAL_SLUG}")
+tmpl="$WT2/tools/project-system/templates/lead/CLAUDE.md"
+if [ -f "$tmpl" ]; then
+	grep -q 'wp-starter' "$tmpl" 2>/dev/null || problems+=("tools/project-system template literal 'wp-starter' was rewritten (exclusion broken)")
+fi
+
+if [ "${#problems[@]}" -gt 0 ]; then
+	FAILED=1
+	echo "rename non-regression: FAIL — real rename ($REAL_SLUG):"
+	for p in "${problems[@]}"; do echo "    - $p"; done
+	echo "  rename output (tail):"
 	tail -20 "$LOG" | sed 's/^/    /'
+else
+	echo "  real-rename: OK ($REAL_SLUG applied cleanly; tools/ preserved)"
+fi
+
+if [ "$FAILED" -ne 0 ]; then
 	exit 1
 fi
 
-echo "rename non-regression: OK ($TEST_SLUG produced no double-suffix output)"
+echo "rename non-regression: OK"
