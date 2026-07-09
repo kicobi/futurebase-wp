@@ -1,6 +1,8 @@
-# WP Starter
+# Futurebase
 
-A modern Full Site Editing WordPress starter theme with AI agent guardrails baked in.
+**A futureproof base for accessible, maintainable WordPress websites.**
+
+A modern Full Site Editing WordPress starter theme with AI agent guardrails baked in. Futurebase is the product name; the template's technical slug stays `wp-starter` until a client project renames it (`npm run rename`). See [docs/futurebase.md](docs/futurebase.md) for the product one-pager and [docs/scorecard.md](docs/scorecard.md) for how it proves its numbers.
 
 ## What this is
 

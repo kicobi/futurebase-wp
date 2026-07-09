@@ -1,6 +1,6 @@
 # Scorecard
 
-The starter measures itself. Every scorecard run imports a deterministic demo
+Futurebase measures itself. Every scorecard run imports a deterministic demo
 fixture, then audits one URL per shipped template family with Lighthouse
 (mobile + desktop) and pa11y (WCAG 2.1 AA, desktop + mobile viewports).
 
@@ -48,8 +48,8 @@ fixture, then audits one URL per shipped template family with Lighthouse
 First honest run (2026-07-09, wp-env, regression-gate environment — **not a
 published claim**): performance 100 and accessibility 100 on every URL, both
 form factors; best practices 100; SEO 91–92 (no meta descriptions — a
-deliberate gap until the SEO companion-plugin decision lands); pa11y 0 errors
-across all 9 URLs at both viewports.
+deliberate theme-level gap; see [seo.md](seo.md) for the decided three-layer
+stance); pa11y 0 errors across all 9 URLs at both viewports.
 
 ## Running it
 
