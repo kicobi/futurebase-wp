@@ -69,5 +69,18 @@ cat > "$mobile_cfg" <<'JSON'
 }
 JSON
 
-npx --silent pa11y-ci --config "$desktop_cfg" "$WP_URL/" "$WP_URL/?p=1"
-npx --silent pa11y-ci --config "$mobile_cfg" "$WP_URL/" "$WP_URL/?p=1"
+# Second URL: the most recent published post, resolved dynamically. A
+# hardcoded ?p=1 breaks once content is re-imported (post ID 1 can become an
+# attachment, which redirects pa11y to a raw image document).
+POST_URL=$(
+	npx --silent wp-env run cli wp post list --post_type=post --post_status=publish --field=url --posts_per_page=1 --orderby=date 2>/dev/null \
+		| grep -oE '^https?://[^[:space:]]+$' \
+		| head -1 \
+		|| true
+)
+if [ -z "$POST_URL" ]; then
+	POST_URL="$WP_URL/"
+fi
+
+npx --silent pa11y-ci --config "$desktop_cfg" "$WP_URL/" "$POST_URL"
+npx --silent pa11y-ci --config "$mobile_cfg" "$WP_URL/" "$POST_URL"

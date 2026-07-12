@@ -69,6 +69,7 @@ copy_paths=(
 	"readme.txt"
 	"screenshot.png"
 	"LICENSE"
+	"assets/images"
 	"build"
 	"inc"
 	"languages"
@@ -80,7 +81,9 @@ copy_paths=(
 
 for path in "${copy_paths[@]}"; do
 	if [ -e "$path" ]; then
-		rsync -a --exclude='.DS_Store' "$path" "$package_dir/"
+		# -R preserves the source-relative path, so nested entries like
+		# assets/images land at <package>/assets/images, not <package>/images.
+		rsync -aR --exclude='.DS_Store' "$path" "$package_dir/"
 	fi
 done
 

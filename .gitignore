@@ -26,6 +26,13 @@
 # Composer auth (ACF Pro endpoint, private Composer repos)
 auth.json
 
+# Local evidence artifacts (scorecard reports, a11y runs). CI uploads these
+# as workflow artifacts; only curated summaries are committed deliberately.
+/.artifacts/
+
+# Lighthouse CI working directory
+/.lighthouseci/
+
 # Composer / PHPStan / PHPCS caches
 /.phpunit.cache/
 /.phpcs-cache

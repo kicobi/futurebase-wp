@@ -113,6 +113,8 @@ fi
 
 # ---------------------------------------------------------------------------
 # 4. Section patterns use the _section-* prefix convention.
+#    Baseline four must exist; every _section-* file must carry a well-formed
+#    header whose Slug is <theme-slug>/section-<name> matching its filename.
 # ---------------------------------------------------------------------------
 section "4. Section patterns follow _section-* convention"
 
@@ -124,6 +126,39 @@ for slug in hero cards writing cta; do
 	fi
 done
 [ $missing_sections -eq 0 ] && pass "all four baseline section patterns present"
+
+# Theme slug from style.css — the pattern namespace must match it, and the
+# check must survive bin/rename-theme.sh, so never hardcode the slug here.
+theme_slug=$(grep -E '^Text Domain:' style.css | head -1 | sed 's/^Text Domain:[[:space:]]*//' | tr -d '[:space:]')
+if [ -z "$theme_slug" ]; then
+	fail "style.css has no Text Domain header (cannot validate pattern slugs)"
+else
+	header_bad=0
+	for f in patterns/_section-*.php; do
+		[ -e "$f" ] || continue
+		name=$(basename "$f" .php)
+		name="${name#_section-}"
+		if ! grep -qE '^\s*\*\s*Title:\s*\S' "$f"; then
+			fail "$f header is missing a Title"
+			header_bad=1
+		fi
+		if ! grep -qE "^\s*\*\s*Slug:\s*${theme_slug}/section-${name}\s*$" "$f"; then
+			fail "$f header Slug must be exactly '${theme_slug}/section-${name}'"
+			header_bad=1
+		fi
+	done
+	[ $header_bad -eq 0 ] && pass "every _section-* pattern has a Title and a matching '${theme_slug}/section-*' slug"
+fi
+
+# Placeholder inventory — [UPPERCASE] tokens are substitution placeholders
+# (docs/conventions.md) and must never ship in pattern/template/part content.
+placeholder_hits=$(grep -rEn '\[[A-Z][A-Z0-9_ -]*\]' patterns templates parts 2>/dev/null || true)
+if [ -n "$placeholder_hits" ]; then
+	fail "[UPPERCASE] placeholder still visible in shipped markup:"
+	printf "%s\n" "$placeholder_hits" | sed 's/^/    /'
+else
+	pass "no [UPPERCASE] placeholders in patterns/templates/parts"
+fi
 
 # ---------------------------------------------------------------------------
 # 5. Role, not format. No hardcoded /wp-content/themes/ paths in markup.
