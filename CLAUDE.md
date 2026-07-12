@@ -32,7 +32,7 @@ This repo also carries the **project lifecycle system** in [tools/project-system
   - "archive the lead as lost/abandoned" → `lead archive <slug> --reason lost|abandoned`
   - "capture the baseline" → `baseline init` / `baseline run` (against the live site, before cutover)
   - "suggest success metrics" → `metrics suggest`
-  - "create a project / make a repo for `<client>` from wp-starter" → **not a hand task**: route through `lead init` → dossier → `lead promote`. Promotion before a formal award needs an explicit go-ahead ("pre-stage it / promote it anyway").
+  - "create a project / make a repo for `<client>` from the starter template" → **not a hand task**: route through `lead init` → dossier → `lead promote`. Promotion before a formal award needs an explicit go-ahead ("pre-stage it / promote it anyway").
   - "new Codeable gig" / "draft a workroom reply" → **not this repo**: gig intake, research, and response drafting live in `~/Documents/Codeable` (its `CLAUDE.md` carries the gig workflow). A gig arrives here via "Promote `<slug>` to a lead" from that repo.
 - `bin/rename-theme.sh` deliberately does not scan `tools/` — templates there carry literal starter-identity references, not client slugs.
 
