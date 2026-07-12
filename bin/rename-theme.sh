@@ -328,6 +328,13 @@ raw_leftover=$(printf '%s\n' "$raw_leftover" \
 	| grep -vE -- "${OLD_SLUG} (lead|project|baseline|metrics|final|compare|init|inspect|promote|archive)" \
 	|| true)
 
+# The CLI entrypoint path (tools/project-system/bin/wp-starter.mjs) keeps its
+# filename in every project — tools/ is never renamed — so doc references to
+# the path must survive rename too.
+raw_leftover=$(printf '%s\n' "$raw_leftover" \
+	| grep -vF -- "${OLD_SLUG}.mjs" \
+	|| true)
+
 # Expected leftovers: URLs pointing at the template's origin repo.
 expected=$(printf '%s\n' "$raw_leftover" | grep -E 'https?://|Theme URI|git\+https' || true)
 unexpected=$(printf '%s\n' "$raw_leftover" | grep -vE 'https?://|Theme URI|git\+https' | grep -v '^$' || true)

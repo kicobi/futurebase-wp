@@ -25,6 +25,15 @@ This repo also carries the **project lifecycle system** in [tools/project-system
 - **Prospective client work does not happen in this repo.** New client planning (briefs, discovery, scope, estimates) lives in a local, isolated lead workspace under `~/Sites/leads/<slug>/`, created by `wp-starter lead init`. Keep client-specific analysis there — never mix it into the shared starter.
 - **`/planning/` (gitignored) is for starter-development scratch only**, not client planning.
 - When a lead is awarded, it is **promoted** (`wp-starter lead promote <slug>`), which wraps the existing template + `npm run rename` flow, copies the lead dossier into `.project/`, and switches agent instructions to active-project mode. Do not convert a lead by hand.
+- **Phrase → command routing.** The CLI is not on PATH — run `node tools/project-system/bin/wp-starter.mjs …` from the repo root. When a request matches one of these, use the CLI instead of hand-rolling:
+  - "create a lead for `<client>`" → `lead init "<Client>" --type new|redesign --platform codeable`
+  - "list leads" / "inspect the `<slug>` lead" → `lead` / `lead inspect <slug>`
+  - "we won `<client>`" / "promote the lead" → `lead promote <slug> --confirm` (creates a real GitHub repo — needs that explicit ask; on a failed run, fix the cause and `--resume --confirm`; an empty clone means the `gh` template race — `git pull origin main` first)
+  - "archive the lead as lost/abandoned" → `lead archive <slug> --reason lost|abandoned`
+  - "capture the baseline" → `baseline init` / `baseline run` (against the live site, before cutover)
+  - "suggest success metrics" → `metrics suggest`
+  - "create a project / make a repo for `<client>` from the starter template" → **not a hand task**: route through `lead init` → dossier → `lead promote`. Promotion before a formal award needs an explicit go-ahead ("pre-stage it / promote it anyway").
+  - "new Codeable gig" / "draft a workroom reply" → **not this repo**: gig intake, research, and response drafting live in `~/Documents/Codeable` (its `CLAUDE.md` carries the gig workflow). A gig arrives here via "Promote `<slug>` to a lead" from that repo.
 - `bin/rename-theme.sh` deliberately does not scan `tools/` — templates there carry literal starter-identity references, not client slugs.
 
 ## Repo assumptions

@@ -4,10 +4,16 @@ How a client project moves from a prospective lead to an awarded, baselined,
 measured, and closed-out project — and where its knowledge lives at each stage.
 
 > **Status:** the tooling that automates this lives in
-> [`tools/project-system/`](../tools/project-system/) and is currently at **M0
-> (design only)** — schemas, templates, presets, and a validator are in place;
-> the `wp-starter lead …` CLI commands referenced below are built in later phases.
+> [`tools/project-system/`](../tools/project-system/) and is **built** — the
+> `wp-starter lead|baseline|metrics|final|compare|project …` commands shipped
+> through Phase 8 (PRs #33–#39); see `ARCHITECTURE.md` there for the remaining
+> Phase 8 backlog (analytics connectors, survey delivery, reminders).
 > This document is the canonical narrative; agent instruction files link here.
+>
+> **Upstream of this lifecycle:** Codeable gig intake, research, and workroom
+> response drafting happen in `~/Documents/Codeable` (its `CLAUDE.md` carries
+> that workflow). A gig enters this system when it needs proposal-grade scoping
+> — "Promote `<slug>` to a lead" over there runs `lead init` here.
 
 ## The shape
 
