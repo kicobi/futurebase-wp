@@ -87,7 +87,7 @@ LHCI_URLS=(
 	"$WP_URL/blog/"
 	"$WP_URL/designing-with-demo-content/"
 	"$WP_URL/category/notes/"
-	"$WP_URL/author/admin/"
+	"$WP_URL/author/demo-author/"
 	"$WP_URL/?s=demo"
 )
 # The 404 page is pa11y-only: LHCI on non-200 responses is unreliable.

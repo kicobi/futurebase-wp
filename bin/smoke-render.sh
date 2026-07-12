@@ -71,7 +71,7 @@ else
 	pass "/services/ uses the page-notitle template (no post-title heading)"
 fi
 
-for path in /category/notes/ /author/admin/ "/?s=demo"; do
+for path in /category/notes/ /author/demo-author/ "/?s=demo"; do
 	count=$(curl -fsS "$WP_URL$path" | grep -c 'wp-block-post-title' || true)
 	if [ "$count" -ge 1 ]; then
 		pass "$path lists $count result heading(s)"

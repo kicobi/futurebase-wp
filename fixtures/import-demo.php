@@ -43,6 +43,18 @@ call_user_func(
 		$author_id = (int) $admins[0]->ID;
 		wp_set_current_user( $author_id );
 
+		// Normalize the author archive URL: hosts name the admin user
+		// differently (admin, siteadmin, ...), and the scorecard page set
+		// needs a deterministic /author/demo-author/ everywhere. Also keeps
+		// the public author archive from leaking the real login username.
+		wp_update_user(
+			array(
+				'ID'            => $author_id,
+				'user_nicename' => 'demo-author',
+				'display_name'  => 'Demo Author',
+			)
+		);
+
 		// ---------------------------------------------------------------------------
 		// 1. Import editorial demo media (raster files replace the neutral theme
 		// placeholders — see docs/media-conventions.md: editorial imagery is
