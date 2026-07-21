@@ -1,0 +1,2 @@
+id,site_id,question,answer,display_order,content_status,approved_by,approved_date,revision_note,delivery_status
+faq-001,site-a,An example question?,An example answer.,1,Not started,,,,Not implemented

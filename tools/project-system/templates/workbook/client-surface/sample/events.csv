@@ -1,0 +1,4 @@
+id,site_id,title,event_date,location,description,asset_id,link_url,content_status,approved_by,approved_date,revision_note,delivery_status
+event-001,main-site,"Midsummer Concert, Görlitzer Park",2026-06-21,"Görlitzer Park, Berlin","She said ""join us"" — and, naturally, everyone did.
+The evening ended with a shared song.",asset-001,,Approved,Astrid Ćirić,2026-07-01,,Implemented
+event-002,shared,Autumn planning meeting,2026-10-03,,Open planning meeting for members of both organizations.,,,In review,,,Reopened after approval: the venue changed from Café Åsa to Café Öresund.,Not implemented

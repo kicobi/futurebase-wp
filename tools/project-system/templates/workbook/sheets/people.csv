@@ -1,0 +1,2 @@
+id,site_id,name,role_title,organization_body,bio,asset_id,display_order,content_status,approved_by,approved_date,revision_note,delivery_status
+person-001,site-a,Alex Example,Board member,Board,One or two sentences of biography.,,1,Not started,,,,Not implemented

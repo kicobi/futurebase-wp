@@ -1,0 +1,2 @@
+id,site_id,title,category,asset_id,external_url,description,content_status,approved_by,approved_date,revision_note,delivery_status
+resource-001,site-a,Example annual report,Reports,,https://example.org/report.pdf,,Not started,,,,Not implemented

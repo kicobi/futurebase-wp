@@ -12,6 +12,8 @@ Run the Figma file against [design-intake-checklist.md](design-intake-checklist.
 
 Design is locked at client sign-off. After Phase 2a, `docs/process/design-system.md` becomes the authoritative translation — no mid-build Figma updates expected.
 
+Content readiness is gated the same way: the client's launch content is prepared and approved in the [Content Workbook](content-workbook.md) (masters in `tools/project-system/templates/workbook/`), and where the contract requires it, the workbook's implementation sign-off precedes the build. The checklist's content dimension checks against the workbook, not against loose documents.
+
 **Output:** a go/no-go decision and a signed (or self-signed) checklist with a date. No code yet.
 
 ## Phase 1 — Project init (30 min, terminal)
