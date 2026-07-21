@@ -62,6 +62,18 @@ if [ "$FORCE" -ne 1 ] && [ -z "${CI:-}" ]; then
 	exit 4
 fi
 
+# wp-env mounts the `"themes": [ "." ]` source at wp-content/themes/<repo-dir>
+# but never activates it, so a fresh environment boots on core's bundled default
+# theme. Activate explicitly — otherwise every path below resolves against the
+# wrong theme directory. Idempotent, and survives `npm run rename`.
+theme_slug="$(basename "$ROOT")"
+echo "activating theme: $theme_slug ..."
+if ! wp theme activate "$theme_slug" > /dev/null 2>&1; then
+	echo "error: could not activate theme '$theme_slug'" >&2
+	echo "       wp-env mounts this repo at wp-content/themes/$theme_slug" >&2
+	exit 1
+fi
+
 theme_dir=$(
 	wp eval 'echo get_stylesheet_directory();' 2>/dev/null \
 		| grep -E '^/' \
