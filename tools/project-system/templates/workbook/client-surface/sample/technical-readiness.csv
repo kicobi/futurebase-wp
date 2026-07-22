@@ -1,0 +1,3 @@
+id,site_id,item,owner,result,checked_by,checked_date,notes
+technical-001,shared,"Check every launch page at common desktop, tablet and mobile widths",Developer,Done,Colin Lewis,2026-07-02,
+technical-002,main-site,Confirm forms deliver to the nominated email address and spam controls are active,Developer,Open,,,

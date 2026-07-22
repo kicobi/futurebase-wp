@@ -1,0 +1,3 @@
+id,site_id,asset_type,filename,purpose,alt_text,crop_notes,link_label,accessible_document_status,transcript_captions,language,rights_source,editorial_status,approved_by,approved_date,revision_note,delivery_status,file_received,technical_suitability,optimized,uploaded,verified
+asset-001,site-a,image,example-hero.jpg,Example hero image,A description of the example image.,,,,,,Owned by the organization,Needed,,,,Not implemented,No,No,No,No,No
+asset-002,site-a,logo,example-partner-logo.svg,Example partner logo,Example Partner Organization logo.,,,,,,Provided by the partner with permission,Needed,,,,Not implemented,No,No,No,No,No

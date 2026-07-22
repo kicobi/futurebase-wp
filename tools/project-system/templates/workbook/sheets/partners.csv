@@ -1,0 +1,2 @@
+id,site_id,name,website_url,asset_id,display_order,content_status,approved_by,approved_date,revision_note,delivery_status
+partner-001,site-a,Example Partner Organization,https://example.org,asset-002,1,Not started,,,,Not implemented

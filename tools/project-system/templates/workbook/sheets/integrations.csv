@@ -1,0 +1,2 @@
+id,site_id,system,purpose,owner,account_holder,access_method,secure_reference,readiness,blocked,blocker_note,notes
+example-payment-provider,site-a,Example Payment Provider,Donations on the example site,Client (organization account),Organization,Named user invitation,,Identified,No,,

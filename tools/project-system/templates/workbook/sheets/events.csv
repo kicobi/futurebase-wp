@@ -1,0 +1,2 @@
+id,site_id,title,event_date,location,description,asset_id,link_url,content_status,approved_by,approved_date,revision_note,delivery_status
+event-001,site-a,Example community event,2026-09-12,Example Hall,"A short example description. Replace the example rows with real content, or delete them.",asset-001,,Not started,,,,Not implemented
