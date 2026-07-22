@@ -66,6 +66,7 @@ call_user_func(
 		$media_alt = array(
 			'placeholder-portrait' => 'Demo portrait photograph',
 			'placeholder-wide'     => 'Demo studio photograph',
+			'site-icon'            => 'Site icon',
 		);
 
 		foreach ( glob( $media_dir . '/*.png' ) as $media_file ) {
@@ -85,6 +86,13 @@ call_user_func(
 			}
 			if ( isset( $media_alt[ $stem ] ) ) {
 				update_post_meta( $attachment_id, '_wp_attachment_image_alt', $media_alt[ $stem ] );
+			}
+			if ( 'site-icon' === $stem ) {
+				// Site icon: WordPress then answers /favicon.ico itself,
+				// which keeps a 404 console error out of every page's
+				// Lighthouse best-practices score.
+				update_option( 'site_icon', (int) $attachment_id );
+				continue;
 			}
 			$media_map[ $stem ] = (int) $attachment_id;
 		}
@@ -142,10 +150,35 @@ call_user_func(
 			return $processor->get_updated_html();
 		};
 
-		$rewrite_blocks = function ( array $blocks ) use ( &$rewrite_blocks, $rewrite_html, $media_map ) {
+		// Serialized content must carry the site's canonical URL scheme. Under
+		// WP-CLI some hosts (e.g. Kinsta) build WP_CONTENT_URL from request
+		// scheme detection, so get_theme_file_uri() in pattern content comes
+		// out http:// on an https site — mixed content once published.
+		$home_scheme      = (string) wp_parse_url( home_url(), PHP_URL_SCHEME );
+		$normalize_scheme = function ( $html ) use ( $home_scheme ) {
+			$processor = new WP_HTML_Tag_Processor( $html );
+			while ( $processor->next_tag( 'img' ) ) {
+				$src = (string) $processor->get_attribute( 'src' );
+				if ( '' !== $src && 0 === strpos( $src, 'http' ) ) {
+					$processor->set_attribute( 'src', set_url_scheme( $src, $home_scheme ) );
+				}
+			}
+			return $processor->get_updated_html();
+		};
+
+		$rewrite_blocks = function ( array $blocks ) use ( &$rewrite_blocks, $rewrite_html, $normalize_scheme, $media_map ) {
 			foreach ( $blocks as &$block ) {
 				$is_image      = 'core/image' === $block['blockName'];
 				$is_media_text = 'core/media-text' === $block['blockName'];
+
+				foreach ( $block['innerContent'] as $i => $piece ) {
+					if ( is_string( $piece ) && false !== strpos( $piece, '<img' ) ) {
+						$block['innerContent'][ $i ] = $normalize_scheme( $piece );
+					}
+				}
+				if ( is_string( $block['innerHTML'] ) && false !== strpos( $block['innerHTML'], '<img' ) ) {
+					$block['innerHTML'] = $normalize_scheme( $block['innerHTML'] );
+				}
 
 				foreach ( $media_map as $stem => $attachment_id ) {
 					$needle = 'assets/images/' . $stem . '.';
