@@ -1,0 +1,2 @@
+id,site_id,title,campaign_year,summary,call_to_action_label,call_to_action_url,asset_id,publish_from,publish_to,content_status,approved_by,approved_date,revision_note,delivery_status
+campaign-001,site-a,Example annual campaign,2026,A one-paragraph example summary.,Get involved,https://example.org/campaign,asset-001,,,Not started,,,,Not implemented

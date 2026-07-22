@@ -1,0 +1,3 @@
+id,site_id,system,purpose,owner,account_holder,access_method,secure_reference,readiness,blocked,blocker_note,notes
+newsletter-platform,main-site,Example Newsletter Platform,Newsletter sign-up form on the home page,Client (organization account),Organization,Named user invitation,,Access pending,Yes,Awaiting the provider's verification of the organization's sending domain; only the provider can complete it.,
+payment-provider,campaign-site,Example Payment Provider,Donations on the campaign site,Client (organization account),Organization,Delegated account access,Access granted 2026-06-15 via the provider's team feature,Configured,No,,Test mode available; live checks follow provider verification.

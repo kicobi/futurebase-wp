@@ -147,6 +147,12 @@ source-of-truth map are documented in
 Baseline, metrics, reports, and follow-up are covered in
 [`docs/baseline-system.md`](baseline-system.md).
 
+At kickoff the client receives a **Content Workbook** — the structured surface
+where all launch content is prepared, reviewed and approved before
+implementation. Masters live in
+[`tools/project-system/templates/workbook/`](../tools/project-system/templates/workbook/);
+process and rationale in [`docs/process/content-workbook.md`](process/content-workbook.md).
+
 Reports and comparisons are **derived** from the project record; the record is
 authoritative. Baseline and final runs are dated and immutable — never overwrite
 a run.

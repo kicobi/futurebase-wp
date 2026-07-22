@@ -1,0 +1,13 @@
+id,site_id,item,owner,result,checked_by,checked_date,notes
+technical-001,shared,"Check every launch page at common desktop, tablet and mobile widths",Developer,Open,,,
+technical-002,shared,"Check current versions of Chrome, Safari, Firefox and Edge",Developer,Open,,,
+technical-003,shared,Confirm forms deliver to the nominated email address and spam controls are active,Developer,Open,,,
+technical-004,shared,Verify the agreed redirect plan before activation,Developer,Open,,,
+technical-005,shared,"Confirm page titles, descriptions, indexation settings and the XML sitemap",Developer,Open,,,
+technical-006,shared,Confirm caching is enabled and verified,Developer,Open,,,
+technical-007,shared,Review the hosting backup arrangement,Developer,Open,,,
+technical-008,shared,Check keyboard navigation on every template,Developer,Open,,,
+technical-009,shared,Check color contrast against the implementation target,Developer,Open,,,
+technical-010,shared,Check heading structure on every template,Developer,Open,,,
+technical-011,shared,Check the 404 page,Developer,Open,,,
+technical-012,shared,Confirm launch images are optimized for the web,Developer,Open,,,
