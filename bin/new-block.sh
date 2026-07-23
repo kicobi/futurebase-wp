@@ -124,6 +124,18 @@ cat > "$TARGET/render.php" <<PHP
 </div>
 PHP
 
+# Format the generated JS with the repo's prettier config. A long TITLE plus a
+# long THEME_SLUG overflows prettier's 80-col printWidth when the __() call is
+# inlined (only prettier knows where to wrap it), so an unformatted scaffold can
+# fail `npm run lint`. The starter's own slug is short enough to stay under the
+# limit, so this only bites promoted projects. Requires the toolchain — present
+# in CI and after `npm install`; skip with a note otherwise.
+if [ -x node_modules/.bin/wp-scripts ]; then
+	node_modules/.bin/wp-scripts format "$TARGET/index.js" "$TARGET/edit.js" > /dev/null 2>&1
+else
+	echo "note: skipped auto-format (node_modules not installed) — run 'npm run format' before committing." >&2
+fi
+
 echo "Created $TARGET/"
 echo
 echo "Next steps:"

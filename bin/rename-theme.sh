@@ -190,6 +190,12 @@ replace_in() {
 # carry the project's prefix instead of the template's. rename-theme.sh itself
 # is excluded; its comments and OLD_SLUG/OLD_SNAKE variables are the template's
 # self-documentation, kept stable for future maintainers.
+#
+# test-rename.sh is excluded for the same reason: it asserts against this
+# script's OLD_SLUG, which is never rewritten. Renaming its sentinels in
+# lockstep with the theme left it comparing the project slug against itself,
+# so its "skip on a promoted project" guard never tripped and every promoted
+# project inherited a false-failing smoke test.
 TARGETS=()
 while IFS= read -r f; do TARGETS+=("$f"); done < <(
 	# Only scan directories that actually exist at the repo root.
@@ -211,6 +217,7 @@ while IFS= read -r f; do TARGETS+=("$f"); done < <(
 		-type f \
 		\( -name '*.php' -o -name '*.html' -o -name '*.json' -o -name '*.css' -o -name '*.dist' -o -name '*.xml' -o -name '*.md' -o -name '*.sh' \) \
 		-not -name 'rename-theme.sh' \
+		-not -name 'test-rename.sh' \
 		2>/dev/null
 )
 
@@ -306,9 +313,13 @@ leftover_roots=(functions.php style.css composer.json package.json phpcs.xml.dis
 for d in patterns templates parts docs src inc bin; do
 	[ -d "$d" ] && leftover_roots+=("$d")
 done
+# test-rename.sh is excluded here for the same reason it is excluded from the
+# substitution pass: its OLD_SLUG sentinels are deliberately preserved, so
+# reporting them as leftovers would fail every rename with exit 2.
 raw_leftover=$(grep -rn "${OLD_SLUG}\|${OLD_SNAKE}_" \
 	--include='*.php' --include='*.html' --include='*.json' --include='*.css' --include='*.xml' --include='*.dist' --include='*.md' --include='*.sh' \
 	--exclude='rename-theme.sh' \
+	--exclude='test-rename.sh' \
 	"${leftover_roots[@]}" 2>/dev/null || true)
 
 # Documentation references to the template's origin (e.g. a README

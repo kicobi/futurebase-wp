@@ -28,9 +28,16 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-# Precondition: only meaningful on a repo that still carries the old slug.
-# Downstream forks have already renamed, so there's nothing to exercise.
-if ! grep -q 'wp-starter' style.css 2>/dev/null; then
+# Precondition: only meaningful on the starter itself, whose Text Domain is
+# still the slug rename-theme.sh renames *from* (OLD_SLUG). A promoted project
+# has rewritten it, so a dry rename would find nothing to exercise — skip.
+#
+# Anchor on the Text Domain line specifically. style.css keeps a Theme URI
+# pointing at the template's origin repo (…/wp-starter) in every promoted
+# project, so a substring match against the whole file would always succeed
+# and no fork could ever skip. rename-theme.sh excludes this file so the
+# sentinel below survives promotion; both halves are required.
+if ! grep -qiE '^Text Domain:[[:space:]]*wp-starter[[:space:]]*$' style.css 2>/dev/null; then
 	echo "rename non-regression: skipped (repo is no longer in template state)"
 	exit 0
 fi
