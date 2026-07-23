@@ -168,10 +168,26 @@ Read-only until `--apply --confirm`, and it writes only by path class:
 
 | class | paths | behaviour |
 | --- | --- | --- |
-| `safe` | `tools/`, `.github/workflows/`, `fixtures/` | copied verbatim — slug-free *by contract*: rename never scans `tools/`, and `bin/test-rename.sh` asserts `fixtures/` carry no slug literal |
+| `safe` | `tools/`, `.github/workflows/`, `fixtures/`, and four scripts in `bin/` | copied verbatim — slug-free *by contract*: rename never scans `tools/`, and `bin/test-rename.sh` asserts `fixtures/` and those four scripts carry no slug literal |
 | `deps` | `package.json`, `package-lock.json`, `composer.json`, `composer.lock` | dependency blocks merged (starter wins on shared entries, project additions preserved); lockfiles adopted with the project's own package name restored |
 | `review` | `bin/`, `docs/`, `CLAUDE.md`, anything unclassified | reported only — these carry the theme slug, so copying them would undo the rename |
-| `never` | `patterns/`, `templates/`, `parts/`, `theme.json`, `style.css`, `functions.php`, `inc/`, `src/`, `assets/`, `.project/` | untouched and unreported — the client's work |
+| `never` | `patterns/`, `templates/`, `parts/`, `theme.json`, `style.css`, `functions.php`, `inc/`, `src/`, `assets/`, `.project/`, `.github/workflows/scorecard.yml` | untouched and unreported — the client's work, plus workflows that test the starter itself |
+
+> **Portability is a per-file property, not a per-directory one.** Both
+> directions of this bit us:
+>
+> - `scorecard.yml` contains no slug, but renders the starter's demo fixture and
+>   so depends on the section-library patterns in `patterns/` — never-class
+>   content a client project replaces with its own. Syncing it produced a
+>   workflow that failed on the next push. Starter-only workflows belong in
+>   `STARTER_ONLY`.
+> - `bin/demo-content.sh`, `scorecard.sh`, `smoke-render.sh` and
+>   `smoke-render.php` *are* portable — they resolve the theme slug at runtime —
+>   but sat in `review` with the rest of `bin/`, so starter fixes never reached
+>   projects. One ran a stale `demo-content.sh` for weeks and its Scorecard had
+>   never once passed. They are listed in `PORTABLE_BIN`, which must stay in step
+>   with the probe loop in `bin/test-rename.sh` — that assertion is what makes
+>   the slug-free claim true rather than merely intended.
 
 Staleness is decided by **content**, never by recorded provenance. A file whose
 content matches some point in upstream history is merely behind and is updated;

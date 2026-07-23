@@ -27,8 +27,33 @@ export const CLASS = {
 	NEVER: 'never', // the client's work — not even reported
 };
 
+// Workflows that test the STARTER itself rather than the project. Being
+// slug-free is not sufficient for a file to be portable: the scorecard harness
+// renders the starter's demo fixture and depends on its section-library
+// patterns, which are never-class theme content — a client project has its own
+// patterns, so the workflow fails on the next push. It is a regression gate for
+// the starter's published numbers and has no meaning downstream.
+const STARTER_ONLY = ['.github/workflows/scorecard.yml'];
+
+// The portable exceptions inside bin/. Everything else there is slug-bearing —
+// rename rewrites the prefix and text domain into it — but these four derive
+// the theme slug at runtime from the pattern registry or style.css, and
+// bin/test-rename.sh ASSERTS they contain no slug literal after a rename.
+//
+// Keeping them in the review class meant starter fixes never propagated: a
+// project ran a stale demo-content.sh for weeks, missing the fix that activates
+// the theme before resolving the fixture path, and its Scorecard had never once
+// passed. Slug-bearing is a per-file property, not a per-directory one.
+//
+// Keep this list in step with the probe loop in bin/test-rename.sh, which is
+// what makes the slug-free claim true rather than merely intended.
+const PORTABLE_BIN = ['bin/demo-content.sh', 'bin/scorecard.sh', 'bin/smoke-render.sh', 'bin/smoke-render.php'];
+
 // Ordered; first match wins.
 const RULES = [
+	// Checked before the workflow rule below, which would otherwise claim these.
+	[CLASS.NEVER, (r) => STARTER_ONLY.includes(r)],
+
 	// Starter-owned infrastructure. rename-theme.sh never scans tools/, and
 	// test-rename.sh actively asserts that fixtures/ carry no slug literal
 	// (they derive it at runtime). These are slug-free by contract, not by
@@ -36,6 +61,7 @@ const RULES = [
 	[CLASS.SAFE, (r) => r.startsWith('tools/')],
 	[CLASS.SAFE, (r) => r.startsWith('.github/workflows/')],
 	[CLASS.SAFE, (r) => r.startsWith('fixtures/')],
+	[CLASS.SAFE, (r) => PORTABLE_BIN.includes(r)],
 
 	// Dependency layer. Slug-bearing only in name fields, so it is merged
 	// field-by-field rather than copied.
@@ -160,8 +186,10 @@ export function planFiles({ projectRoot, starter, ref, only }) {
 }
 
 // The only trees SAFE paths can live in. Walking just these keeps the project
-// inventory cheap instead of crawling the whole checkout.
-export const SAFE_ROOTS = ['tools', '.github/workflows', 'fixtures'];
+// inventory cheap instead of crawling the whole checkout. `bin` is included for
+// the PORTABLE_BIN exceptions — everything else under it classifies as review
+// and is filtered out on both sides of any comparison.
+export const SAFE_ROOTS = ['tools', '.github/workflows', 'fixtures', 'bin'];
 
 // Every SAFE-class file in the project, relative-path sorted.
 export function safeFiles(root) {
@@ -398,7 +426,12 @@ export function detectBase(starter, ref, projectRoot, { limit = 300 } = {}) {
 		for (const line of r.stdout.split('\n').filter(Boolean)) {
 			const tab = line.indexOf('\t');
 			if (tab < 0) continue;
-			theirs.set(line.slice(tab + 1), line.slice(0, tab).split(' ')[2]);
+			const path = line.slice(tab + 1);
+			// SAFE_ROOTS is a walk hint, not a classification: `bin` holds mostly
+			// review-class scripts. Filter both sides by class or the comparison
+			// never matches and provenance repair silently returns null.
+			if (classifyPath(path) !== CLASS.SAFE) continue;
+			theirs.set(path, line.slice(0, tab).split(' ')[2]);
 		}
 		if (theirs.size !== mine.size) continue;
 		let match = true;
