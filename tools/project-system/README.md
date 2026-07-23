@@ -171,7 +171,13 @@ Read-only until `--apply --confirm`, and it writes only by path class:
 | `safe` | `tools/`, `.github/workflows/`, `fixtures/` | copied verbatim — slug-free *by contract*: rename never scans `tools/`, and `bin/test-rename.sh` asserts `fixtures/` carry no slug literal |
 | `deps` | `package.json`, `package-lock.json`, `composer.json`, `composer.lock` | dependency blocks merged (starter wins on shared entries, project additions preserved); lockfiles adopted with the project's own package name restored |
 | `review` | `bin/`, `docs/`, `CLAUDE.md`, anything unclassified | reported only — these carry the theme slug, so copying them would undo the rename |
-| `never` | `patterns/`, `templates/`, `parts/`, `theme.json`, `style.css`, `functions.php`, `inc/`, `src/`, `assets/`, `.project/` | untouched and unreported — the client's work |
+| `never` | `patterns/`, `templates/`, `parts/`, `theme.json`, `style.css`, `functions.php`, `inc/`, `src/`, `assets/`, `.project/`, `.github/workflows/scorecard.yml` | untouched and unreported — the client's work, plus workflows that test the starter itself |
+
+> **Slug-free is not the same as portable.** `scorecard.yml` contains no slug,
+> but it renders the starter's demo fixture and so depends on the
+> section-library patterns in `patterns/` — never-class content that a client
+> project replaces with its own. Syncing it produced a workflow that failed on
+> the next push. Any starter-only workflow belongs in `STARTER_ONLY`.
 
 Staleness is decided by **content**, never by recorded provenance. A file whose
 content matches some point in upstream history is merely behind and is updated;

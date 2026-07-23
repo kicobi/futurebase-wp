@@ -27,8 +27,19 @@ export const CLASS = {
 	NEVER: 'never', // the client's work — not even reported
 };
 
+// Workflows that test the STARTER itself rather than the project. Being
+// slug-free is not sufficient for a file to be portable: the scorecard harness
+// renders the starter's demo fixture and depends on its section-library
+// patterns, which are never-class theme content — a client project has its own
+// patterns, so the workflow fails on the next push. It is a regression gate for
+// the starter's published numbers and has no meaning downstream.
+const STARTER_ONLY = ['.github/workflows/scorecard.yml'];
+
 // Ordered; first match wins.
 const RULES = [
+	// Checked before the workflow rule below, which would otherwise claim these.
+	[CLASS.NEVER, (r) => STARTER_ONLY.includes(r)],
+
 	// Starter-owned infrastructure. rename-theme.sh never scans tools/, and
 	// test-rename.sh actively asserts that fixtures/ carry no slug literal
 	// (they derive it at runtime). These are slug-free by contract, not by
