@@ -154,6 +154,38 @@ Lighthouse, axe, WordPress) and writes `comparison-<id>.html` (internal),
 improvements + agreed measures + what's left to measure). Metrics missing on
 either side are reported as "not comparable", never invented.
 
+**Sync (per-project — reconcile with the starter):**
+```
+✓ wp-starter sync [--ref <ref>] [--starter-path <p>] [--fetch]
+                  [--only safe|deps|review] [--apply] [--confirm]
+                  [--repair-provenance] [--json]
+```
+A promoted project shares **no git history** with the starter — the GitHub
+template flow squashes to a fresh initial commit — so starter fixes cannot reach
+it through merge, rebase, or cherry-pick. `sync` is that path.
+
+Read-only until `--apply --confirm`, and it writes only by path class:
+
+| class | paths | behaviour |
+| --- | --- | --- |
+| `safe` | `tools/`, `.github/workflows/`, `fixtures/` | copied verbatim — slug-free *by contract*: rename never scans `tools/`, and `bin/test-rename.sh` asserts `fixtures/` carry no slug literal |
+| `deps` | `package.json`, `package-lock.json`, `composer.json`, `composer.lock` | dependency blocks merged (starter wins on shared entries, project additions preserved); lockfiles adopted with the project's own package name restored |
+| `review` | `bin/`, `docs/`, `CLAUDE.md`, anything unclassified | reported only — these carry the theme slug, so copying them would undo the rename |
+| `never` | `patterns/`, `templates/`, `parts/`, `theme.json`, `style.css`, `functions.php`, `inc/`, `src/`, `assets/`, `.project/` | untouched and unreported — the client's work |
+
+Staleness is decided by **content**, never by recorded provenance. A file whose
+content matches some point in upstream history is merely behind and is updated;
+one that matches no upstream version was edited locally and is skipped as a
+conflict. Lockfile adoption is refused outright when the project declares a
+dependency upstream lacks, because the starter's lock cannot describe this
+project and a clean install would drop that package.
+
+`--repair-provenance` corrects a wrong `starter.template_commit` by finding the
+newest upstream commit whose entire slug-free tree matches this project — it
+returns nothing rather than guess. A successful `--apply` always stamps
+`starter.synced_commit`, which unlike `template_commit` is written by the
+command that did the work.
+
 ### Exit codes
 `0` success · `1` completed with warnings · `2` invalid configuration ·
 `3` missing dependency · `4` permission/access failure · `5` module execution

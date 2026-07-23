@@ -30,6 +30,7 @@ This repo also carries the **project lifecycle system** in [tools/project-system
   - "list leads" / "inspect the `<slug>` lead" → `lead` / `lead inspect <slug>`
   - "we won `<client>`" / "promote the lead" → `lead promote <slug> --confirm` (creates a real GitHub repo — needs that explicit ask; on a failed run, fix the cause and `--resume --confirm`; an empty clone means the `gh` template race — `git pull origin main` first)
   - "archive the lead as lost/abandoned" → `lead archive <slug> --reason lost|abandoned`
+  - "pull the starter's fixes into this project" / "this project is behind the starter" / "sync from the starter" → `sync` (run from **inside the project**; read-only until `--apply --confirm`). A promoted project shares no git history with the starter, so this is the only route — never merge, rebase, or cherry-pick across them. It writes only slug-free paths (`tools/`, `.github/workflows/`, `fixtures/`) plus the dependency layer; `bin/` and `docs/` are reported for a hand port because they carry the theme slug.
   - "capture the baseline" → `baseline init` / `baseline run` (against the live site, before cutover)
   - "suggest success metrics" → `metrics suggest`
   - "create a project / make a repo for `<client>` from the starter template" → **not a hand task**: route through `lead init` → dossier → `lead promote`. Promotion before a formal award needs an explicit go-ahead ("pre-stage it / promote it anyway").

@@ -84,6 +84,26 @@ function createProject({ remote, dest, template }) {
 	return { via: 'gh', result: cloned, stage: 'clone', remoteCreated: true };
 }
 
+// Which starter commit does the new project actually contain?
+//
+// `gh repo create --template` snapshots the template's REMOTE DEFAULT BRANCH,
+// not whatever the local checkout happens to be on. Recording the local HEAD
+// therefore produces provenance that is silently wrong whenever the operator
+// is on a feature branch or is simply behind — which then misleads every later
+// `wp-starter sync`. Ask GitHub what it actually copied, and fall back to the
+// local HEAD only when it cannot answer (offline seam, no gh).
+function templatedCommit({ template, starter, usingSeam }) {
+	if (usingSeam) return gitHead(starter);
+	if (have('gh')) {
+		const branch = run('gh', ['repo', 'view', template, '--json', 'defaultBranchRef', '-q', '.defaultBranchRef.name']);
+		if (branch.ok && branch.stdout) {
+			const sha = run('gh', ['api', `repos/${template}/commits/${branch.stdout}`, '-q', '.sha']);
+			if (sha.ok && sha.stdout) return sha.stdout;
+		}
+	}
+	return gitHead(starter);
+}
+
 function appendManagedSection(file, sectionPath) {
 	const marker = '<!-- BEGIN project-system:active -->';
 	const current = existsSync(file) ? readFileSync(file, 'utf8') : '';
@@ -131,8 +151,8 @@ export async function leadPromote(positional, flags) {
 	const dest = flags.dest ? resolve(flags.dest) : join(homedir(), 'Sites', name);
 	const template = flags.template || DEFAULT_TEMPLATE;
 	const starter = starterRoot(flags['starter-path']);
-	const templateCommit = gitHead(starter);
 	const usingSeam = !!process.env.WP_STARTER_PROMOTE_CLONE_FROM;
+	const templateCommit = templatedCommit({ template, starter, usingSeam });
 
 	// Collision checks.
 	const destExists = existsSync(dest) && readdirSync(dest).length > 0;
