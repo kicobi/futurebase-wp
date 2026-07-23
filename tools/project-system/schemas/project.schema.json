@@ -42,7 +42,12 @@
 					"type": "string",
 					"description": "Commit the CREATED project repo was generated from (template provenance), not merely local wp-starter HEAD."
 				},
-				"promoted_at": { "type": "string", "format": "date-time" }
+				"promoted_at": { "type": "string", "format": "date-time" },
+				"synced_commit": {
+					"type": "string",
+					"description": "Starter commit this project was last reconciled with by `wp-starter sync`. Unlike template_commit this is always accurate, being stamped by the command that did the work."
+				},
+				"synced_at": { "type": "string", "format": "date-time" }
 			}
 		},
 		"promoted_to": {

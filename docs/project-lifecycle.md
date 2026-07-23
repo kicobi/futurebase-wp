@@ -156,3 +156,34 @@ process and rationale in [`docs/process/content-workbook.md`](process/content-wo
 Reports and comparisons are **derived** from the project record; the record is
 authoritative. Baseline and final runs are dated and immutable — never overwrite
 a run.
+
+## 5. Staying in sync with the starter
+
+Promotion is a **one-way copy**. `gh repo create --template` squashes to a fresh
+initial commit, so an active project shares no git history with `wp-starter`:
+`git merge`, `rebase`, and `cherry-pick` across the two are unavailable, and a
+wholesale copy would drag the starter's slug back through every renamed file.
+Fixes made in the starter after promotion therefore never arrive on their own —
+including dependency and vulnerability work.
+
+Run `sync` from inside the project to close that gap:
+
+```bash
+# from the project root — read-only; prints what has drifted
+node tools/project-system/bin/wp-starter.mjs sync --fetch
+
+# apply the slug-free classes once the plan looks right
+node tools/project-system/bin/wp-starter.mjs sync --apply --confirm
+```
+
+It writes only what the rename contract proves is slug-free (`tools/`,
+`.github/workflows/`, `fixtures/`) plus the dependency layer. `bin/` and `docs/`
+are **reported, never written** — they carry the theme slug, and porting them is
+a judgement call. Locally edited files are skipped rather than clobbered.
+
+> **Provenance caveat.** `starter.template_commit` records what promotion
+> *believed* it copied. Promotions before the fix recorded the local starter
+> HEAD, which could sit on an unmerged branch and so name a commit the project
+> never contained. `sync` decides staleness from file content and is unaffected;
+> `--repair-provenance` corrects the recorded value, and every `--apply` stamps
+> an accurate `starter.synced_commit`.

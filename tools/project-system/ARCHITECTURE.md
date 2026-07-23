@@ -93,6 +93,11 @@ failure · `6` privacy/safety violation.
 - **Phase 7 (done):** surveys (`metrics survey`) + follow-up report
   (`metrics follow-up`) — baseline/30/90-day scale deltas, metric checklist
   (`lib/survey`, `survey-results` schema).
+- **Phase 9 (done):** `sync` — reconcile an active project with the starter
+  (`lib/sync`). Promotion is a one-way GitHub-template copy with no shared
+  history, so downstream drift previously had no remedy. Path classification is
+  the safety model; staleness is decided by content, not by the recorded
+  `template_commit`, which promotion could stamp wrongly.
 - **Phase 8 (in progress):** `project tasks` generates the lifecycle task tree
   (`lib/tasks`) as Markdown / JSON sync payload / `gh issue create` commands.
   Remaining: analytics-API connectors, automated survey delivery, scheduled

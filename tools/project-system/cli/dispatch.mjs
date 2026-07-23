@@ -27,6 +27,7 @@ import { metricsFollowUp } from '../commands/metrics/follow-up.mjs';
 import { finalRun } from '../commands/final/run.mjs';
 import { finalReport } from '../commands/final/report.mjs';
 import { compare } from '../commands/compare.mjs';
+import { sync } from '../commands/sync.mjs';
 import { caseStudy } from '../commands/project/case-study.mjs';
 import { projectInit } from '../commands/project/init.mjs';
 import { projectInspect } from '../commands/project/inspect.mjs';
@@ -60,6 +61,12 @@ const OPTIONS = {
 	status: { type: 'string' },
 	preset: { type: 'string' },
 	write: { type: 'boolean', default: false },
+	// sync
+	ref: { type: 'string' },
+	only: { type: 'string' },
+	fetch: { type: 'boolean', default: false },
+	apply: { type: 'boolean', default: false },
+	'repair-provenance': { type: 'boolean', default: false },
 	// compare / survey / tasks
 	'baseline-run': { type: 'string' },
 	'final-run': { type: 'string' },
@@ -106,6 +113,9 @@ Usage:
   wp-starter final report [--run-id <id>]
   wp-starter compare [--baseline-run <id>] [--final-run <id>]
 
+  wp-starter sync [--ref <ref>] [--fetch] [--only safe|deps|review]
+                  [--apply --confirm] [--repair-provenance]
+
   wp-starter project init [--name <n>] [--slug <s>] [--type new|redesign]
   wp-starter project inspect | status | validate
   wp-starter project tasks [--format markdown|json|github] [--launch-date <date>]
@@ -128,6 +138,8 @@ Flags:
             --run-id <id> --dry-run
   metrics:  --preset <name> --id <id> --value <v> --unit <u> --at <when>
             --status <s> --write --dry-run
+  sync:     --ref <ref> (default origin/main) --starter-path <p> --fetch
+            --only safe|deps|review --apply --confirm --repair-provenance
   compare:  --baseline-run <id> --final-run <id>
   survey:   --period baseline|30-days|90-days --write
   project:  --name <n> --slug <s> --type new|redesign --force
@@ -231,6 +243,10 @@ export async function main(argv) {
 
 	if (group === 'compare') {
 		return compare(rest, flags);
+	}
+
+	if (group === 'sync') {
+		return sync(rest, flags);
 	}
 
 	if (group === 'project') {
