@@ -87,6 +87,34 @@ else
 	fail "unknown URL returned HTTP $status (expected 404)"
 fi
 
+# The fixture claims in its own header that it converges when re-run without an
+# intervening `wp site empty`. Assert it, because the failure is silent: a plain
+# wp_insert_post does not reject a duplicate slug, it coins `home-2` — leaving a
+# site that looks imported while every scorecard URL points at the wrong post.
+# Re-import over the state the checks above just used; nothing may change.
+page_slugs() {
+	wp post list --post_type=page --post_status=any --field=post_name 2>/dev/null \
+		| tr -d '\r' \
+		| sort \
+		| tr '\n' ' '
+}
+before=$(page_slugs)
+# Both failure modes have to be caught here, and they look nothing alike: the
+# import can abort outright (a duplicate term is a hard WP_CLI::error), or it
+# can succeed while quietly renaming pages. Guard the exit status explicitly —
+# under `set -e` a non-zero eval-file would otherwise kill this script before
+# the comparison runs, failing CI with no line saying why.
+if ! wp eval-file "$theme_dir/fixtures/import-demo.php" > /dev/null 2>&1; then
+	fail "re-import errored — the fixture cannot run over a site that already holds it"
+else
+	after=$(page_slugs)
+	if [ "$before" = "$after" ]; then
+		pass "re-import is idempotent (pages unchanged: $after)"
+	else
+		fail "re-import changed the page set: '$before' -> '$after'"
+	fi
+fi
+
 if [ $FAIL -ne 0 ]; then
 	echo "smoke-render: FAIL"
 	exit 1

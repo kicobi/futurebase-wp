@@ -5,9 +5,16 @@
  * Run via WP-CLI inside the WordPress environment:
  *   wp eval-file fixtures/import-demo.php
  *
- * Assumes a freshly emptied site — bin/demo-content.sh performs the guarded
- * `wp site empty --uploads --yes` reset before calling this file, so every
- * import converges to the same deterministic state.
+ * bin/demo-content.sh performs a guarded `wp site empty --uploads --yes` reset
+ * before calling this file, but the import does NOT depend on it: every object
+ * is addressed by a deterministic slug and upserted, so running this against a
+ * site that already holds the fixture converges to the same state rather than
+ * duplicating it. Manual `wp eval-file` runs that skip the reset are supported.
+ *
+ * That property is load-bearing. Slugs here are the scorecard's URL contract —
+ * bin/scorecard.sh builds its page list from them — and a plain wp_insert_post
+ * does not fail on a slug collision, it silently appends `-2`. A re-run without
+ * upserts would leave a site that looks imported but serves /home-2/.
  *
  * Pattern slugs are discovered from the block-pattern registry at runtime
  * (never hardcoded), so this file survives bin/rename-theme.sh untouched.
@@ -56,6 +63,47 @@ call_user_func(
 		);
 
 		// ---------------------------------------------------------------------------
+		// 0. Upsert helpers. Every seed below is addressed by its slug, which is
+		// what lets a re-run converge instead of accumulating `-2` suffixes.
+		// ---------------------------------------------------------------------------
+
+		// Existing post of this type with this exact slug, or 0. Status is 'any'
+		// so a draft left behind by a half-finished run is still found and
+		// republished rather than shadowed by a second copy.
+		$find_by_slug = function ( $slug, $post_type ) {
+			$found = get_posts(
+				array(
+					'name'                   => $slug,
+					'post_type'              => $post_type,
+					'post_status'            => 'any',
+					'numberposts'            => 1,
+					'fields'                 => 'ids',
+					'no_found_rows'          => true,
+					'update_post_meta_cache' => false,
+					'update_post_term_cache' => false,
+				)
+			);
+			return $found ? (int) $found[0] : 0;
+		};
+
+		// Insert, or update in place when the slug already exists. wp_insert_post
+		// would not error on a collision — it would coin a new slug — so the
+		// lookup, not the error handling, is what keeps the URL set stable.
+		$upsert_post = function ( array $args, $label ) use ( $find_by_slug ) {
+			$existing = $find_by_slug( $args['post_name'], $args['post_type'] );
+			if ( $existing ) {
+				$args['ID'] = $existing;
+				$post_id    = wp_update_post( $args, true );
+			} else {
+				$post_id = wp_insert_post( $args, true );
+			}
+			if ( is_wp_error( $post_id ) ) {
+				WP_CLI::error( $label . ' failed (' . $args['post_name'] . '): ' . $post_id->get_error_message() );
+			}
+			return (int) $post_id;
+		};
+
+		// ---------------------------------------------------------------------------
 		// 1. Import editorial demo media (raster files replace the neutral theme
 		// placeholders — see docs/media-conventions.md: editorial imagery is
 		// attachment-backed; brand/interface marks like the logo strip stay
@@ -71,18 +119,27 @@ call_user_func(
 
 		foreach ( glob( $media_dir . '/*.png' ) as $media_file ) {
 			$stem = pathinfo( $media_file, PATHINFO_FILENAME );
-			$tmp  = wp_tempnam( basename( $media_file ) );
-			if ( ! $tmp || ! copy( $media_file, $tmp ) ) {
-				WP_CLI::error( 'Could not stage media file: ' . basename( $media_file ) );
-			}
-			$attachment_id = media_handle_sideload(
-				array(
-					'name'     => basename( $media_file ),
-					'tmp_name' => $tmp,
-				)
-			);
-			if ( is_wp_error( $attachment_id ) ) {
-				WP_CLI::error( 'Media import failed for ' . basename( $media_file ) . ': ' . $attachment_id->get_error_message() );
+
+			// Reuse the attachment a previous run created. media_handle_sideload
+			// always uploads, so without this a re-run leaves a second copy on
+			// disk as placeholder-portrait-1.png and rewrites the patterns to
+			// point at it — the original is then orphaned, not replaced.
+			$attachment_id = $find_by_slug( sanitize_title( $stem ), 'attachment' );
+
+			if ( ! $attachment_id ) {
+				$tmp = wp_tempnam( basename( $media_file ) );
+				if ( ! $tmp || ! copy( $media_file, $tmp ) ) {
+					WP_CLI::error( 'Could not stage media file: ' . basename( $media_file ) );
+				}
+				$attachment_id = media_handle_sideload(
+					array(
+						'name'     => basename( $media_file ),
+						'tmp_name' => $tmp,
+					)
+				);
+				if ( is_wp_error( $attachment_id ) ) {
+					WP_CLI::error( 'Media import failed for ' . basename( $media_file ) . ': ' . $attachment_id->get_error_message() );
+				}
 			}
 			if ( isset( $media_alt[ $stem ] ) ) {
 				update_post_meta( $attachment_id, '_wp_attachment_image_alt', $media_alt[ $stem ] );
@@ -223,8 +280,8 @@ call_user_func(
 		// 4. Pages. Deterministic slugs — bin/scorecard.sh builds its URL list from
 		// these. Home stays empty: templates/front-page.html wires the home pattern.
 		// ---------------------------------------------------------------------------
-		$insert_page = function ( $title, $slug, $content = '', $template = '' ) use ( $author_id ) {
-			$page_id = wp_insert_post(
+		$insert_page = function ( $title, $slug, $content = '', $template = '' ) use ( $author_id, $upsert_post ) {
+			$page_id = $upsert_post(
 				array(
 					'post_type'    => 'page',
 					'post_status'  => 'publish',
@@ -233,13 +290,15 @@ call_user_func(
 					'post_content' => $content,
 					'post_author'  => $author_id,
 				),
-				true
+				'Page insert'
 			);
-			if ( is_wp_error( $page_id ) ) {
-				WP_CLI::error( 'Page insert failed (' . $slug . '): ' . $page_id->get_error_message() );
-			}
 			if ( '' !== $template ) {
 				update_post_meta( $page_id, '_wp_page_template', $template );
+			} else {
+				// Clear rather than skip: a page that carried a template under an
+				// earlier fixture must not keep it after this one stops assigning
+				// one, or the re-run converges everywhere except here.
+				delete_post_meta( $page_id, '_wp_page_template' );
 			}
 			return (int) $page_id;
 		};
@@ -263,11 +322,23 @@ call_user_func(
 		// archive, the admin author archive, and the ?s=demo search are all
 		// provably non-empty.
 		// ---------------------------------------------------------------------------
-		$notes = wp_insert_term( 'Notes', 'category', array( 'slug' => 'notes' ) );
-		if ( is_wp_error( $notes ) ) {
-			WP_CLI::error( 'Category insert failed: ' . $notes->get_error_message() );
+		$existing_notes = get_term_by( 'slug', 'notes', 'category' );
+		if ( $existing_notes ) {
+			$notes_id = (int) $existing_notes->term_id;
+		} else {
+			$notes = wp_insert_term( 'Notes', 'category', array( 'slug' => 'notes' ) );
+			if ( is_wp_error( $notes ) ) {
+				// A `term_exists` error means the term arrived between the lookup
+				// above and this insert; its error data carries the term id.
+				$existing_id = $notes->get_error_data( 'term_exists' );
+				if ( ! $existing_id ) {
+					WP_CLI::error( 'Category insert failed: ' . $notes->get_error_message() );
+				}
+				$notes_id = (int) $existing_id;
+			} else {
+				$notes_id = (int) $notes['term_id'];
+			}
 		}
-		$notes_id = (int) $notes['term_id'];
 
 		$posts = array(
 			array(
@@ -292,7 +363,7 @@ call_user_func(
 
 		$post_ids = array();
 		foreach ( $posts as $seed ) {
-			$post_id = wp_insert_post(
+			$post_id = $upsert_post(
 				array(
 					'post_type'    => 'post',
 					'post_status'  => 'publish',
@@ -301,14 +372,12 @@ call_user_func(
 					'post_content' => $seed['body'],
 					'post_author'  => $author_id,
 				),
-				true
+				'Post insert'
 			);
-			if ( is_wp_error( $post_id ) ) {
-				WP_CLI::error( 'Post insert failed (' . $seed['slug'] . '): ' . $post_id->get_error_message() );
-			}
-			if ( $seed['category'] ) {
-				wp_set_post_terms( $post_id, array( $seed['category'] ), 'category' );
-			}
+			// Assign unconditionally — wp_set_post_terms replaces rather than
+			// appends, so the uncategorized seed must actively be emptied or a
+			// re-run would leave whatever a previous fixture assigned to it.
+			wp_set_post_terms( $post_id, $seed['category'] ? array( $seed['category'] ) : array(), 'category' );
 			$post_ids[] = (int) $post_id;
 		}
 
@@ -319,7 +388,10 @@ call_user_func(
 		$nav_content  = '<!-- wp:navigation-link {"label":"About","type":"page","id":' . $about_id . ',"url":"' . esc_url( get_permalink( $about_id ) ) . '","kind":"post-type"} /-->' . "\n";
 		$nav_content .= '<!-- wp:navigation-link {"label":"Services","type":"page","id":' . $services_id . ',"url":"' . esc_url( get_permalink( $services_id ) ) . '","kind":"post-type"} /-->' . "\n";
 		$nav_content .= '<!-- wp:navigation-link {"label":"Blog","type":"page","id":' . $blog_id . ',"url":"' . esc_url( get_permalink( $blog_id ) ) . '","kind":"post-type"} /-->';
-		wp_insert_post(
+		// Upserted like everything else: core's fallback picks the most recent
+		// wp_navigation post, so duplicates would not visibly break the menu —
+		// they would just quietly pile up, one per run.
+		$upsert_post(
 			array(
 				'post_type'    => 'wp_navigation',
 				'post_status'  => 'publish',
@@ -327,7 +399,8 @@ call_user_func(
 				'post_name'    => 'demo-navigation',
 				'post_content' => $nav_content,
 				'post_author'  => $author_id,
-			)
+			),
+			'Navigation insert'
 		);
 
 		// ---------------------------------------------------------------------------
