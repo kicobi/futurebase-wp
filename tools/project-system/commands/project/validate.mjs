@@ -5,7 +5,7 @@
 // Schema-validates every structured doc, checks structural rules, and secret-
 // scans the committed record. Exit 6 on a secret hit, 2 on any other issue.
 
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, lstatSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { EXIT, die, ok, warn, info, fail, emitJson, c } from '../../lib/output.mjs';
 import { findProjectRoot, projectPaths } from '../../lib/baseline.mjs';
@@ -15,9 +15,16 @@ import { checkMetrics } from '../../lib/metrics.mjs';
 import { scanFiles } from '../../lib/secret-scan.mjs';
 
 const PRIVATE_DIRS = new Set(['private', 'credentials', 'auth']);
-const TEXT = /\.(md|ya?ml|json|txt)$/i;
 
-function walkText(dir, base = '', acc = []) {
+// Every committed file, not a chosen few. The scanner decides what it can read
+// (and reports what it cannot) — an extension allowlist here meant a secret in
+// a .csv, .pem, .env or extensionless file was never even opened, and the gate
+// reported clean. Deciding by name is guessing; let the content decide.
+//
+// lstat, never stat: a symlinked directory under .project/ would otherwise walk
+// outside the record entirely, pulling unrelated files into the scan and the
+// report. Managed trees do not contain symlinks, so skipping them loses nothing.
+function walkCommitted(dir, base = '', acc = []) {
 	let entries;
 	try {
 		entries = readdirSync(dir);
@@ -27,10 +34,17 @@ function walkText(dir, base = '', acc = []) {
 	for (const entry of entries.sort()) {
 		const rel = base ? `${base}/${entry}` : entry;
 		const full = join(dir, entry);
-		if (statSync(full).isDirectory()) {
+		let st;
+		try {
+			st = lstatSync(full);
+		} catch {
+			continue;
+		}
+		if (st.isSymbolicLink()) continue;
+		if (st.isDirectory()) {
 			if (PRIVATE_DIRS.has(entry) || entry === 'raw-private') continue;
-			walkText(full, rel, acc);
-		} else if (TEXT.test(entry)) {
+			walkCommitted(full, rel, acc);
+		} else if (st.isFile()) {
 			acc.push(full);
 		}
 	}
@@ -77,7 +91,7 @@ export function projectValidate(_positional, flags) {
 	}
 
 	// secret scan of the committed record (private classes excluded).
-	const findings = scanFiles(walkText(pd));
+	const findings = scanFiles(walkCommitted(pd));
 
 	const hasSecrets = findings.length > 0;
 	const status = hasSecrets ? 'secrets' : issues.length ? 'invalid' : 'ok';

@@ -9,13 +9,13 @@
 //     [--template <owner/repo>] [--dry-run] [--confirm] [--resume]
 //     [--skip-secret-scan] [--json] [--non-interactive] [--starter-path <p>]
 
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { EXIT, die, ok, warn, info, fail, emitJson, c } from '../../lib/output.mjs';
 import { isValidSlug } from '../../lib/slug.mjs';
-import { leadDir, starterRoot, templatesDir } from '../../lib/paths.mjs';
+import { containedPath, leadDir, starterRoot, templatesDir } from '../../lib/paths.mjs';
 import { readYaml, writeYaml } from '../../lib/yaml.mjs';
 import { validateProject } from '../../lib/validate.mjs';
 import { run, have, gitHead, isGitRepo, ghRepoExists } from '../../lib/proc.mjs';
@@ -27,27 +27,57 @@ const PROJECT_DIRS = ['brief', 'analysis', 'proposal', 'decisions', 'metrics', '
 const GITIGNORE_LINES = ['.project/private/', '.project/credentials/', '.project/auth/', '.project/**/raw-private/'];
 
 // --- dossier manifest -------------------------------------------------------
-function listFiles(root, base = '', acc = []) {
+//
+// lstat, never stat. This manifest decides what gets copied into a real client
+// repository and what the secret scanner examines, so a symlinked directory in
+// the lead workspace would pull arbitrary files from elsewhere on disk into
+// both — committed to a remote, having been classified by a `rel` path that
+// describes where the link sat rather than where it pointed. Symlink cycles
+// would also recurse without bound. A dossier is authored content; it has no
+// legitimate need for links.
+// Symlinks are collected into `links` rather than dropped, so promotion can say
+// what it refused to carry instead of silently shipping less than the author
+// staged.
+function listFiles(root, base = '', acc = [], links = []) {
 	for (const entry of readdirSync(join(root, base)).sort()) {
 		const rel = base ? `${base}/${entry}` : entry;
-		if (statSync(join(root, rel)).isDirectory()) listFiles(root, rel, acc);
-		else acc.push(rel);
+		let st;
+		try {
+			st = lstatSync(join(root, rel));
+		} catch {
+			continue;
+		}
+		if (st.isSymbolicLink()) {
+			links.push(rel);
+			continue;
+		}
+		if (st.isDirectory()) listFiles(root, rel, acc, links);
+		else if (st.isFile()) acc.push(rel);
 	}
 	return acc;
 }
 
-function classify(rel) {
+// Filesystem and editor droppings. These were classing as `versioned` and being
+// committed into every promoted client repo — invisible until the secret scan
+// started failing closed on binaries and .DS_Store became the first thing it
+// caught. Excluding them is the fix; the scan finding was the symptom.
+const CRUFT = /(^|\/)(\.DS_Store|Thumbs\.db|desktop\.ini|\.Spotlight-V100|\.Trashes|\._[^/]+)$/;
+
+// Exported for test/guards.test.mjs: this function decides what lands in a real
+// client repository, which is not a judgement that should go unasserted.
+export function classify(rel) {
 	if (rel === 'project.yml') return 'regenerated'; // we write a fresh active one
 	if (['CLAUDE.md', 'AGENTS.md', 'SKELETON.md'].includes(rel)) return 'excluded'; // lead-stage instructions
 	if (rel.startsWith('notes/')) return 'excluded';
 	if (/(^|\/)\.env(\..*)?$/.test(rel)) return 'excluded';
+	if (CRUFT.test(rel)) return 'excluded';
 	if (rel.startsWith('brief/attachments/private/') || rel.includes('/raw-private/')) return 'private';
 	return 'versioned';
 }
 
 function buildManifest(leadPath) {
-	const m = { versioned: [], private: [], excluded: [] };
-	for (const rel of listFiles(leadPath)) {
+	const m = { versioned: [], private: [], excluded: [], links: [] };
+	for (const rel of listFiles(leadPath, '', [], m.links)) {
 		const klass = classify(rel);
 		if (klass === 'regenerated') continue;
 		m[klass].push(rel);
@@ -177,7 +207,7 @@ export async function leadPromote(positional, flags) {
 			template,
 			template_commit: templateCommit,
 			create_via: usingSeam ? 'local-clone (seam)' : 'gh template',
-			manifest: { versioned: manifest.versioned.length, private: manifest.private.length, excluded: manifest.excluded.length },
+			manifest: { versioned: manifest.versioned.length, private: manifest.private.length, excluded: manifest.excluded.length, links: manifest.links.length },
 			secret_findings: findings.length,
 		};
 		if (json) emitJson(plan);
@@ -187,6 +217,11 @@ export async function leadPromote(positional, flags) {
 		info(`template: ${template}  ·  source commit: ${templateCommit ?? 'unknown'}`);
 		info(`create:   ${plan.create_via}`);
 		console.log(`  manifest: ${manifest.versioned.length} versioned · ${manifest.private.length} private · ${manifest.excluded.length} excluded`);
+		if (manifest.links.length) {
+			warn(`${manifest.links.length} symlink(s) will NOT be carried into the project:`);
+			for (const rel of manifest.links) info(rel);
+			info('A dossier is authored content — copy the real file in if you need it.');
+		}
 		if (findings.length) {
 			fail(`secret scan: ${findings.length} finding(s) — promotion would abort (exit 6)`);
 			for (const f of findings) info(`${f.file.replace(leadPath + '/', '')}:${f.line} [${f.rule}]`);
@@ -260,16 +295,21 @@ export async function leadPromote(positional, flags) {
 	const projectRoot = join(dest, '.project');
 	for (const d of PROJECT_DIRS) mkdirSync(join(projectRoot, d), { recursive: true });
 	mkdirSync(join(projectRoot, 'private'), { recursive: true });
-	for (const rel of manifest.versioned) {
-		const to = join(projectRoot, rel);
+	// The manifest is symlink-free, but the DESTINATION is a fresh clone of a
+	// template we do not control byte-for-byte, so resolve each target through
+	// its real path before writing. Same reasoning as sync's applyEntry: a
+	// contained-looking string is not a contained write.
+	const copyInto = (from, rel, root) => {
+		const to = containedPath(root, rel);
+		if (to === null) {
+			recover('copy-dossier', `refusing to write outside the project: ${rel}`, EXIT.ACCESS_FAILURE);
+			return;
+		}
 		mkdirSync(dirname(to), { recursive: true });
-		cpSync(join(leadPath, rel), to);
-	}
-	for (const rel of manifest.private) {
-		const to = join(projectRoot, 'private', rel);
-		mkdirSync(dirname(to), { recursive: true });
-		cpSync(join(leadPath, rel), to);
-	}
+		cpSync(from, to);
+	};
+	for (const rel of manifest.versioned) copyInto(join(leadPath, rel), rel, projectRoot);
+	for (const rel of manifest.private) copyInto(join(leadPath, rel), join('private', rel), projectRoot);
 	// Seed structured docs if the lead didn't carry them.
 	const seedIfAbsent = (rel, data) => {
 		const p = join(projectRoot, rel);
