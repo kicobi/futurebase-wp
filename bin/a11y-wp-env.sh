@@ -35,6 +35,26 @@ if ! curl -fsS --max-time 5 "$WP_URL/" > /dev/null 2>&1; then
 	exit 1
 fi
 
+# wp-env MOUNTS this repo at wp-content/themes/<dir> but never ACTIVATES it, so
+# a fresh environment boots on core's bundled default theme. Auditing that would
+# produce a green gate for software this repo does not ship — worse than no gate,
+# because it reads as proof. Assert the active stylesheet before measuring
+# anything. bin/demo-content.sh performs the activation, and imports content so
+# the archive and search templates have something to render.
+theme_slug="$(basename "$ROOT")"
+active_theme=$(
+	npx --silent wp-env run cli wp option get stylesheet --skip-themes --skip-plugins 2>/dev/null \
+		| tr -d '\r' \
+		| grep -v '^$' \
+		| head -1 \
+		|| true
+)
+if [ "$active_theme" != "$theme_slug" ]; then
+	echo "error: active theme is '${active_theme:-<none>}', expected '$theme_slug'" >&2
+	echo "       pa11y would audit the wrong theme. Run 'npm run demo:import -- --force' first." >&2
+	exit 1
+fi
+
 pa11y_tmpdir=$(mktemp -d)
 trap 'rm -rf "$pa11y_tmpdir"' EXIT
 

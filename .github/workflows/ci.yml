@@ -131,6 +131,10 @@ jobs:
             - run: npm ci
             - run: npm run build
             - run: npm run env:start
+            # Activates the theme and imports the fixture. Without it wp-env
+            # serves core's default theme and this gate greens on the wrong
+            # software; a11y-wp-env.sh now refuses to run in that state.
+            - run: npm run demo:import
             - run: npm run a11y
             - run: npm run env:stop
               if: always()

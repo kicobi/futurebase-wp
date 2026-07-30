@@ -4,10 +4,19 @@ The evidence layer of the [project lifecycle](project-lifecycle.md): what state 
 project starts in, how success is defined and agreed, and how before/after is
 compared honestly.
 
-> **Status:** M0 (design only). Schemas exist under
-> [`tools/project-system/schemas/`](../tools/project-system/schemas/); the
-> runners (Playwright, Lighthouse, axe, WP-CLI) are built in later phases. This
-> document is the schema-level design.
+> **Status:** implemented. This began as the M0 schema-level design and the
+> runners it anticipated now exist — see
+> [`tools/project-system/modules/`](../tools/project-system/modules/) for the
+> Lighthouse, axe, crawl, screenshot and WP-CLI modules, and `baseline run` /
+> `final run` / `compare` for the commands that drive them. Schemas remain the
+> contract, under
+> [`tools/project-system/schemas/`](../tools/project-system/schemas/).
+>
+> This document describes the *design* — data shapes, module statuses, and the
+> phasing rules below. For what is actually built and shipping, the
+> [project-system README](../tools/project-system/README.md) is the single
+> authority; do not restate implementation status here or the two will drift
+> apart again.
 
 ## Baseline is phased and incremental
 

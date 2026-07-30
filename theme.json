@@ -246,25 +246,25 @@
 				":hover": {
 					"color": {
 						"background": "var(--wp--preset--color--contrast-3)",
-						"text": "var(--wp--preset--color--base)"
+						"text": "var(--wp--preset--color--contrast-2)"
 					}
 				},
 				":focus": {
 					"color": {
 						"background": "var(--wp--preset--color--contrast-3)",
-						"text": "var(--wp--preset--color--base)"
+						"text": "var(--wp--preset--color--contrast-2)"
 					}
 				},
 				":active": {
 					"color": {
 						"background": "var(--wp--preset--color--contrast-3)",
-						"text": "var(--wp--preset--color--base)"
+						"text": "var(--wp--preset--color--contrast-2)"
 					}
 				},
 				":focus-visible": {
 					"color": {
 						"background": "var(--wp--preset--color--contrast-3)",
-						"text": "var(--wp--preset--color--base)"
+						"text": "var(--wp--preset--color--contrast-2)"
 					},
 					"outline": {
 						"color": "var(--wp--preset--color--contrast-2)",
@@ -276,7 +276,7 @@
 				":visited": {
 					"color": {
 						"background": "var(--wp--preset--color--contrast-3)",
-						"text": "var(--wp--preset--color--base)"
+						"text": "var(--wp--preset--color--contrast-2)"
 					}
 				}
 			},
