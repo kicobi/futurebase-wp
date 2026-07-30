@@ -128,12 +128,20 @@ fi
 # thing that makes that hold. A file added to PORTABLE_BIN without the property
 # actually being true would otherwise be synced into a project and undo its
 # rename — so a list we failed to keep in step is the exact failure to prevent.
+# Read the list from the WORKTREE being probed, not from the checkout this
+# script was launched in. They are the same file — rename never touches tools/ —
+# but only when the working tree is clean. Reading from the launch directory
+# meant an uncommitted PORTABLE_BIN edit probed files at HEAD that did not yet
+# have the property being added, and the guard failed on its own staleness
+# rather than on anything real.
 SYNC_LIB="tools/project-system/lib/sync.mjs"
-portable_bin=$(node --input-type=module -e "
-	import { PORTABLE_BIN } from './$SYNC_LIB';
-	if (!Array.isArray(PORTABLE_BIN) || PORTABLE_BIN.length === 0) process.exit(2);
-	console.log(PORTABLE_BIN.join('\n'));
-" 2>>"$LOG")
+portable_bin=$(node -e "
+	const { pathToFileURL } = require('node:url');
+	import(pathToFileURL(process.argv[1]).href).then((m) => {
+		if (!Array.isArray(m.PORTABLE_BIN) || m.PORTABLE_BIN.length === 0) process.exit(2);
+		console.log(m.PORTABLE_BIN.join('\n'));
+	}).catch(() => process.exit(2));
+" "$WT2/$SYNC_LIB" 2>>"$LOG")
 if [ -z "$portable_bin" ]; then
 	problems+=("could not read PORTABLE_BIN from $SYNC_LIB — the slug-free contract for bin/ is unverified")
 fi
