@@ -96,19 +96,29 @@ fi
 # 3. Patterns compose; templates wire.
 #    front-page.html must not contain content blocks other than header/main/pattern/footer.
 # ---------------------------------------------------------------------------
-section "3. Templates wire (front-page.html stays thin)"
+section "3, 4, 5, 7, 9. Parsed contract checks"
 
-if [ -f templates/front-page.html ]; then
-	# Count block directives that aren't template-part / group (main) / pattern.
-	bad=$(grep -E 'wp:(paragraph|heading|buttons?|image|cover|columns?|query|post-)' templates/front-page.html || true)
-	if [ -n "$bad" ]; then
-		fail "templates/front-page.html contains content blocks — move to a pattern"
-		printf "%s\n" "$bad" | sed 's/^/    /'
+# These five moved into bin/verify-contract.mjs, which parses block markup and
+# theme.json instead of grepping them. The greps here passed for the wrong
+# reason: a blacklist that omitted core/list and core/html, a pattern count
+# nobody took, a `"fluid": true` match that a nested preset satisfied, an AWK
+# parser that read compact JSON as an empty list. bin/verify-contract.test.mjs
+# feeds each check markup that must fail it.
+if command -v node > /dev/null; then
+	if contract_output=$(node bin/verify-contract.mjs 2>&1); then
+		pass "contract items 3, 4, 5, 7, 9 (parsed)"
 	else
-		pass "templates/front-page.html is pure wiring"
+		fail "contract violations:"
+		printf "%s\n" "$contract_output" | sed 's/^/    /'
+	fi
+
+	if node --test bin/verify-contract.test.mjs > /dev/null 2>&1; then
+		pass "contract checks still reject known-bad markup"
+	else
+		fail "bin/verify-contract.test.mjs failed — the contract checks are not proven to reject violations"
 	fi
 else
-	fail "templates/front-page.html is missing"
+	fail "node not found on PATH (cannot run the parsed contract checks)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -161,29 +171,13 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Role, not format. No hardcoded /wp-content/themes/ paths in markup.
-# ---------------------------------------------------------------------------
-section "5. Role, not format (no hardcoded theme paths)"
-
-hardcoded=$(grep -rEn '/wp-content/themes/' patterns templates parts 2>/dev/null || true)
-if [ -n "$hardcoded" ]; then
-	fail "hardcoded /wp-content/themes/ paths found — use get_theme_file_uri()"
-	printf "%s\n" "$hardcoded" | sed 's/^/    /'
-else
-	pass "no hardcoded theme paths in markup"
-fi
-
-# ---------------------------------------------------------------------------
 # 7. Fluid typography is on; no raw clamp() in patterns/templates.
 # ---------------------------------------------------------------------------
-section "7. Fluid typography"
+section "7. Fluid typography (raw clamp)"
 
-if grep -qE '"fluid"[[:space:]]*:[[:space:]]*true' theme.json; then
-	pass "theme.json declares settings.typography.fluid: true"
-else
-	fail "theme.json is missing settings.typography.fluid: true"
-fi
-
+# settings.typography.fluid and the fontSize presets are checked by
+# bin/verify-contract.mjs — both needed parsed JSON rather than a grep that
+# a nested key could satisfy. What remains here is markup-level.
 clamp_hits=$(grep -rEn '\bclamp\(' patterns templates parts 2>/dev/null || true)
 if [ -n "$clamp_hits" ]; then
 	fail "raw clamp() in markup — move to a fontSize preset with fluid: { min, max }"
@@ -192,36 +186,9 @@ else
 	pass "no raw clamp() in patterns/templates/parts"
 fi
 
-# Every rem-denominated fontSize preset larger than 1rem must carry a
-# { min, max } fluid object. Body-scale presets (≤1rem) are exempt — fluid
-# body text is a pessimization. Non-rem sizes are skipped (separate rule).
-if command -v node > /dev/null; then
-	if preset_output=$(node -e '
-		const theme = require("./theme.json");
-		const sizes = ((theme.settings || {}).typography || {}).fontSizes || [];
-		const out = [];
-		for (const p of sizes) {
-			const m = /^([\d.]+)rem$/.exec(p.size || "");
-			if (!m) continue;
-			if (parseFloat(m[1]) <= 1) continue;
-			if (!p.fluid || typeof p.fluid !== "object") {
-				out.push(p.slug + ": size " + p.size + " but no fluid { min, max } object");
-				continue;
-			}
-			if (typeof p.fluid.min !== "string" || typeof p.fluid.max !== "string") {
-				out.push(p.slug + ": fluid must carry both min and max as strings");
-			}
-		}
-		if (out.length) { console.log(out.join("\n")); process.exit(1); }
-	' 2>&1); then
-		pass "every heading-sized fontSize preset has fluid { min, max }"
-	else
-		fail "fontSize presets missing fluid { min, max } (required when size > 1rem):"
-		printf "%s\n" "$preset_output" | sed 's/^/    /'
-	fi
-else
-	fail "node not found on PATH (cannot check fontSize presets)"
-fi
+# The fontSize preset rule lives in bin/verify-contract.mjs now. This version
+# skipped every non-rem size, so a 32px preset needing a fluid range passed by
+# not being looked at.
 
 # Every assets/fonts/ reference in theme.json fontFamilies[].fontFace[].src
 # points at a real file. Only fires when the theme declares custom faces —
@@ -254,42 +221,6 @@ if command -v node > /dev/null; then
 	fi
 else
 	fail "node not found on PATH (cannot check font references)"
-fi
-
-# ---------------------------------------------------------------------------
-# 9. Every customTemplates entry has a file on disk.
-# ---------------------------------------------------------------------------
-section "9. Custom templates exist on disk"
-
-# Extract the "name" values from the customTemplates array. This is a
-# simple parser — good enough for theme.json, but only handles flat
-# "name": "foo" pairs inside customTemplates.
-names=$(awk '
-	/"customTemplates"[[:space:]]*:/ { in_ct=1; depth=0; next }
-	in_ct {
-		n=gsub(/\[/, "["); depth+=n
-		n=gsub(/\]/, "]"); depth-=n
-		if (depth<=0 && match($0, /\]/)) { in_ct=0; next }
-		if (match($0, /"name"[[:space:]]*:[[:space:]]*"[^"]+"/)) {
-			s=substr($0, RSTART, RLENGTH)
-			gsub(/.*"name"[[:space:]]*:[[:space:]]*"/, "", s)
-			gsub(/".*/, "", s)
-			print s
-		}
-	}
-' theme.json)
-
-missing=0
-for name in $names; do
-	if [ ! -f "templates/${name}.html" ]; then
-		fail "theme.json customTemplate '$name' has no templates/${name}.html"
-		missing=1
-	fi
-done
-if [ -z "$names" ]; then
-	pass "no customTemplates declared"
-elif [ $missing -eq 0 ]; then
-	pass "every customTemplates entry has a matching file"
 fi
 
 # ---------------------------------------------------------------------------

@@ -110,7 +110,11 @@ The nine-item Technical Contract.
 8. **Text domain = theme slug.** Every `__()`, `_e()`, `esc_html__()`, `esc_attr__()`, `_x()`, `_n()` call uses the theme slug verbatim. Enforced by phpcs.
 9. **Custom templates must exist on disk.** Every entry in `theme.json`'s `customTemplates` array has a matching `templates/<name>.html` file. No ghost entries.
 
-`bin/verify-theme.sh` enforces items 1, 3, 4, 5, 7, and 9 directly, plus item 8 via the `composer phpcs` invocation. Items 2 and 6 rely on review discipline; any exception belongs in this document, not in the code.
+`bin/verify-theme.sh` enforces items 1, 3, 4, 5, 7, and 9, plus item 8 via the `composer phpcs` invocation. Items 2 and 6 rely on review discipline; any exception belongs in this document, not in the code.
+
+**How, and how far.** Items 3, 4, 5, 7 and 9 are checked by [bin/verify-contract.mjs](bin/verify-contract.mjs), which parses block markup and `theme.json` rather than grepping them — the grep versions passed for the wrong reason (a blacklist that omitted `core/list`, a `"fluid": true` match a nested preset satisfied, an AWK parser that read compact JSON as an empty list). [bin/verify-contract.test.mjs](bin/verify-contract.test.mjs) feeds every check markup that must fail it, so a check cannot quietly stop checking; `npm run test:contract` runs it, and `verify-theme.sh` gates on it.
+
+One limit is worth stating rather than papering over. Item 5's *role* judgement — whether a given image is editorial (attachment-backed) or a brand mark (theme-served) — is a fact about the asset, not a property of the markup, so no parser decides it. What is enforced is that no markup hardcodes a path into the theme directory in any form. The role call itself stays with review and [docs/media-conventions.md](docs/media-conventions.md).
 
 ### Verification
 

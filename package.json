@@ -61,6 +61,7 @@
 		"env:stop": "wp-env stop",
 		"env:destroy": "wp-env destroy",
 		"env:clean": "wp-env clean all",
-		"env:cli": "wp-env run cli wp"
+		"env:cli": "wp-env run cli wp",
+		"test:contract": "node --test bin/verify-contract.test.mjs"
 	}
 }
