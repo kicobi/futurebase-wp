@@ -1,8 +1,16 @@
 // lib/compare.mjs — diff a baseline run against a final run and render reports.
 //
-// Comparison is only valid when both runs used the same config (same URLs,
-// viewports, tools) — which the shared capture engine guarantees. Metrics that
-// are missing on either side are reported as "not comparable", never invented.
+// Comparison is only valid when both runs measured the same thing the same way.
+// This file used to claim the shared capture engine guaranteed that. It does
+// not: the engine reads .project/baseline.yml, which is mutable and routinely
+// edited between a baseline (months before launch) and a final (at cutover). A
+// base_url or viewport changed in between produced two runs that were never
+// comparable, and nothing said so — the rows rendered, the arrows pointed at
+// improvements, and the limitations list was empty.
+//
+// So each run now carries a `target` snapshot of what it actually measured, and
+// comparability is CHECKED here rather than assumed. Metrics missing on either
+// side are still reported as "not comparable", never invented.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -32,9 +40,91 @@ function row(label, before, after, direction, unit = '') {
 	return { label, before, after, unit, change };
 }
 
+const hostOf = (url) => {
+	try {
+		return new URL(url).host;
+	} catch {
+		return url ?? null;
+	}
+};
+const viewportKey = (vs) =>
+	(vs ?? [])
+		.map((v) => `${v.name}:${v.width}x${v.height}`)
+		.sort()
+		.join(', ');
+const toolKey = (mods) =>
+	Object.fromEntries((mods ?? []).filter((m) => m.tool).map((m) => [m.module, `${m.tool}${m.tool_version ? `@${m.tool_version}` : ''}`]));
+
+// Compare what the two runs measured, and how.
+//
+// The split matters. A different HOST is routinely intentional — a redesign
+// baselines the old site and finals the new one — so it is disclosed, not
+// refused. A different VIEWPORT SET is not a target difference but a METHOD
+// difference: it changes what the numbers mean, so every performance row
+// becomes an apples-to-oranges comparison that still renders as an arrow. That
+// one blocks.
+export function compareTargets(baselineSummary, finalSummary) {
+	const limitations = [];
+	const blocking = [];
+
+	const b = baselineSummary?.target;
+	const f = finalSummary?.target;
+	if (!b || !f) {
+		limitations.push('one or both runs predate target snapshots — comparability could not be verified, so treat this comparison as indicative only');
+		return { limitations, blocking };
+	}
+
+	const bVp = viewportKey(b.viewports);
+	const fVp = viewportKey(f.viewports);
+	if (bVp !== fVp) {
+		blocking.push(`viewports differ (baseline: ${bVp || 'none'} · final: ${fVp || 'none'}) — page-weight, layout and screenshot metrics are not comparable across different viewports`);
+	}
+
+	const bHost = hostOf(b.base_url);
+	const fHost = hostOf(f.base_url);
+	if (bHost !== fHost) {
+		limitations.push(`base URL host differs (baseline: ${bHost ?? 'none'} · final: ${fHost ?? 'none'}) — expected for a redesign that moves domain, but confirm it is deliberate`);
+	}
+
+	const bPages = (b.pages ?? []).map((p) => p.name).sort();
+	const fPages = (f.pages ?? []).map((p) => p.name).sort();
+	if (bPages.join('|') !== fPages.join('|')) {
+		const onlyB = bPages.filter((p) => !fPages.includes(p));
+		const onlyF = fPages.filter((p) => !bPages.includes(p));
+		limitations.push(
+			`page set differs — crawl and per-page metrics cover different ground` +
+				(onlyB.length ? ` (baseline only: ${onlyB.join(', ')})` : '') +
+				(onlyF.length ? ` (final only: ${onlyF.join(', ')})` : ''),
+		);
+	}
+
+	const bMods = (b.modules ?? []).slice().sort();
+	const fMods = (f.modules ?? []).slice().sort();
+	if (bMods.join('|') !== fMods.join('|')) {
+		limitations.push(`module set differs (baseline: ${bMods.join(', ') || 'none'} · final: ${fMods.join(', ') || 'none'})`);
+	}
+
+	// Tool versions come from the per-module entries, which already record them.
+	const bTools = toolKey(baselineSummary.modules);
+	const fTools = toolKey(finalSummary.modules);
+	for (const mod of Object.keys(bTools)) {
+		if (fTools[mod] && bTools[mod] !== fTools[mod]) {
+			limitations.push(`${mod} ran under different tool versions (baseline: ${bTools[mod]} · final: ${fTools[mod]}) — scores are not strictly comparable across versions`);
+		}
+	}
+
+	return { limitations, blocking };
+}
+
 export function buildComparison(baselineRunDir, finalRunDir) {
 	const rows = [];
 	const limitations = [];
+
+	// Comparability first: a mismatch here changes what every row below means.
+	const bSummary = readJsonSafe(join(baselineRunDir, 'summary.json'));
+	const fSummary = readJsonSafe(join(finalRunDir, 'summary.json'));
+	const { limitations: targetLimits, blocking } = compareTargets(bSummary, fSummary);
+	limitations.push(...targetLimits);
 
 	const bCrawl = readJsonSafe(join(baselineRunDir, 'crawl', 'crawl.json'));
 	const fCrawl = readJsonSafe(join(finalRunDir, 'crawl', 'crawl.json'));
@@ -68,14 +158,14 @@ export function buildComparison(baselineRunDir, finalRunDir) {
 	const fWp = readJsonSafe(join(finalRunDir, 'wordpress', 'wordpress.json'));
 	if (bWp && fWp) rows.push(row('Active plugins', bWp.plugin_summary?.active, fWp.plugin_summary?.active, 'down'));
 
-	return { rows, limitations };
+	return { rows, limitations, blocking };
 }
 
 const fmt = (v, unit) => (v == null ? '—' : `${v}${unit ? ' ' + unit : ''}`);
 const arrow = { better: '▲ improved', worse: '▼ regressed', same: '– no change', 'n/a': 'not comparable' };
 
 export function renderComparison({ projectName, baselineRun, finalRun, comparison, metrics }) {
-	const { rows, limitations } = comparison;
+	const { rows, limitations, blocking = [] } = comparison;
 
 	// --- internal (full) Markdown ---
 	const md = [];
@@ -83,6 +173,16 @@ export function renderComparison({ projectName, baselineRun, finalRun, compariso
 	md.push('');
 	md.push(`Baseline: \`${baselineRun}\`  →  Final: \`${finalRun}\``);
 	md.push('');
+	// Above the table, not below it. A caveat printed after the numbers is read
+	// after the numbers have already landed.
+	if (blocking.length) {
+		md.push('> **These runs are not comparable.**');
+		md.push('>');
+		for (const b of blocking) md.push(`> - ${b}`);
+		md.push('>');
+		md.push('> The table below is rendered for inspection only. Do not quote it.');
+		md.push('');
+	}
 	md.push('| Measure | Before | After | Change |');
 	md.push('|---------|--------|-------|--------|');
 	for (const r of rows) md.push(`| ${r.label} | ${fmt(r.before, r.unit)} | ${fmt(r.after, r.unit)} | ${arrow[r.change] || r.change || ''} |`);
