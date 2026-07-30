@@ -121,9 +121,31 @@ fi
 # they derive it at runtime (pattern registry / style.css), so no 'wp-starter'
 # literal may survive a rename in these paths. rename-theme.sh does not scan
 # them; this asserts they never need it to.
-for probe in fixtures bin/demo-content.sh bin/scorecard.sh bin/smoke-render.sh bin/smoke-render.php; do
+#
+# The bin/ half of that list is DERIVED from PORTABLE_BIN in the sync
+# classifier, never restated here. Those files are copied verbatim into client
+# projects because they are held to be slug-free, and this loop is the only
+# thing that makes that hold. A file added to PORTABLE_BIN without the property
+# actually being true would otherwise be synced into a project and undo its
+# rename — so a list we failed to keep in step is the exact failure to prevent.
+SYNC_LIB="tools/project-system/lib/sync.mjs"
+portable_bin=$(node --input-type=module -e "
+	import { PORTABLE_BIN } from './$SYNC_LIB';
+	if (!Array.isArray(PORTABLE_BIN) || PORTABLE_BIN.length === 0) process.exit(2);
+	console.log(PORTABLE_BIN.join('\n'));
+" 2>>"$LOG")
+if [ -z "$portable_bin" ]; then
+	problems+=("could not read PORTABLE_BIN from $SYNC_LIB — the slug-free contract for bin/ is unverified")
+fi
+
+for probe in fixtures $portable_bin; do
 	target="$WT2/$probe"
-	[ -e "$target" ] || continue
+	if [ ! -e "$target" ]; then
+		# fixtures/ is probed opportunistically; a PORTABLE_BIN entry that does
+		# not exist means sync would offer a path the starter no longer ships.
+		[ "$probe" = "fixtures" ] || problems+=("$probe is listed in PORTABLE_BIN but does not exist")
+		continue
+	fi
 	leftovers=$(grep -rInl -- 'wp-starter' "$target" 2>/dev/null || true)
 	if [ -n "$leftovers" ]; then
 		problems+=("$probe still contains a 'wp-starter' literal after rename (derive the slug at runtime instead)")

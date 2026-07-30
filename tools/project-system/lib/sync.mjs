@@ -16,7 +16,7 @@
 // remote default branch), so nothing here depends on it being right.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { run } from './proc.mjs';
 
@@ -45,9 +45,11 @@ const STARTER_ONLY = ['.github/workflows/scorecard.yml'];
 // the theme before resolving the fixture path, and its Scorecard had never once
 // passed. Slug-bearing is a per-file property, not a per-directory one.
 //
-// Keep this list in step with the probe loop in bin/test-rename.sh, which is
-// what makes the slug-free claim true rather than merely intended.
-const PORTABLE_BIN = ['bin/demo-content.sh', 'bin/scorecard.sh', 'bin/smoke-render.sh', 'bin/smoke-render.php'];
+// bin/test-rename.sh imports this list and probes every entry, so the two
+// cannot drift: adding a file here without its slug-free property holding fails
+// the rename test. That assertion is what makes the claim true rather than
+// merely intended — do not inline a copy of this list anywhere.
+export const PORTABLE_BIN = ['bin/demo-content.sh', 'bin/scorecard.sh', 'bin/smoke-render.sh', 'bin/smoke-render.php'];
 
 // Ordered; first match wins.
 const RULES = [
@@ -95,9 +97,42 @@ export function refSubject(starter, ref) {
 	return r.ok ? r.stdout : null;
 }
 
-export function filesAt(starter, ref) {
-	const r = git(starter, ['ls-tree', '-r', '--name-only', ref]);
-	return r.ok && r.stdout ? r.stdout.split('\n').filter(Boolean) : [];
+// Default ls-tree format: "<mode> <type> <object>\t<path>" — parsed rather than
+// --format=, which needs a newer git than we can assume.
+function parseTree(stdout) {
+	const out = [];
+	for (const line of (stdout || '').split('\n').filter(Boolean)) {
+		const tab = line.indexOf('\t');
+		if (tab < 0) continue;
+		const [mode, , blob] = line.slice(0, tab).split(' ');
+		out.push({ rel: line.slice(tab + 1), mode, blob });
+	}
+	return out;
+}
+
+// Every path at a revision, with the mode and blob git records for it.
+//
+// The mode is carried because git tracks a real bit there — 100644 vs 100755 —
+// and dropping it lands the executable scripts in bin/ unrunnable. Taking it
+// from the same listing that yields the blob also saves a rev-parse per file.
+export function treeAt(starter, ref) {
+	const r = git(starter, ['ls-tree', '-r', ref]);
+	return r.ok ? parseTree(r.stdout) : [];
+}
+
+// Does git consider this path executable? Only two blob modes are possible in
+// a tree (100644, 100755), so this is the whole of what a checkout must honour.
+const wantsExec = (mode) => mode === '100755';
+
+// Is the working file executable by anyone? Compared as a boolean rather than a
+// full mode because umask legitimately varies between machines and git records
+// nothing finer than the one bit.
+function isExec(abs) {
+	try {
+		return (statSync(abs).mode & 0o111) !== 0;
+	} catch {
+		return false;
+	}
 }
 
 // Blob SHA of a path at a revision, or null when the path does not exist there.
@@ -150,28 +185,36 @@ export function isKnownUpstreamVersion(starter, ref, rel, blob, limit = 80) {
 // States: up-to-date | add | update | conflict | upstream-deleted
 export function planFiles({ projectRoot, starter, ref, only }) {
 	const entries = [];
-	const upstream = filesAt(starter, ref);
-	const upstreamSet = new Set(upstream);
+	const upstream = treeAt(starter, ref);
+	const upstreamSet = new Set(upstream.map((e) => e.rel));
 
-	for (const rel of upstream) {
+	for (const { rel, mode, blob: starterBlob } of upstream) {
 		const cls = classifyPath(rel);
 		if (cls === CLASS.NEVER || cls === CLASS.DEPS) continue;
 		if (only && cls !== only) continue;
 
 		const abs = join(projectRoot, rel);
-		const starterBlob = blobAt(starter, ref, rel);
 
 		if (!existsSync(abs)) {
-			entries.push({ rel, cls, state: 'add', starterBlob });
+			entries.push({ rel, cls, state: 'add', starterBlob, mode });
 			continue;
 		}
 		const projectBlob = hashFile(abs);
 		if (projectBlob && projectBlob === starterBlob) {
-			entries.push({ rel, cls, state: 'up-to-date' });
+			// Content agrees; the executable bit still may not. A project synced
+			// before applyEntry carried the mode has the scripts in bin/ present
+			// and current but unrunnable, and comparing content alone would call
+			// that in sync forever. Re-copying is how the mode gets repaired.
+			if (isExec(abs) === wantsExec(mode)) {
+				entries.push({ rel, cls, state: 'up-to-date' });
+			} else {
+				const note = `content matches — mode only (${wantsExec(mode) ? 'not executable → executable' : 'executable → not executable'})`;
+				entries.push({ rel, cls, state: 'update', starterBlob, projectBlob, mode, note });
+			}
 			continue;
 		}
 		const stale = isKnownUpstreamVersion(starter, ref, rel, projectBlob);
-		entries.push({ rel, cls, state: stale ? 'update' : 'conflict', starterBlob, projectBlob });
+		entries.push({ rel, cls, state: stale ? 'update' : 'conflict', starterBlob, projectBlob, mode });
 	}
 
 	// Files the starter has since removed. Reported, never deleted — removing
@@ -382,6 +425,13 @@ export function applyEntry(entry, { projectRoot, starter }) {
 	const bytes = blobBytes(starter, entry.starterBlob);
 	if (bytes == null) return false;
 	writeFileSync(abs, bytes);
+
+	// Neither write path gets the mode right on its own: writeFileSync creates a
+	// new file at the umask default (never executable) and leaves an existing
+	// file's mode alone. bin/ is the first SAFE class holding scripts that are
+	// executed directly, so an added demo-content.sh would arrive unrunnable and
+	// bin/smoke-render.sh's call into it would die on "Permission denied".
+	if (entry.mode) chmodSync(abs, wantsExec(entry.mode) ? 0o755 : 0o644);
 	return true;
 }
 
@@ -418,20 +468,15 @@ export function detectBase(starter, ref, projectRoot, { limit = 300 } = {}) {
 	if (!commits.ok || !commits.stdout) return null;
 
 	for (const commit of commits.stdout.split('\n').filter(Boolean)) {
-		// Default ls-tree format: "<mode> <type> <object>\t<path>" — parsed
-		// rather than --format=, which needs a newer git than we can assume.
 		const r = git(starter, ['ls-tree', '-r', commit, '--', ...SAFE_ROOTS]);
 		if (!r.ok) continue;
 		const theirs = new Map();
-		for (const line of r.stdout.split('\n').filter(Boolean)) {
-			const tab = line.indexOf('\t');
-			if (tab < 0) continue;
-			const path = line.slice(tab + 1);
+		for (const { rel, blob } of parseTree(r.stdout)) {
 			// SAFE_ROOTS is a walk hint, not a classification: `bin` holds mostly
 			// review-class scripts. Filter both sides by class or the comparison
 			// never matches and provenance repair silently returns null.
-			if (classifyPath(path) !== CLASS.SAFE) continue;
-			theirs.set(path, line.slice(0, tab).split(' ')[2]);
+			if (classifyPath(rel) !== CLASS.SAFE) continue;
+			theirs.set(rel, blob);
 		}
 		if (theirs.size !== mine.size) continue;
 		let match = true;

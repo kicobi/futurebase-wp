@@ -118,7 +118,7 @@ export async function sync(_positional, flags) {
 				upstream_deleted: deleted.length,
 				up_to_date: entries.length - drifted.length,
 			},
-			entries: drifted.map(({ rel, cls, state }) => ({ rel, cls, state })),
+			entries: drifted.map(({ rel, cls, state, note }) => ({ rel, cls, state, ...(note ? { note } : {}) })),
 		});
 	}
 
@@ -138,7 +138,10 @@ export async function sync(_positional, flags) {
 	const show = (title, list, colour) => {
 		if (!list.length) return;
 		console.log(c.bold(title));
-		for (const e of list) console.log(`  ${colour(e.state === 'add' ? '+' : e.state === 'upstream-deleted' ? '-' : '~')} ${e.rel}  ${c.dim(e.cls)}`);
+		for (const e of list) {
+			const mark = e.state === 'add' ? '+' : e.state === 'upstream-deleted' ? '-' : '~';
+			console.log(`  ${colour(mark)} ${e.rel}  ${c.dim(e.cls)}${e.note ? c.dim(` — ${e.note}`) : ''}`);
+		}
 		console.log('');
 	};
 
