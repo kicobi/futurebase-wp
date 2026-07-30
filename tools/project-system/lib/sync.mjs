@@ -50,7 +50,12 @@ const STARTER_ONLY = ['.github/workflows/scorecard.yml'];
 // cannot drift: adding a file here without its slug-free property holding fails
 // the rename test. That assertion is what makes the claim true rather than
 // merely intended — do not inline a copy of this list anywhere.
-export const PORTABLE_BIN = ['bin/demo-content.sh', 'bin/scorecard.sh', 'bin/smoke-render.sh', 'bin/smoke-render.php'];
+// verify-contract.mjs and its test travel together, deliberately. The checker
+// alone would be a file a project never runs (verify-theme.sh is review-class
+// and hand-ported), and the test alone proves nothing. Shipping the pair means
+// a project that ports its verify script gets checks already proven to reject
+// the markup they forbid.
+export const PORTABLE_BIN = ['bin/demo-content.sh', 'bin/scorecard.sh', 'bin/smoke-render.sh', 'bin/smoke-render.php', 'bin/verify-contract.mjs', 'bin/verify-contract.test.mjs'];
 
 // Ordered; first match wins.
 const RULES = [

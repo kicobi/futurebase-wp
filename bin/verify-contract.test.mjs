@@ -12,7 +12,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseBlocks, checkTemplateWiring, checkPageComposition, checkFluidTypography, checkCustomTemplates, checkThemePaths } from './verify-contract.mjs';
 
-const SLUG = 'wp-starter';
+// A slug this theme is not. These fixtures test the SHAPE the contract
+// requires, not this particular theme, and using the real slug made them look
+// theme-specific when they are not. It also keeps this file slug-free, which is
+// what lets sync carry it into client projects alongside the checker it proves
+// — see PORTABLE_BIN in tools/project-system/lib/sync.mjs.
+const SLUG = 'acme-theme';
 
 // --- the parser --------------------------------------------------------------
 
@@ -36,7 +41,7 @@ test('block parser tracks nesting depth', () => {
 const WIRING = `
 <!-- wp:template-part {"slug":"header"} /-->
 <!-- wp:group {"tagName":"main"} -->
-<main><!-- wp:pattern {"slug":"wp-starter/home"} /--></main>
+<main><!-- wp:pattern {"slug":"acme-theme/home"} /--></main>
 <!-- /wp:group -->
 <!-- wp:template-part {"slug":"footer"} /-->`;
 
@@ -64,7 +69,7 @@ test('a blacklisted block is still caught', () => {
 test('composing more than one pattern is rejected', () => {
 	// The old check counted nothing, so a template could reference three
 	// patterns and still be "thin".
-	const two = WIRING.replace('<!-- /wp:group -->', '<!-- wp:pattern {"slug":"wp-starter/extra"} /--><!-- /wp:group -->');
+	const two = WIRING.replace('<!-- /wp:group -->', '<!-- wp:pattern {"slug":"acme-theme/extra"} /--><!-- /wp:group -->');
 	assert.ok(checkTemplateWiring(two).some((p) => p.includes('references 2 patterns')));
 });
 
@@ -76,25 +81,25 @@ test('a template referencing no pattern is rejected', () => {
 // --- item 4 ------------------------------------------------------------------
 
 // The file is patterns/_section-hero.php; the slug it registers is
-// wp-starter/section-hero. References name the slug.
+// acme-theme/section-hero. References name the slug.
 test('a page-level pattern composing section patterns passes', () => {
-	const php = '<!-- wp:pattern {"slug":"wp-starter/section-hero"} /--><!-- wp:pattern {"slug":"wp-starter/section-cta"} /-->';
+	const php = '<!-- wp:pattern {"slug":"acme-theme/section-hero"} /--><!-- wp:pattern {"slug":"acme-theme/section-cta"} /-->';
 	assert.deepEqual(checkPageComposition(php, SLUG), []);
 });
 
 test('content in a page-level pattern is rejected', () => {
-	const php = '<!-- wp:pattern {"slug":"wp-starter/section-hero"} /--><!-- wp:heading /-->';
+	const php = '<!-- wp:pattern {"slug":"acme-theme/section-hero"} /--><!-- wp:heading /-->';
 	assert.ok(checkPageComposition(php, SLUG).some((p) => p.includes('does not carry content')));
 });
 
 test('composing a non-section pattern is rejected', () => {
-	const php = '<!-- wp:pattern {"slug":"wp-starter/_copyright"} /-->';
+	const php = '<!-- wp:pattern {"slug":"acme-theme/_copyright"} /-->';
 	assert.ok(checkPageComposition(php, SLUG).some((p) => p.includes('section-* patterns only')));
 });
 
 test('composing another theme’s pattern is rejected', () => {
 	const php = '<!-- wp:pattern {"slug":"twentytwentyfive/hero"} /-->';
-	assert.ok(checkPageComposition(php, SLUG).some((p) => p.includes('not a wp-starter/ pattern')));
+	assert.ok(checkPageComposition(php, SLUG).some((p) => p.includes('not a acme-theme/ pattern')));
 });
 
 // --- item 7 ------------------------------------------------------------------
@@ -161,7 +166,7 @@ test('markup free of theme paths passes', () => {
 });
 
 test('hardcoded theme directory paths are rejected in every form', () => {
-	for (const bad of ['<img src="/wp-content/themes/wp-starter/assets/x.png">', '<img src="https://example.com/wp-content/themes/x/a.png">', '<?php echo get_stylesheet_directory_uri(); ?>/assets/x.png', '<?php echo get_template_directory_uri(); ?>/assets/x.png']) {
+	for (const bad of ['<img src="/wp-content/themes/acme-theme/assets/x.png">', '<img src="https://example.com/wp-content/themes/x/a.png">', '<?php echo get_stylesheet_directory_uri(); ?>/assets/x.png', '<?php echo get_template_directory_uri(); ?>/assets/x.png']) {
 		const problems = checkThemePaths([{ file: 'patterns/a.php', contents: bad }]);
 		assert.equal(problems.length, 1, `must reject: ${bad}`);
 	}
