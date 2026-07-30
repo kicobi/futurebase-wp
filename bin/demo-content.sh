@@ -45,11 +45,31 @@ if [ -z "$WP_URL" ]; then
 fi
 WP_URL="${WP_URL%/}"
 
-host=$(printf "%s" "$WP_URL" | sed -E 's#^https?://##; s#[:/].*$##')
+# Parse the host with a real URL parser, not string surgery. The previous
+# version stripped everything after the first colon, which reads the USERINFO
+# field as the host: `http://localhost:pw@production.example` parsed as
+# "localhost" and was accepted, while the documented `http://[::1]:8888` parsed
+# as "[" and was refused. A guard in front of `wp site empty` has to be exact in
+# both directions. Node is already required here (npx above), so use its parser.
+host=$(
+	printf "%s" "$WP_URL" | node -e '
+		let s = "";
+		process.stdin.on("data", (d) => (s += d));
+		process.stdin.on("end", () => {
+			try {
+				// hostname (not host) drops the port and never includes userinfo.
+				process.stdout.write(new URL(s.trim()).hostname);
+			} catch {
+				process.exit(1);
+			}
+		});
+	' 2>/dev/null || true
+)
 case "$host" in
-	localhost|127.0.0.1|::1) ;;
+	# Bracketed form is what URL.hostname returns for IPv6 literals.
+	localhost|127.0.0.1|'[::1]') ;;
 	*)
-		echo "error: refusing to wipe non-localhost site: $WP_URL" >&2
+		echo "error: refusing to wipe non-localhost site: $WP_URL (host: ${host:-unparseable})" >&2
 		exit 3
 		;;
 esac

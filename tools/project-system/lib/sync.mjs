@@ -16,8 +16,9 @@
 // remote default branch), so nothing here depends on it being right.
 
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { containedPath } from './paths.mjs';
 import { run } from './proc.mjs';
 
 export const CLASS = {
@@ -250,10 +251,15 @@ export function safeFiles(root) {
 			const rel = `${base}/${name}`;
 			let st;
 			try {
-				st = statSync(join(root, rel));
+				// lstat, not stat: a symlinked directory here would walk outside
+				// the project and report foreign files as its own SAFE
+				// inventory, which then feeds provenance detection. Symlink
+				// cycles would also recurse until the stack gave out.
+				st = lstatSync(join(root, rel));
 			} catch {
 				continue;
 			}
+			if (st.isSymbolicLink()) continue;
 			if (st.isDirectory()) walk(rel);
 			else if (classifyPath(rel) === CLASS.SAFE) acc.push(rel);
 		}
@@ -415,7 +421,14 @@ export function planDeps({ projectRoot, starter, ref }) {
 // --- apply ------------------------------------------------------------------
 
 export function applyEntry(entry, { projectRoot, starter }) {
-	const abs = join(projectRoot, entry.rel);
+	// entry.rel is slug-free and free of `..` — it comes from a git tree or a
+	// class-filtered walk — but that is not enough to keep the write inside the
+	// project. If any component on the way is a symlink, join() still produces a
+	// contained-looking string while the filesystem resolves it elsewhere, and
+	// writeFileSync follows it out of the root. Resolve through the real path
+	// and refuse rather than write blind.
+	const abs = containedPath(projectRoot, entry.rel);
+	if (abs === null) return false;
 	mkdirSync(dirname(abs), { recursive: true });
 
 	if (entry.cls === CLASS.DEPS) {

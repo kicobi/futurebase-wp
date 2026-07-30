@@ -80,6 +80,13 @@ jobs:
 
             - run: npm ci
             - run: composer install --prefer-dist --no-progress --no-interaction
+
+            # The project-system guards — secret scanning and path containment.
+            # These decide what gets copied into a client repository and what is
+            # examined before it goes, so they are gated rather than trusted.
+            - name: Project-system guard tests
+              run: npm ci --prefix tools/project-system && npm test --prefix tools/project-system
+
             - name: Run scaffold probes
               run: |
                   npm run block:new -- client-logo-strip
