@@ -31,8 +31,11 @@ export function projectInspect(_positional, flags) {
 	console.log(`  journeys          ${s.journeys}`);
 	console.log('');
 	console.log(c.bold('Capture'));
-	console.log(`  baseline runs     ${s.baseline.runs}${s.baseline.latest ? ` · latest ${s.baseline.latest.id} (${s.baseline.latest.status})` : ''}`);
-	console.log(`  final runs        ${s.final.runs}${s.final.latest ? ` · latest ${s.final.latest.id} (${s.final.latest.status})` : ''}`);
+	// Show captured alongside the raw count — they diverge exactly when a run
+	// exists but measured nothing, which is the case worth noticing.
+	const runLine = (stats) => `${stats.runs}${stats.captured !== stats.runs ? ` (${stats.captured} captured)` : ''}`;
+	console.log(`  baseline runs     ${runLine(s.baseline)}${s.baseline.latest ? ` · latest ${s.baseline.latest.id} (${s.baseline.latest.status})` : ''}`);
+	console.log(`  final runs        ${runLine(s.final)}${s.final.latest ? ` · latest ${s.final.latest.id} (${s.final.latest.status})` : ''}`);
 	console.log(`  comparison        ${s.comparison ? 'yes' : 'no'}`);
 	console.log(`  follow-up surveys ${s.followUp.length ? s.followUp.join(', ') : 'none'}`);
 	process.exit(EXIT.OK);

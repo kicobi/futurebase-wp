@@ -10,8 +10,8 @@
 		"schema_version": { "type": "integer", "const": 1 },
 		"run_id": {
 			"type": "string",
-			"pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z$",
-			"description": "Dated, sortable run id, e.g. 2026-07-03T100000Z."
+			"pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z(-[0-9]{2})?$",
+			"description": "Dated, sortable run id, e.g. 2026-07-03T100000Z. Ids resolve to the second, so a second run within the same second gets a zero-padded suffix (…Z-02) that preserves the lexical sort."
 		},
 		"project_type": { "type": "string", "enum": ["new", "redesign"] },
 		"kind": { "type": "string", "enum": ["baseline", "final"] },

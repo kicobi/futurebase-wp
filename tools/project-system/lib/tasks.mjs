@@ -21,10 +21,13 @@ function resolveDone(key, summary) {
 	switch (key) {
 		case 'metrics':
 			return summary.metrics.count > 0;
+		// `captured`, not `runs` — a run directory that measured nothing must not
+		// close the task. Same reasoning as project/status.mjs; task generation
+		// reads the same summary and had the same bug.
 		case 'baseline':
-			return summary.baseline.runs > 0;
+			return summary.baseline.captured > 0;
 		case 'final':
-			return summary.final.runs > 0;
+			return summary.final.captured > 0;
 		case 'compare':
 			return !!summary.comparison;
 		case 'followup30':

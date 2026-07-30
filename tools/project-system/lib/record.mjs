@@ -3,8 +3,15 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { readYaml, readJson } from './yaml.mjs';
+import { validateBaselineRun } from './validate.mjs';
 
-const RUN_RE = /^\d{4}-\d{2}-\d{2}T\d{6}Z$/;
+const RUN_RE = /^\d{4}-\d{2}-\d{2}T\d{6}Z(-\d{2})?$/;
+
+// Run statuses that mean evidence was actually captured. `partial` is the case
+// where no module succeeded, and `failed` where none could — neither is a
+// baseline. Counting directories treated both as done, so a run that measured
+// nothing closed the lifecycle step and the project looked ready to compare.
+const CAPTURED = new Set(['completed', 'completed_with_warnings']);
 
 function safe(fn, fallback) {
 	try {
@@ -20,6 +27,36 @@ export function listRuns(dir) {
 
 function countFiles(dir) {
 	return safe(() => readdirSync(dir).filter((f) => statSync(join(dir, f)).isFile()).length, 0);
+}
+
+// Split runs into those that captured evidence and those that did not, with a
+// reason for each of the latter. Both halves are reported: a silently dropped
+// failure is how a broken run became an invisible one.
+export function classifyRuns(dir) {
+	const captured = [];
+	const incomplete = [];
+	for (const id of listRuns(dir)) {
+		const summary = safe(() => readJson(join(dir, id, 'summary.json')), null);
+		if (!summary) {
+			incomplete.push({ id, reason: 'no summary.json' });
+			continue;
+		}
+		const { valid } = validateBaselineRun(summary);
+		if (!valid) {
+			incomplete.push({ id, reason: 'summary failed schema validation' });
+			continue;
+		}
+		if (CAPTURED.has(summary.status)) captured.push(id);
+		else incomplete.push({ id, reason: summary.status });
+	}
+	return { captured, incomplete };
+}
+
+// `runs` stays the raw directory count so nothing silently disappears from the
+// record; `captured` is what the lifecycle may treat as done.
+function runStats(dir) {
+	const { captured, incomplete } = classifyRuns(dir);
+	return { runs: listRuns(dir).length, captured: captured.length, incomplete, latest: latestRun(dir) };
 }
 
 function latestRun(dir) {
@@ -65,8 +102,8 @@ export function recordSummary(paths) {
 		metrics: { count: metricsItems.length, measured: metricsItems.filter((m) => m.baseline?.status === 'measured').length },
 		observations: docCount(join(projectDir, 'observations.yml')),
 		journeys: docCount(join(projectDir, 'metrics', 'journeys.yml')),
-		baseline: { runs: listRuns(paths.baselineDir).length, latest: latestRun(paths.baselineDir) },
-		final: { runs: listRuns(paths.finalDir).length, latest: latestRun(paths.finalDir) },
+		baseline: runStats(paths.baselineDir),
+		final: runStats(paths.finalDir),
 		comparison,
 		followUp,
 	};

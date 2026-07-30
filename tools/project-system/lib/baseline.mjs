@@ -57,10 +57,29 @@ export function resolvePages(config) {
 	});
 }
 
+// Create the run directory EXCLUSIVELY, and return the id that was actually
+// used. `mkdirSync(dir, { recursive: true })` silently succeeds on a directory
+// that already exists, and run ids only resolve to the second — so two captures
+// in the same second shared one directory and the second overwrote the first's
+// evidence, including its summary. Evidence that can be overwritten without a
+// word is not evidence.
+//
+// Disambiguating suffixes are zero-padded so the lexical sort that
+// latestRunId() and latestRun() depend on still orders them correctly (-02
+// before -10, and the unsuffixed base before both).
 export function makeRunDir(baselineDir, runId) {
-	const dir = join(baselineDir, runId);
-	mkdirSync(dir, { recursive: true });
-	return dir;
+	mkdirSync(baselineDir, { recursive: true });
+	for (let n = 1; n <= 99; n++) {
+		const id = n === 1 ? runId : `${runId}-${String(n).padStart(2, '0')}`;
+		try {
+			const dir = join(baselineDir, id);
+			mkdirSync(dir); // throws EEXIST rather than adopting someone else's run
+			return { dir, runId: id };
+		} catch (err) {
+			if (err.code !== 'EEXIST') throw err;
+		}
+	}
+	throw new Error(`could not create a unique run directory under ${baselineDir} (99 collisions on ${runId})`);
 }
 
 // Write summary.json (validated) + update the portable latest.json pointer.
