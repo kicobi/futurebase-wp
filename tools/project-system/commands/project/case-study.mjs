@@ -55,7 +55,18 @@ export function caseStudy(_positional, flags) {
 	md.push('');
 	md.push('## What measurably improved');
 	md.push('');
-	if (comparison?.rows?.length) {
+	if (comparison?.blocking?.length) {
+		// This draft becomes client-facing copy. A table of "improvements" drawn
+		// from runs that measured different things is the one output where a
+		// silent mismatch does real damage, so the numbers are withheld rather
+		// than footnoted.
+		md.push('> **Before/after figures are withheld: the two runs are not comparable.**');
+		md.push('>');
+		for (const b of comparison.blocking) md.push(`> - ${b}`);
+		md.push('>');
+		md.push('> Re-capture the final run against the baseline configuration, then regenerate this draft.');
+		md.push('');
+	} else if (comparison?.rows?.length) {
 		md.push('| Measure | Before | After |');
 		md.push('|---------|--------|-------|');
 		for (const r of comparison.rows.filter((x) => x.change === 'better')) md.push(`| ${r.label} | ${fmt(r.before, r.unit)} | ${fmt(r.after, r.unit)} |`);

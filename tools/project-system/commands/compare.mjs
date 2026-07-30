@@ -1,12 +1,13 @@
 // commands/compare.mjs — diff the latest baseline against the latest final run.
 //
-// wp-starter compare [--baseline-run <id>] [--final-run <id>] [--json] [--project-root <p>]
+// wp-starter compare [--baseline-run <id>] [--final-run <id>] [--allow-mismatch]
+//                    [--json] [--project-root <p>]
 //
 // Writes an internal + client-safe comparison report into .project/reports/.
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { EXIT, die, ok, info, emitJson, c } from '../lib/output.mjs';
+import { EXIT, die, ok, info, fail, emitJson, c } from '../lib/output.mjs';
 import { findProjectRoot, projectPaths, latestRunId } from '../lib/baseline.mjs';
 import { readYaml } from '../lib/yaml.mjs';
 import { loadMetrics } from '../lib/metrics.mjs';
@@ -35,6 +36,21 @@ export function compare(_positional, flags) {
 	const metrics = loadMetrics(paths.projectDir);
 
 	const comparison = buildComparison(baselineRunDir, finalRunDir);
+
+	// A method mismatch invalidates every row, so stop before writing reports
+	// that would be quoted. --allow-mismatch exists because the operator may
+	// genuinely know better, but it has to be said out loud: the mismatch is
+	// then carried into the reports themselves rather than waved through.
+	if (comparison.blocking.length && !flags['allow-mismatch']) {
+		if (json) emitJson({ status: 'not-comparable', baseline_run: baseId, final_run: finalId, blocking: comparison.blocking }, EXIT.INVALID_CONFIG);
+		fail(`runs ${baseId} and ${finalId} are not comparable:`);
+		for (const b of comparison.blocking) info(`- ${b}`);
+		console.log('');
+		info('Re-run the final capture against the same configuration, or pass --allow-mismatch');
+		info('to write the comparison anyway (the mismatch is recorded in the report).');
+		process.exit(EXIT.INVALID_CONFIG);
+	}
+
 	const { internalMd, clientMd, html } = renderComparison({ projectName, baselineRun: baseId, finalRun: finalId, comparison, metrics });
 
 	mkdirSync(paths.reportsDir, { recursive: true });

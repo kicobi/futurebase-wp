@@ -21,6 +21,40 @@
 		},
 		"started_at": { "type": "string", "format": "date-time" },
 		"finished_at": { "type": "string", "format": "date-time" },
+		"target": {
+			"type": "object",
+			"description": "The resolved configuration this run measured, frozen at capture time. Comparison reads it from here rather than from the mutable baseline config, so a before/after pair can be checked for comparability instead of assumed comparable. Absent on runs captured before this field existed.",
+			"additionalProperties": false,
+			"properties": {
+				"base_url": { "type": ["string", "null"] },
+				"pages": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"required": ["name", "url"],
+						"additionalProperties": false,
+						"properties": {
+							"name": { "type": "string" },
+							"url": { "type": "string" }
+						}
+					}
+				},
+				"viewports": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"required": ["name", "width", "height"],
+						"additionalProperties": false,
+						"properties": {
+							"name": { "type": "string" },
+							"width": { "type": "integer" },
+							"height": { "type": "integer" }
+						}
+					}
+				},
+				"modules": { "type": "array", "items": { "type": "string" } }
+			}
+		},
 		"modules": {
 			"type": "array",
 			"description": "Per-module status. Modules run independently; a partial run is valid.",

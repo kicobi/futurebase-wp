@@ -100,6 +100,18 @@ export async function runCapture(kind, flags) {
 		status,
 		started_at: startedAt,
 		finished_at: new Date().toISOString(),
+		// What this run actually measured, frozen into the run itself. compare
+		// used to assume both sides shared a configuration because both came
+		// from the same engine — but the config lives in .project/baseline.yml
+		// and is mutable, so a base_url or viewport edited between baseline and
+		// final left two runs that were never comparable and no way to tell.
+		// Reading it from here is the difference between knowing and assuming.
+		target: {
+			base_url: config.base_url ?? null,
+			pages: pages.map((p) => ({ name: p.name, url: p.url })),
+			viewports: (config.viewports ?? []).map((v) => ({ name: v.name, width: v.width, height: v.height })),
+			modules,
+		},
 		modules: results.map(pickSummary),
 	};
 

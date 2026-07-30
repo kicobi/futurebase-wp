@@ -22,7 +22,18 @@ export function baselineReport(_positional, flags) {
 	if (!existsSync(summaryPath)) die(`no summary.json for run ${runId}`, EXIT.ACCESS_FAILURE, { json });
 
 	const summary = readJson(summaryPath);
-	const config = existsSync(paths.configPath) ? loadConfig(paths.configPath) : { mode: summary.project_type, base_url: null };
+
+	// Regenerate from what the RUN measured, not from the current config. The
+	// config is mutable and may have been edited since — reading it here meant a
+	// report could be reissued months later describing URLs and viewports the
+	// run never touched, with the run's own numbers underneath. Older runs carry
+	// no snapshot, so those still fall back to the config, which is the best
+	// available answer rather than a correct one.
+	const config = summary.target
+		? { mode: summary.project_type, base_url: summary.target.base_url, pages: summary.target.pages, viewports: summary.target.viewports, modules: summary.target.modules }
+		: existsSync(paths.configPath)
+			? loadConfig(paths.configPath)
+			: { mode: summary.project_type, base_url: null };
 	let projectName = root.split('/').pop();
 	try {
 		projectName = readYaml(join(paths.projectDir, 'project.yml'))?.project?.name || projectName;
