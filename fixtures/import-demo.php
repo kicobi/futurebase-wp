@@ -382,26 +382,47 @@ call_user_func(
 		}
 
 		// ---------------------------------------------------------------------------
-		// 6. Navigation seed — a wp_navigation post so the header menu lists real
-		// pages (core's fallback picks the most recent wp_navigation post).
+		// 6. Navigation seeds — ONE wp_navigation post per region.
+		//
+		// The slugs are the contract: patterns/_nav-primary.php and
+		// _nav-footer.php resolve `primary-navigation` and `footer-navigation`
+		// by slug and emit the id as a `ref`. A single shared post (which is
+		// what this used to create) meant both regions rendered the same menu
+		// and editing either changed both — core picks the most recent
+		// wp_navigation post when nothing is referenced, so it could not tell
+		// the header from the footer.
 		// ---------------------------------------------------------------------------
-		$nav_content  = '<!-- wp:navigation-link {"label":"About","type":"page","id":' . $about_id . ',"url":"' . esc_url( get_permalink( $about_id ) ) . '","kind":"post-type"} /-->' . "\n";
-		$nav_content .= '<!-- wp:navigation-link {"label":"Services","type":"page","id":' . $services_id . ',"url":"' . esc_url( get_permalink( $services_id ) ) . '","kind":"post-type"} /-->' . "\n";
-		$nav_content .= '<!-- wp:navigation-link {"label":"Blog","type":"page","id":' . $blog_id . ',"url":"' . esc_url( get_permalink( $blog_id ) ) . '","kind":"post-type"} /-->';
-		// Upserted like everything else: core's fallback picks the most recent
-		// wp_navigation post, so duplicates would not visibly break the menu —
-		// they would just quietly pile up, one per run.
-		$upsert_post(
+		$nav_link = function ( $label, $page_id ) {
+			return '<!-- wp:navigation-link {"label":"' . $label . '","type":"page","id":' . (int) $page_id . ',"url":"' . esc_url( get_permalink( $page_id ) ) . '","kind":"post-type"} /-->';
+		};
+
+		$primary_nav  = $nav_link( 'About', $about_id ) . "\n";
+		$primary_nav .= $nav_link( 'Services', $services_id ) . "\n";
+		$primary_nav .= $nav_link( 'Blog', $blog_id );
+
+		// Deliberately a subset, not a copy. Two landmarks listing identical
+		// links are two landmarks a screen reader user cannot tell apart.
+		$footer_nav = $nav_link( 'About', $about_id ) . "\n" . $nav_link( 'Blog', $blog_id );
+
+		foreach (
 			array(
-				'post_type'    => 'wp_navigation',
-				'post_status'  => 'publish',
-				'post_title'   => 'Demo navigation',
-				'post_name'    => 'demo-navigation',
-				'post_content' => $nav_content,
-				'post_author'  => $author_id,
-			),
-			'Navigation insert'
-		);
+				array( 'Primary navigation', 'primary-navigation', $primary_nav ),
+				array( 'Footer navigation', 'footer-navigation', $footer_nav ),
+			) as $seed
+		) {
+			list( $nav_title, $nav_slug, $nav_content ) = $seed;
+			$upsert_post(
+				array(
+					'post_type'    => 'wp_navigation',
+					'post_status'  => 'publish',
+					'post_title'   => $nav_title,
+					'post_name'    => $nav_slug,
+					'post_content' => $nav_content,
+					'post_author'  => $author_id,
+				),
+				'Navigation insert'
+			);
+		}
 
 		// ---------------------------------------------------------------------------
 		// 7. Site state: static front page + posts page, pretty permalinks.
