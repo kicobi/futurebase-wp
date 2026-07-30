@@ -9,7 +9,8 @@
 //     [--template <owner/repo>] [--dry-run] [--confirm] [--resume]
 //     [--skip-secret-scan] [--json] [--non-interactive] [--starter-path <p>]
 
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -24,7 +25,10 @@ import { scanFiles } from '../../lib/secret-scan.mjs';
 const DEFAULT_ORG = 'studiokicobi';
 const DEFAULT_TEMPLATE = 'studiokicobi/wp-starter';
 const PROJECT_DIRS = ['brief', 'analysis', 'proposal', 'decisions', 'metrics', 'baseline', 'final', 'reports', 'follow-up'];
-const GITIGNORE_LINES = ['.project/private/', '.project/credentials/', '.project/auth/', '.project/**/raw-private/'];
+// The checkpoint is removed before the promotion commit, so it never reaches a
+// completed project. The ignore line covers the interrupted case, where it sits
+// in the working tree and an operator inspecting the failure might commit it.
+const GITIGNORE_LINES = ['.project/private/', '.project/credentials/', '.project/auth/', '.project/**/raw-private/', '.wp-starter-promotion.json'];
 
 // --- dossier manifest -------------------------------------------------------
 //
@@ -73,6 +77,43 @@ export function classify(rel) {
 	if (CRUFT.test(rel)) return 'excluded';
 	if (rel.startsWith('brief/attachments/private/') || rel.includes('/raw-private/')) return 'private';
 	return 'versioned';
+}
+
+// --- promotion checkpoint ----------------------------------------------------
+//
+// `--resume` used to accept any non-empty directory that happened to be a git
+// repo, and treated any text domain other than the starter's as "already
+// renamed". Those two together meant a resume could adopt an UNRELATED
+// repository: reuse it, skip the rename, inject .project/, and commit a
+// successful promotion over someone else's project.
+//
+// So promotion leaves a checkpoint the moment it creates the repo, and resume
+// refuses anything that does not match it. This is identity, not progress —
+// the steps are already individually idempotent; what was missing was any
+// assurance that the thing being resumed into is the thing we created.
+export const CHECKPOINT_FILE = '.wp-starter-promotion.json';
+
+function writeCheckpoint(dest, data) {
+	writeFileSync(join(dest, CHECKPOINT_FILE), JSON.stringify(data, null, 2) + '\n', 'utf8');
+}
+
+function readCheckpoint(dest) {
+	try {
+		return JSON.parse(readFileSync(join(dest, CHECKPOINT_FILE), 'utf8'));
+	} catch {
+		return null;
+	}
+}
+
+// Why this destination may not be resumed, or null when it may. Exported so the
+// rule is testable without driving a real promotion.
+export function checkpointMismatch(cp, { slug, dest, remote }) {
+	if (!cp) return `no promotion checkpoint (${CHECKPOINT_FILE}) — this directory was not created by promoting a lead`;
+	if (cp.kind !== 'promotion-checkpoint') return `${CHECKPOINT_FILE} is not a promotion checkpoint`;
+	if (cp.lead_slug !== slug) return `checkpoint belongs to lead "${cp.lead_slug}", not "${slug}"`;
+	if (cp.dest !== dest) return `checkpoint records destination ${cp.dest}, not ${dest}`;
+	if (cp.remote !== remote) return `checkpoint records remote ${cp.remote}, not ${remote}`;
+	return null;
 }
 
 function buildManifest(leadPath) {
@@ -187,6 +228,24 @@ export async function leadPromote(positional, flags) {
 	// Collision checks.
 	const destExists = existsSync(dest) && readdirSync(dest).length > 0;
 	if (destExists && !flags.resume) die(`destination already exists and is not empty: ${dest} (use --resume to continue an interrupted promotion)`, EXIT.ACCESS_FAILURE, { json });
+
+	// --resume is a claim about identity, so verify it before doing anything.
+	// An interrupted promotion left a checkpoint; anything else is a directory
+	// we have no business writing into, whatever it happens to contain.
+	let checkpoint = null;
+	if (flags.resume && destExists) {
+		checkpoint = readCheckpoint(dest);
+		const mismatch = checkpointMismatch(checkpoint, { slug, dest, remote });
+		if (mismatch) {
+			die(
+				`refusing to resume into ${dest}: ${mismatch}.\n` +
+					`  If an earlier promotion of "${slug}" really did create this directory, it did not get far enough to leave a checkpoint —\n` +
+					`  inspect it, remove it, and promote again rather than resuming over unknown contents.`,
+				EXIT.ACCESS_FAILURE,
+				{ json },
+			);
+		}
+	}
 	if (!usingSeam) {
 		const exists = ghRepoExists(remote);
 		if (exists === true && !flags.resume) die(`remote already exists: ${remote}`, EXIT.ACCESS_FAILURE, { json });
@@ -278,17 +337,49 @@ export async function leadPromote(positional, flags) {
 			recover(created.stage || 'create', `${detail}`, EXIT.ACCESS_FAILURE);
 		}
 	} else {
-		info(`--resume: reusing existing repo at ${dest}`);
+		info(`--resume: reusing existing repo at ${dest} (attempt ${checkpoint.nonce})`);
+	}
+
+	// Stamp identity as soon as the repo exists, so an interruption anywhere
+	// below is resumable and anything else is not.
+	if (!checkpoint) {
+		checkpoint = {
+			schema_version: 1,
+			kind: 'promotion-checkpoint',
+			nonce: randomUUID(),
+			lead_slug: slug,
+			dest,
+			remote,
+			template,
+			template_commit: templateCommit ?? null,
+			started_at: new Date().toISOString(),
+		};
+		writeCheckpoint(dest, checkpoint);
 	}
 
 	// Step 3: rename via the EXISTING implementation (reuse bin/rename-theme.sh).
-	const alreadyRenamed = existsSync(join(dest, 'style.css')) && !/Text Domain:\s*wp-starter\b/.test(readFileSync(join(dest, 'style.css'), 'utf8'));
-	if (!alreadyRenamed) {
+	//
+	// The test is "does the text domain equal the slug we were asked for", not
+	// "is it something other than the starter's". The latter treated every
+	// foreign theme as already-renamed and skipped the step entirely, leaving
+	// the wrong text domain in place through a reported-successful promotion.
+	const textDomain = () => {
+		const p = join(dest, 'style.css');
+		if (!existsSync(p)) return null;
+		return readFileSync(p, 'utf8').match(/^Text Domain:\s*(\S+)\s*$/im)?.[1] ?? null;
+	};
+	const before = textDomain();
+	if (before === slug) {
+		info('--resume: rename already applied, skipping');
+	} else {
+		if (before !== null && before !== 'wp-starter') {
+			recover('rename', `style.css declares Text Domain "${before}" — neither the starter's nor "${slug}". This is not a fresh template checkout; refusing to rename over it.`, EXIT.INVALID_CONFIG);
+		}
 		info(`Renaming theme → ${slug} …`);
 		const renamed = run('npm', ['run', 'rename', '--', slug], { cwd: dest });
 		if (!renamed.ok) recover('rename', `npm run rename failed:\n${renamed.stderr || renamed.stdout}`, EXIT.MODULE_FAILURE);
-	} else {
-		info('--resume: rename already applied, skipping');
+		const after = textDomain();
+		if (after !== slug) recover('rename', `rename reported success but style.css declares Text Domain "${after ?? '<none>'}" instead of "${slug}"`, EXIT.MODULE_FAILURE);
 	}
 
 	// Step 4: scaffold .project/ and copy the dossier per the manifest.
@@ -351,6 +442,11 @@ export async function leadPromote(positional, flags) {
 	const activeCheck = validateProject(activeCfg);
 	if (!activeCheck.valid) recover('stamp', `generated active project.yml invalid:\n  ${activeCheck.errors.join('\n  ')}`, EXIT.INVALID_CONFIG);
 	writeYaml(join(projectRoot, 'project.yml'), activeCfg);
+
+	// The checkpoint's job ends here: everything below is the single commit and
+	// lead bookkeeping. Removing it before the commit keeps it out of history
+	// and makes a finished project non-resumable, which is what it is.
+	rmSync(join(dest, CHECKPOINT_FILE), { force: true });
 
 	// Step 7: one promotion commit.
 	run('git', ['add', '-A'], { cwd: dest });

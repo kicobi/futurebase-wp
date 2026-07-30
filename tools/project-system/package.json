@@ -1,6 +1,6 @@
 {
 	"name": "wp-starter-project-system",
-	"version": "0.4.0",
+	"version": "0.5.0",
 	"private": true,
 	"description": "Project lifecycle system for wp-starter: isolated lead workspaces, promotion, baselines, and success metrics. Phase 1 ships `lead init` / `lead inspect`; later phases add promotion, baselines, and metrics.",
 	"type": "module",
