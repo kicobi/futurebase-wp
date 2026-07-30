@@ -2,7 +2,7 @@
 //
 // wp-starter project status [--project-root <p>] [--json]
 
-import { EXIT, die, info, emitJson, c } from '../../lib/output.mjs';
+import { EXIT, die, info, warn, emitJson, c } from '../../lib/output.mjs';
 import { findProjectRoot, projectPaths } from '../../lib/baseline.mjs';
 import { recordSummary } from '../../lib/record.mjs';
 
@@ -14,8 +14,11 @@ export function projectStatus(_positional, flags) {
 
 	const steps = [
 		{ key: 'metrics', label: 'Success metrics agreed', done: s.metrics.count > 0, next: 'wp-starter metrics suggest' },
-		{ key: 'baseline', label: 'Baseline captured', done: s.baseline.runs > 0, next: 'wp-starter baseline init && wp-starter baseline run' },
-		{ key: 'final', label: 'Final captured (at launch)', done: s.final.runs > 0, next: 'wp-starter final run' },
+		// `captured`, not `runs`: a directory is not evidence. A failed or
+		// wholly-partial run used to tick this box and send the operator on to
+		// the next step with nothing measured behind them.
+		{ key: 'baseline', label: 'Baseline captured', done: s.baseline.captured > 0, next: 'wp-starter baseline init && wp-starter baseline run' },
+		{ key: 'final', label: 'Final captured (at launch)', done: s.final.captured > 0, next: 'wp-starter final run' },
 		{ key: 'compare', label: 'Before/after compared', done: s.comparison, next: 'wp-starter compare' },
 		{ key: 'followup', label: 'Follow-up survey', done: s.followUp.length > 0, next: 'wp-starter metrics survey --period 30-days --write' },
 	];
@@ -28,6 +31,19 @@ export function projectStatus(_positional, flags) {
 	console.log('');
 	for (const st of steps) console.log(`  ${st.done ? c.green('✓') : c.dim('○')} ${st.label}`);
 	console.log('');
+
+	// Runs that exist but captured nothing. Naming them is the point: the step
+	// above stays open, and without this the operator sees an unticked box with
+	// no hint that a run was attempted and came back empty.
+	for (const [label, stats] of [
+		['baseline', s.baseline],
+		['final', s.final],
+	]) {
+		if (!stats.incomplete.length) continue;
+		warn(`${stats.incomplete.length} ${label} run(s) captured no evidence and do not count:`);
+		for (const r of stats.incomplete) info(`${r.id} — ${r.reason}`);
+	}
+	if (s.baseline.incomplete.length || s.final.incomplete.length) console.log('');
 	if (nextStep) info(`next:  ${nextStep.next}`);
 	else info('lifecycle complete — consider a 90-day follow-up and a case study.');
 	process.exit(EXIT.OK);

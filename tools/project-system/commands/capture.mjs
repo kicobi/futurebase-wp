@@ -64,8 +64,12 @@ export async function runCapture(kind, flags) {
 		process.exit(EXIT.OK);
 	}
 
-	const runId = newRunId();
-	const runDir = makeRunDir(dir, runId);
+	// Stamp the start BEFORE any module runs. Reading the clock alongside
+	// finished_at made every run look instantaneous no matter how long it took,
+	// which is worse than omitting the field: a duration that is always ~0 reads
+	// as a measurement.
+	const startedAt = new Date().toISOString();
+	const { dir: runDir, runId } = makeRunDir(dir, newRunId());
 	const ctx = { config, pages, runDir, projectRoot: root };
 
 	if (!json) info(`${kind} ${runId} — modules: ${modules.join(', ')}`);
@@ -94,7 +98,7 @@ export async function runCapture(kind, flags) {
 		project_type: config.mode,
 		kind,
 		status,
-		started_at: new Date().toISOString(),
+		started_at: startedAt,
 		finished_at: new Date().toISOString(),
 		modules: results.map(pickSummary),
 	};
