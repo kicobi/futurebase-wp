@@ -185,14 +185,22 @@ Read-only until `--apply --confirm`, and it writes only by path class:
 >   `smoke-render.php` *are* portable — they resolve the theme slug at runtime —
 >   but sat in `review` with the rest of `bin/`, so starter fixes never reached
 >   projects. One ran a stale `demo-content.sh` for weeks and its Scorecard had
->   never once passed. They are listed in `PORTABLE_BIN`, which must stay in step
->   with the probe loop in `bin/test-rename.sh` — that assertion is what makes
->   the slug-free claim true rather than merely intended.
+>   never once passed. They are listed in `PORTABLE_BIN`, which `bin/test-rename.sh`
+>   imports and probes directly — that assertion, not the intent behind the list,
+>   is what makes the slug-free claim true. Add a file there and the rename test
+>   holds it to the same standard or fails.
 
 Staleness is decided by **content**, never by recorded provenance. A file whose
 content matches some point in upstream history is merely behind and is updated;
 one that matches no upstream version was edited locally and is skipped as a
-conflict. Lockfile adoption is refused outright when the project declares a
+conflict.
+
+The **executable bit is part of the file**, so it is carried across with the
+content: git records only `100644` or `100755`, and `sync` applies whichever the
+starter has. A copy whose content already matches but whose mode does not is
+reported as an `update` — three of the four `bin/` scripts are executable, and a
+project that received them before mode was honoured has them present, current,
+and unrunnable, which content comparison alone would call in sync forever. Lockfile adoption is refused outright when the project declares a
 dependency upstream lacks, because the starter's lock cannot describe this
 project and a clean install would drop that package.
 
