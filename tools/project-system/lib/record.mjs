@@ -4,14 +4,7 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { readYaml, readJson } from './yaml.mjs';
 import { validateBaselineRun } from './validate.mjs';
-
-const RUN_RE = /^\d{4}-\d{2}-\d{2}T\d{6}Z(-\d{2})?$/;
-
-// Run statuses that mean evidence was actually captured. `partial` is the case
-// where no module succeeded, and `failed` where none could — neither is a
-// baseline. Counting directories treated both as done, so a run that measured
-// nothing closed the lifecycle step and the project looked ready to compare.
-const CAPTURED = new Set(['completed', 'completed_with_warnings']);
+import { RUN_ID_RE, evidenceVerdict } from './baseline.mjs';
 
 function safe(fn, fallback) {
 	try {
@@ -22,7 +15,7 @@ function safe(fn, fallback) {
 }
 
 export function listRuns(dir) {
-	return safe(() => readdirSync(dir).filter((f) => RUN_RE.test(f) && statSync(join(dir, f)).isDirectory()).sort(), []);
+	return safe(() => readdirSync(dir).filter((f) => RUN_ID_RE.test(f) && statSync(join(dir, f)).isDirectory()).sort(), []);
 }
 
 function countFiles(dir) {
@@ -46,8 +39,9 @@ export function classifyRuns(dir) {
 			incomplete.push({ id, reason: 'summary failed schema validation' });
 			continue;
 		}
-		if (CAPTURED.has(summary.status)) captured.push(id);
-		else incomplete.push({ id, reason: summary.status });
+		const verdict = evidenceVerdict(summary);
+		if (verdict.captured) captured.push(id);
+		else incomplete.push({ id, reason: verdict.reason });
 	}
 	return { captured, incomplete };
 }

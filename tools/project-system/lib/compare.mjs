@@ -47,6 +47,14 @@ const hostOf = (url) => {
 		return url ?? null;
 	}
 };
+// Trailing slash is not a difference worth blocking a comparison over.
+const pathOf = (url) => {
+	try {
+		return new URL(url).pathname.replace(/\/+$/, '') || '/';
+	} catch {
+		return String(url ?? '').replace(/\/+$/, '') || '/';
+	}
+};
 const viewportKey = (vs) =>
 	(vs ?? [])
 		.map((v) => `${v.name}:${v.width}x${v.height}`)
@@ -96,6 +104,28 @@ export function compareTargets(baselineSummary, finalSummary) {
 				(onlyB.length ? ` (baseline only: ${onlyB.join(', ')})` : '') +
 				(onlyF.length ? ` (final only: ${onlyF.join(', ')})` : ''),
 		);
+	}
+
+	// Matching NAMES are not matching pages. Comparing the labels alone let
+	// `home = /` on one side and `home = /checkout/` on the other through with
+	// nothing reported, and case-study will happily publish the difference as an
+	// improvement.
+	//
+	// On a moved domain the paths are expected to change too, and that is
+	// already disclosed above — blocking there would break the redesign
+	// workflow this tool exists for. On the SAME host there is no benign reason
+	// for a label to point somewhere else, so that blocks.
+	const bByName = new Map((b.pages ?? []).map((p) => [p.name, p.url]));
+	const moved = [];
+	for (const p of f.pages ?? []) {
+		const was = bByName.get(p.name);
+		if (was === undefined) continue;
+		if (pathOf(was) !== pathOf(p.url)) moved.push(`${p.name}: ${was} → ${p.url}`);
+	}
+	if (moved.length) {
+		const message = `the same page name measures a different path (${moved.join(' · ')})`;
+		if (bHost === fHost) blocking.push(`${message} — on the same host, that is a different page, not a changed one`);
+		else limitations.push(`${message} — expected alongside the domain move, but confirm each pairing is the page you mean`);
 	}
 
 	const bMods = (b.modules ?? []).slice().sort();

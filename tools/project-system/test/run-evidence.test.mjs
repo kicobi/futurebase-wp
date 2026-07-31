@@ -12,7 +12,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { makeRunDir, newRunId } from '../lib/baseline.mjs';
+import { makeRunDir, newRunId, latestRunId } from '../lib/baseline.mjs';
 import { classifyRuns, listRuns } from '../lib/record.mjs';
 
 function sandbox() {
@@ -31,10 +31,23 @@ const summaryFor = (runId, status, modules = [{ module: 'crawl', status: 'comple
 	modules,
 });
 
+// Modules consistent with the status, because the verdict is now computed from
+// them. A fixture declaring `partial` while carrying a complete module is not a
+// run any capture could produce, and testing against one proves nothing.
+const MODULES_FOR = {
+	completed: [{ module: 'crawl', status: 'complete' }],
+	completed_with_warnings: [
+		{ module: 'crawl', status: 'complete' },
+		{ module: 'wordpress', status: 'unavailable' },
+	],
+	partial: [{ module: 'crawl', status: 'skipped' }],
+	failed: [{ module: 'crawl', status: 'failed' }],
+};
+
 function writeRun(baselineDir, runId, status) {
 	const dir = join(baselineDir, runId);
 	mkdirSync(dir, { recursive: true });
-	writeFileSync(join(dir, 'summary.json'), JSON.stringify(summaryFor(runId, status), null, 2), 'utf8');
+	writeFileSync(join(dir, 'summary.json'), JSON.stringify(summaryFor(runId, status, MODULES_FOR[status]), null, 2), 'utf8');
 	return dir;
 }
 
@@ -106,12 +119,71 @@ test('only runs that captured evidence count as captured', () => {
 		writeRun(dir, '2026-07-30T130000Z', 'failed');
 
 		const { captured, incomplete } = classifyRuns(dir);
-		assert.equal(captured.length, 2, 'completed and completed_with_warnings');
+		assert.equal(captured.length, 2, 'completed, and completed_with_warnings where nothing failed');
 		assert.equal(incomplete.length, 2, 'partial and failed must not count');
+		// A run where nothing completed reports that directly; the
+		// "N of M modules failed" wording is for runs that produced SOME
+		// evidence alongside failures, which is the case worth spelling out.
 		assert.deepEqual(
 			incomplete.map((r) => r.reason).sort(),
-			['failed', 'partial'],
+			['failed', 'no module produced evidence'],
 		);
+	} finally {
+		cleanup();
+	}
+});
+
+test('one complete module beside five failures is not captured evidence', () => {
+	// `completed_with_warnings` only means SOMETHING completed. Reading it as
+	// captured closed the lifecycle step on a run where five of six modules
+	// broke, and sent the operator on to compare against almost nothing.
+	const { dir, cleanup } = sandbox();
+	try {
+		const id = '2026-07-30T100000Z';
+		const mods = [{ module: 'crawl', status: 'complete' }, ...['lighthouse', 'axe', 'screenshots', 'wordpress', 'manual'].map((m) => ({ module: m, status: 'failed' }))];
+		mkdirSync(join(dir, id), { recursive: true });
+		writeFileSync(join(dir, id, 'summary.json'), JSON.stringify({ ...summaryFor(id, 'completed_with_warnings'), modules: mods }), 'utf8');
+
+		const { captured, incomplete } = classifyRuns(dir);
+		assert.equal(captured.length, 0);
+		assert.match(incomplete[0].reason, /5 of 6 modules failed/);
+	} finally {
+		cleanup();
+	}
+});
+
+test('modules that could not run yet do not disqualify a run', () => {
+	// The baseline design is explicitly phased — access arrives gradually, so
+	// skipped/unavailable is an expected state, not a failure. Tightening the
+	// gate must not break that.
+	const { dir, cleanup } = sandbox();
+	try {
+		const id = '2026-07-30T100000Z';
+		const mods = [
+			{ module: 'crawl', status: 'complete' },
+			{ module: 'wordpress', status: 'unavailable' },
+			{ module: 'manual', status: 'skipped' },
+		];
+		mkdirSync(join(dir, id), { recursive: true });
+		writeFileSync(join(dir, id, 'summary.json'), JSON.stringify({ ...summaryFor(id, 'completed_with_warnings'), modules: mods }), 'utf8');
+
+		assert.equal(classifyRuns(dir).captured.length, 1);
+	} finally {
+		cleanup();
+	}
+});
+
+test('latestRunId sees collision-suffixed runs', () => {
+	// The suffix was added to record.mjs's matcher and not to the copy inside
+	// baseline.mjs, so the fallback returned the older base run as the newest.
+	const { dir, cleanup } = sandbox();
+	try {
+		const id = newRunId(new Date('2026-07-30T16:30:00.000Z'));
+		const a = makeRunDir(dir, id);
+		const b = makeRunDir(dir, id);
+		assert.equal(b.runId, `${id}-02`);
+		assert.equal(latestRunId(dir), `${id}-02`, 'the newest run is the suffixed one');
+		assert.notEqual(latestRunId(dir), a.runId);
 	} finally {
 		cleanup();
 	}

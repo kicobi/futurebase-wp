@@ -66,6 +66,33 @@ test('a differing page set is disclosed with both sides named', () => {
 	assert.match(found, /final only: pricing/);
 });
 
+test('the same page name pointing at a different path blocks on the same host', () => {
+	// Matching labels are not matching pages. Comparing names alone let
+	// `home = /` and `home = /checkout/` through with nothing reported at all,
+	// and case-study will publish that difference as an improvement.
+	const final = run({ target: { pages: [{ name: 'home', url: 'https://example.com/checkout/' }, { name: 'about', url: 'https://example.com/pricing/' }] } });
+	const { blocking } = compareTargets(run(), final);
+	assert.equal(blocking.length, 1);
+	assert.match(blocking[0], /different path/);
+	assert.match(blocking[0], /a different page, not a changed one/);
+});
+
+test('a moved domain may move its paths without blocking', () => {
+	// The redesign workflow this tool exists for: old site baselined, new site
+	// finalled, URLs different on both counts. Blocking here would make
+	// --allow-mismatch the normal case, which defeats the point of having it.
+	const old = run({ target: { base_url: 'https://old.com', pages: [{ name: 'home', url: 'https://old.com/' }, { name: 'about', url: 'https://old.com/about/' }] } });
+	const neu = run({ target: { base_url: 'https://new.com', pages: [{ name: 'home', url: 'https://new.com/' }, { name: 'about', url: 'https://new.com/about-us/' }] } });
+	const { blocking, limitations } = compareTargets(old, neu);
+	assert.deepEqual(blocking, []);
+	assert.ok(limitations.some((l) => l.includes('confirm each pairing')));
+});
+
+test('a trailing slash is not a different page', () => {
+	const final = run({ target: { pages: [{ name: 'home', url: 'https://example.com' }, { name: 'about', url: 'https://example.com/about' }] } });
+	assert.deepEqual(compareTargets(run(), final).blocking, []);
+});
+
 test('a differing module set is disclosed', () => {
 	const final = run({ target: { modules: ['crawl'] } });
 	const { limitations } = compareTargets(run(), final);
