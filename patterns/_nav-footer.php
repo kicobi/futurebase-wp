@@ -26,8 +26,9 @@ if ( $wp_starter_nav instanceof WP_Post ) :
 else :
 	?>
 	<!-- wp:navigation {"overlayMenu":"never","layout":{"type":"flex","justifyContent":"right","orientation":"horizontal"}} -->
-		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'About', 'wp-starter' ); ?>","url":"/about/"} /-->
-		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'Blog', 'wp-starter' ); ?>","url":"/blog/"} /-->
+		<?php // See _nav-primary.php: home_url() so a subdirectory install links inside itself. ?>
+		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'About', 'wp-starter' ); ?>","url":"<?php echo esc_url( home_url( '/about/' ) ); ?>"} /-->
+		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'Blog', 'wp-starter' ); ?>","url":"<?php echo esc_url( home_url( '/blog/' ) ); ?>"} /-->
 	<!-- /wp:navigation -->
 	<?php
 endif;

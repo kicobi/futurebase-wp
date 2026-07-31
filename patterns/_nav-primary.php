@@ -43,9 +43,10 @@ if ( $wp_starter_nav instanceof WP_Post ) :
 else :
 	?>
 	<!-- wp:navigation {"overlayMenu":"mobile","layout":{"type":"flex","justifyContent":"right","orientation":"horizontal","flexWrap":"wrap"}} -->
-		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'About', 'wp-starter' ); ?>","url":"/about/"} /-->
-		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'Services', 'wp-starter' ); ?>","url":"/services/"} /-->
-		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'Blog', 'wp-starter' ); ?>","url":"/blog/"} /-->
+		<?php // home_url(), not a bare path: "/about/" is relative to the domain, so a subdirectory install linked outside itself. ?>
+		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'About', 'wp-starter' ); ?>","url":"<?php echo esc_url( home_url( '/about/' ) ); ?>"} /-->
+		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'Services', 'wp-starter' ); ?>","url":"<?php echo esc_url( home_url( '/services/' ) ); ?>"} /-->
+		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'Blog', 'wp-starter' ); ?>","url":"<?php echo esc_url( home_url( '/blog/' ) ); ?>"} /-->
 	<!-- /wp:navigation -->
 	<?php
 endif;

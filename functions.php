@@ -190,10 +190,15 @@ if ( ! function_exists( 'wp_starter_seed_navigation_menus' ) ) {
 			}
 			$content = '';
 			foreach ( $region['links'] as $link ) {
+				// home_url(), not the bare path. A root-relative "/about/" is
+				// relative to the DOMAIN, so on an installation at
+				// example.test/wordpress/ every seeded link pointed outside the
+				// site entirely. There is no reason to hand-build a path when
+				// WordPress knows where it lives.
 				$content .= sprintf(
 					'<!-- wp:navigation-link {"label":"%s","url":"%s"} /-->' . "\n",
 					esc_attr( $link[0] ),
-					esc_url( $link[1] )
+					esc_url( home_url( $link[1] ) )
 				);
 			}
 			wp_insert_post(
