@@ -70,22 +70,37 @@ function deepestExisting(abs) {
 }
 
 // Absolute path for writing `rel` under `root`, or null when it would escape.
+//
+// `boundary` is the tree the write must stay inside, and it defaults to `root`
+// only because that is right when the caller was HANDED the root. It is wrong
+// whenever the caller CONSTRUCTED the root from something else: promotion
+// builds `<dest>/.project`, and resolving that through realpath made a
+// symlinked `.project` its own boundary — every write then landed outside the
+// destination while satisfying a containment check, which is a worse failure
+// than no check at all. Pass the tree you actually mean.
+//
 // Checks the string first (cheap, catches `..`), then resolves the existing
 // prefix through symlinks and re-attaches the not-yet-created tail.
-export function containedPath(root, rel) {
+export function containedPath(root, rel, { boundary = root } = {}) {
+	let boundaryReal;
 	let rootReal;
 	try {
+		boundaryReal = realpathSync(resolve(boundary));
 		rootReal = realpathSync(resolve(root));
 	} catch {
 		return null;
 	}
+	// The root itself must be inside the boundary. This is the check that a
+	// symlinked managed directory defeats when the boundary is taken from it.
+	if (!isInside(boundaryReal, rootReal)) return null;
+
 	const abs = resolve(rootReal, rel);
-	if (!isInside(rootReal, abs)) return null;
+	if (!isInside(boundaryReal, abs)) return null;
 
 	const anc = deepestExisting(abs);
-	if (!anc || !isInside(rootReal, anc.real)) return null;
+	if (!anc || !isInside(boundaryReal, anc.real)) return null;
 
 	const tail = relative(anc.virtual, abs);
 	const resolved = tail ? join(anc.real, tail) : anc.real;
-	return isInside(rootReal, resolved) ? resolved : null;
+	return isInside(boundaryReal, resolved) ? resolved : null;
 }

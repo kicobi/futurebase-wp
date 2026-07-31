@@ -14,21 +14,40 @@
 
 import { readFileSync, statSync } from 'node:fs';
 
+// Each rule declares where the CREDENTIAL is inside its match, and whether
+// placeholder suppression may apply to it at all.
+//
+// `suppressible: false` is for formats that are unambiguous on their own. A
+// string matching `ghp_[A-Za-z0-9]{36}` is a GitHub token whatever 36
+// characters it happens to contain — and one of them containing the substring
+// "example" is not evidence of anything except chance. Suppressing those meant
+// a real token could be waved through by its own body, and a basic-auth URL by
+// its username. Only free-form values, where a human writes a placeholder on
+// purpose, may be suppressed.
+//
+// The cost is a false positive on published sample credentials — AWS documents
+// AKIAIOSFODNN7EXAMPLE, and this will flag it. That is the correct direction to
+// fail for a gate standing in front of a client dossier: a false positive is
+// visible and takes one edit to resolve, a false negative ships a key.
 const RULES = [
-	['private-key', /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----/],
-	['aws-access-key-id', /\bAKIA[0-9A-Z]{16}\b/],
-	['github-token', /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36}\b/],
-	['github-pat', /\bgithub_pat_[A-Za-z0-9_]{60,}\b/],
-	['slack-token', /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/],
-	['google-api-key', /\bAIza[0-9A-Za-z_\-]{35}\b/],
-	['bearer-token', /\bBearer\s+[A-Za-z0-9\-._~+/]{24,}=*\b/],
-	['basic-auth-url', /\b[a-z][a-z0-9+.\-]*:\/\/[^/\s:@]+:[^/\s:@]{3,}@/i],
-	[
-		// Group 1 is the VALUE. Placeholder suppression is applied to that group
-		// alone, never the key or any trailing comment — see scanText.
-		'assigned-secret',
-		/\b(?:password|passwd|secret|api[_-]?key|apikey|access[_-]?token|auth[_-]?token|client[_-]?secret|private[_-]?key)\b\s*[:=]\s*["']?([A-Za-z0-9/+_\-]{16,})["']?/i,
-	],
+	{ rule: 'private-key', re: /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----/, group: 0, suppressible: false },
+	{ rule: 'aws-access-key-id', re: /\bAKIA[0-9A-Z]{16}\b/, group: 0, suppressible: false },
+	{ rule: 'github-token', re: /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36}\b/, group: 0, suppressible: false },
+	{ rule: 'github-pat', re: /\bgithub_pat_[A-Za-z0-9_]{60,}\b/, group: 0, suppressible: false },
+	{ rule: 'slack-token', re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/, group: 0, suppressible: false },
+	{ rule: 'google-api-key', re: /\bAIza[0-9A-Za-z_\-]{35}\b/, group: 0, suppressible: false },
+	// Group 1 is the token itself, without the `Bearer ` prefix.
+	{ rule: 'bearer-token', re: /\bBearer\s+([A-Za-z0-9\-._~+/]{24,}=*)\b/, group: 1, suppressible: true },
+	// Group 1 is the PASSWORD only — not the scheme, and not the username,
+	// which is where `https://example-user:<real password>@host` hid.
+	{ rule: 'basic-auth-url', re: /\b[a-z][a-z0-9+.\-]*:\/\/[^/\s:@]+:([^/\s:@]{3,})@/i, group: 1, suppressible: true },
+	// Group 1 is the assigned value — never the key, never a trailing comment.
+	{
+		rule: 'assigned-secret',
+		re: /\b(?:password|passwd|secret|api[_-]?key|apikey|access[_-]?token|auth[_-]?token|client[_-]?secret|private[_-]?key)\b\s*[:=]\s*["']?([A-Za-z0-9/+_\-]{16,})["']?/i,
+		group: 1,
+		suppressible: true,
+	},
 ];
 
 // Values that look like placeholders / references, not real secrets.
@@ -44,17 +63,16 @@ export function scanText(text) {
 	const lines = text.split(/\r?\n/);
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
-		for (const [rule, re] of RULES) {
+		for (const { rule, re, group, suppressible } of RULES) {
 			const m = re.exec(line);
 			if (!m) continue;
-			// Suppress on the MATCHED VALUE, never the whole line. Testing the
-			// line meant one incidental word disarmed the scanner for everything
-			// on it: `api_key: <real key> # example production key` matched the
-			// rule, hit `example` in the comment, and was dropped silently. A
-			// credential is most likely to be annotated exactly when someone is
-			// explaining what it is.
-			const value = m[1] ?? m[0];
-			if (IGNORE_VALUE.test(value)) continue;
+			// Suppress on the CREDENTIAL, and only where a placeholder is a thing
+			// a human would plausibly write. Testing the whole line let a trailing
+			// comment disarm the scanner; testing the whole match then let a
+			// username or a token's own body do the same. What is compared now is
+			// the captured value, for the rules where that is meaningful at all.
+			const value = m[group] ?? m[0];
+			if (suppressible && IGNORE_VALUE.test(value)) continue;
 			findings.push({ line: i + 1, rule, snippet: redact(line) });
 			break; // one finding per line is enough to flag it
 		}
