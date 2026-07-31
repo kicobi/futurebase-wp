@@ -15,6 +15,11 @@ PRs #65–#71; the ones worth knowing about as prior art are in those
 descriptions. Do not paste that history into the next run — a reviewer told
 what was previously found tends to find it again.
 
+When the findings from a run have been fixed, review the fixes with
+[fix-verification-prompt.md](fix-verification-prompt.md) before considering the
+round closed. The first time that was done it found nine defects in the fixes,
+four of them P1 — so the step is not ceremonial.
+
 ---
 
 Do a complete, top-to-bottom review of this repository. Correctness, security,
