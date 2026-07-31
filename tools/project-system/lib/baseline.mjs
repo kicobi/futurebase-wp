@@ -32,6 +32,13 @@ export function projectPaths(root) {
 	};
 }
 
+// The one definition of what a run directory is called. It lived here as an
+// inline literal AND again in record.mjs, and when collision suffixes were
+// added only one of them was updated — so `latestRunId()`'s fallback could not
+// see a `-02` run and returned the older base run as the newest. Restating a
+// pattern is how the two drift; this is exported so nothing has to.
+export const RUN_ID_RE = /^\d{4}-\d{2}-\d{2}T\d{6}Z(-\d{2})?$/;
+
 // Sortable, filesystem-safe run id: YYYY-MM-DDTHHMMSSZ (matches the schema).
 export function newRunId(date = new Date()) {
 	const iso = date.toISOString();
@@ -104,12 +111,34 @@ export function latestRunId(baselineDir) {
 	}
 	// fallback: newest dated dir
 	try {
-		const runs = readdirSync(baselineDir).filter((f) => /^\d{4}-\d{2}-\d{2}T\d{6}Z$/.test(f) && statSync(join(baselineDir, f)).isDirectory());
+		const runs = readdirSync(baselineDir).filter((f) => RUN_ID_RE.test(f) && statSync(join(baselineDir, f)).isDirectory());
 		runs.sort();
 		return runs.at(-1) || null;
 	} catch {
 		return null;
 	}
+}
+
+// Did this run actually capture evidence, in the sense that closes a lifecycle
+// step? Deliberately NOT the same question as `status`.
+//
+// `status` is descriptive, and the baseline design is explicitly incremental —
+// docs/baseline-system.md phases access, so modules that are `skipped`,
+// `unavailable` or `pending` are an expected state and not a failure. But
+// `completed_with_warnings` only means SOME module completed, and reading it as
+// "captured" let one complete module alongside five FAILED ones close the step
+// and send the operator on to compare against nothing.
+//
+// So the question asked here is narrower: did something succeed, and did
+// nothing break? A module that could not run yet is tolerated. A module that
+// ran and failed means this run is not the evidence anyone should build on.
+export function evidenceVerdict(summary) {
+	const modules = summary?.modules ?? [];
+	const complete = modules.filter((m) => m.status === 'complete').length;
+	const failed = modules.filter((m) => m.status === 'failed').length;
+	if (!complete) return { captured: false, reason: summary?.status === 'failed' ? 'failed' : 'no module produced evidence' };
+	if (failed) return { captured: false, reason: `${failed} of ${modules.length} modules failed` };
+	return { captured: true, reason: null };
 }
 
 // Roll module results into an overall run status.
