@@ -32,32 +32,55 @@ import { join } from 'node:path';
 // and `<!-- /wp:name -->`. An unnamespaced name means core.
 const BLOCK_RE = /<!--\s*(\/?)wp:([a-z0-9-]+(?:\/[a-z0-9-]+)?)(\s+(\{[\s\S]*?\}))?\s*(\/)?-->/g;
 
-// Flat list of block occurrences with nesting depth. Depth is what separates
-// "the template wires a pattern" from "the template contains a paragraph that
-// happens to sit inside a pattern's own markup".
+// Block occurrences with nesting depth, plus whatever does not balance. Depth
+// separates "the template wires a pattern" from "the template contains a
+// paragraph that happens to sit inside a pattern's own markup".
+//
+// Balance is reported rather than silently
+// clamped: an unclosed group made every following block look nested, so a
+// template missing its header and footer entirely still presented one pattern
+// at the right depth and passed. A parser that cannot say "this markup is
+// broken" is only checking the markup it happens to understand.
 export function parseBlocks(html) {
-	const out = [];
-	let depth = 0;
+	const blocks = [];
+	const open = [];
+	const unbalanced = [];
 	for (const m of html.matchAll(BLOCK_RE)) {
 		const [, closing, rawName, , json, selfClose] = m;
 		const name = rawName.includes('/') ? rawName : `core/${rawName}`;
 		if (closing) {
-			depth = Math.max(0, depth - 1);
+			if (!open.length) unbalanced.push(`closing wp:${name} with nothing open`);
+			else if (open.at(-1) !== name) unbalanced.push(`closing wp:${name} while wp:${open.at(-1)} is open`);
+			else open.pop();
 			continue;
 		}
 		let attrs = {};
+		let malformed = false;
 		if (json) {
 			try {
 				attrs = JSON.parse(json);
 			} catch {
-				out.push({ name, attrs: {}, depth, malformed: true });
-				continue;
+				malformed = true;
 			}
 		}
-		out.push({ name, attrs, depth });
-		if (!selfClose) depth += 1;
+		blocks.push({ name, attrs, depth: open.length, ...(malformed ? { malformed } : {}) });
+		if (!selfClose && !malformed) open.push(name);
 	}
-	return out;
+	for (const name of open) unbalanced.push(`wp:${name} is never closed`);
+	return { blocks, unbalanced };
+}
+
+// Every pattern slug the theme actually registers, read from the `Slug:` header
+// of each patterns/*.php. A reference to a pattern that does not exist renders
+// as nothing at all — the page silently loses a section — and the old check
+// had no way to notice.
+export function collectPatternSlugs(files) {
+	const slugs = new Set();
+	for (const { contents } of files) {
+		const m = /^\s*\*\s*Slug:\s*(\S+)\s*$/im.exec(contents);
+		if (m) slugs.add(m[1]);
+	}
+	return slugs;
 }
 
 // --- item 3: templates wire --------------------------------------------------
@@ -67,9 +90,11 @@ export function parseBlocks(html) {
 // violation whether or not anyone predicted it.
 const WIRING_BLOCKS = new Set(['core/template-part', 'core/group', 'core/pattern']);
 
-export function checkTemplateWiring(html, file = 'templates/front-page.html') {
+export function checkTemplateWiring(html, { file = 'templates/front-page.html', knownPatterns = null } = {}) {
 	const problems = [];
-	const blocks = parseBlocks(html);
+	const { blocks, unbalanced } = parseBlocks(html);
+
+	for (const u of unbalanced) problems.push(`${file}: ${u}`);
 
 	for (const b of blocks) {
 		if (b.malformed) {
@@ -81,19 +106,43 @@ export function checkTemplateWiring(html, file = 'templates/front-page.html') {
 		}
 	}
 
+	// The contract names the shape, so assert the shape. Counting patterns
+	// alone let a template with no header, no footer and an unclosed group
+	// through, because the one thing being counted was still there.
+	const roots = blocks.filter((b) => b.depth === 0);
+	const shape = roots.map((b) => b.name).join(' → ');
+	const expected = 'core/template-part → core/group → core/template-part';
+	if (shape !== expected) {
+		problems.push(`${file}: top level is "${shape || 'empty'}" — a template is header part, main, footer part ("${expected}")`);
+	} else {
+		if (roots[0].attrs.slug !== 'header') problems.push(`${file}: first template-part is "${roots[0].attrs.slug ?? '?'}", expected "header"`);
+		if (roots[2].attrs.slug !== 'footer') problems.push(`${file}: last template-part is "${roots[2].attrs.slug ?? '?'}", expected "footer"`);
+		if (roots[1].attrs.tagName !== 'main') problems.push(`${file}: the middle group must be tagName "main" (found "${roots[1].attrs.tagName ?? 'div'}")`);
+	}
+
 	const patterns = blocks.filter((b) => b.name === 'core/pattern');
 	if (patterns.length === 0) problems.push(`${file}: references no pattern — the page body belongs in one`);
 	if (patterns.length > 1) {
 		problems.push(`${file}: references ${patterns.length} patterns (${patterns.map((p) => p.attrs.slug ?? '?').join(', ')}) — a template wires ONE page-level pattern`);
 	}
+	for (const p of patterns) problems.push(...missingPattern(p.attrs.slug, knownPatterns, file));
+
 	return problems;
+}
+
+// A reference to a pattern nobody registers renders as nothing. Checked only
+// when the caller supplies the registry, so the rule stays testable in isolation.
+function missingPattern(slug, knownPatterns, file) {
+	if (!knownPatterns || !slug) return [];
+	return knownPatterns.has(slug) ? [] : [`${file}: references pattern '${slug}', which no patterns/*.php registers`];
 }
 
 // --- item 4: page-level patterns compose section patterns --------------------
 
-export function checkPageComposition(php, themeSlug, file = 'patterns/home.php') {
+export function checkPageComposition(php, themeSlug, { file = 'patterns/home.php', knownPatterns = null } = {}) {
 	const problems = [];
-	const blocks = parseBlocks(php);
+	const { blocks, unbalanced } = parseBlocks(php);
+	for (const u of unbalanced) problems.push(`${file}: ${u}`);
 	if (!blocks.length) {
 		problems.push(`${file}: composes nothing`);
 		return problems;
@@ -111,6 +160,8 @@ export function checkPageComposition(php, themeSlug, file = 'patterns/home.php')
 			problems.push(`${file}: references '${slug}', which is not a ${themeSlug}/ pattern`);
 		} else if (!slug.startsWith(`${themeSlug}/section-`)) {
 			problems.push(`${file}: references '${slug}' — page-level patterns compose section-* patterns only`);
+		} else {
+			problems.push(...missingPattern(slug, knownPatterns, file));
 		}
 	}
 	return problems;
@@ -231,11 +282,15 @@ function main() {
 	}
 
 	const frontPage = join(root, 'templates', 'front-page.html');
-	if (existsSync(frontPage)) problems.push(...checkTemplateWiring(readFileSync(frontPage, 'utf8')));
+	// The pattern registry, so a reference to something that does not exist is
+	// caught here rather than by a section quietly missing from a rendered page.
+	const knownPatterns = collectPatternSlugs(collect(['patterns'], root));
+
+	if (existsSync(frontPage)) problems.push(...checkTemplateWiring(readFileSync(frontPage, 'utf8'), { knownPatterns }));
 	else problems.push('templates/front-page.html is missing');
 
 	const home = join(root, 'patterns', 'home.php');
-	if (existsSync(home)) problems.push(...checkPageComposition(readFileSync(home, 'utf8'), themeSlug));
+	if (existsSync(home)) problems.push(...checkPageComposition(readFileSync(home, 'utf8'), themeSlug, { knownPatterns }));
 	else problems.push('patterns/home.php is missing');
 
 	const themeJsonPath = join(root, 'theme.json');

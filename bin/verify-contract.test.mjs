@@ -10,7 +10,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseBlocks, checkTemplateWiring, checkPageComposition, checkFluidTypography, checkCustomTemplates, checkThemePaths } from './verify-contract.mjs';
+import { parseBlocks, collectPatternSlugs, checkTemplateWiring, checkPageComposition, checkFluidTypography, checkCustomTemplates, checkThemePaths } from './verify-contract.mjs';
 
 // A slug this theme is not. These fixtures test the SHAPE the contract
 // requires, not this particular theme, and using the real slug made them look
@@ -22,7 +22,7 @@ const SLUG = 'acme-theme';
 // --- the parser --------------------------------------------------------------
 
 test('block parser reads both delimiter forms and namespaces core', () => {
-	const blocks = parseBlocks('<!-- wp:paragraph --><!-- /wp:paragraph --><!-- wp:acme/card {"id":3} /-->');
+	const { blocks } = parseBlocks('<!-- wp:paragraph --><!-- /wp:paragraph --><!-- wp:acme/card {"id":3} /-->');
 	assert.deepEqual(
 		blocks.map((b) => b.name),
 		['core/paragraph', 'acme/card'],
@@ -31,9 +31,19 @@ test('block parser reads both delimiter forms and namespaces core', () => {
 });
 
 test('block parser tracks nesting depth', () => {
-	const blocks = parseBlocks('<!-- wp:group --><!-- wp:paragraph /--><!-- /wp:group -->');
+	const { blocks, unbalanced } = parseBlocks('<!-- wp:group --><!-- wp:paragraph /--><!-- /wp:group -->');
 	assert.equal(blocks[0].depth, 0);
 	assert.equal(blocks[1].depth, 1, 'the paragraph is inside the group');
+	assert.deepEqual(unbalanced, []);
+});
+
+test('block parser reports what does not balance', () => {
+	// Silently clamping depth meant an unclosed group made every following
+	// block look nested, so a template with no header and no footer still
+	// presented one pattern at the right depth and passed.
+	assert.match(parseBlocks('<!-- wp:group --><!-- wp:pattern /-->').unbalanced[0], /wp:core\/group is never closed/);
+	assert.match(parseBlocks('<!-- /wp:group -->').unbalanced[0], /nothing open/);
+	assert.match(parseBlocks('<!-- wp:group --><!-- /wp:columns -->').unbalanced[0], /while wp:core\/group is open/);
 });
 
 // --- item 3 ------------------------------------------------------------------
@@ -76,6 +86,53 @@ test('composing more than one pattern is rejected', () => {
 test('a template referencing no pattern is rejected', () => {
 	const none = '<!-- wp:template-part {"slug":"header"} /--><!-- wp:template-part {"slug":"footer"} /-->';
 	assert.ok(checkTemplateWiring(none).some((p) => p.includes('references no pattern')));
+});
+
+test('an unclosed group with no header or footer is rejected', () => {
+	// It has exactly one pattern, all of its blocks are on the whitelist, and
+	// under the previous checks that was enough to pass.
+	const broken = '<!-- wp:group {"tagName":"main"} --><!-- wp:pattern {"slug":"acme-theme/home"} /-->';
+	const problems = checkTemplateWiring(broken);
+	assert.ok(
+		problems.some((p) => p.includes('never closed')),
+		'the unbalanced group must be reported',
+	);
+	assert.ok(
+		problems.some((p) => p.includes('header part, main, footer part')),
+		'the missing header and footer must be reported',
+	);
+});
+
+test('the root structure must be header part, main, footer part', () => {
+	const noFooter = '<!-- wp:template-part {"slug":"header"} /--><!-- wp:group {"tagName":"main"} --><!-- wp:pattern {"slug":"acme-theme/home"} /--><!-- /wp:group -->';
+	assert.ok(checkTemplateWiring(noFooter).some((p) => p.includes('top level is')));
+
+	const wrongPart = WIRING.replace('{"slug":"header"}', '{"slug":"sidebar"}');
+	assert.ok(checkTemplateWiring(wrongPart).some((p) => p.includes('expected "header"')));
+
+	const notMain = WIRING.replace('{"tagName":"main"}', '{"tagName":"div"}');
+	assert.ok(checkTemplateWiring(notMain).some((p) => p.includes('tagName "main"')));
+});
+
+test('a reference to a pattern nobody registers is rejected', () => {
+	// It renders as nothing, so the page silently loses a section.
+	const known = new Set(['acme-theme/home']);
+	assert.deepEqual(checkTemplateWiring(WIRING, { knownPatterns: known }), []);
+
+	const ghost = WIRING.replace('acme-theme/home', 'acme-theme/does-not-exist');
+	assert.ok(checkTemplateWiring(ghost, { knownPatterns: known }).some((p) => p.includes('no patterns/*.php registers')));
+
+	const php = '<!-- wp:pattern {"slug":"acme-theme/section-ghost"} /-->';
+	assert.ok(checkPageComposition(php, SLUG, { knownPatterns: new Set() }).some((p) => p.includes('no patterns/*.php registers')));
+});
+
+test('the pattern registry is read from Slug headers', () => {
+	const files = [
+		{ file: 'patterns/_section-hero.php', contents: '<?php\n/**\n * Title: Hero\n * Slug: acme-theme/section-hero\n */\n' },
+		{ file: 'patterns/home.php', contents: '<?php\n/**\n * Title: Home\n * Slug: acme-theme/home\n */\n' },
+		{ file: 'patterns/notes.md', contents: 'no header here' },
+	];
+	assert.deepEqual([...collectPatternSlugs(files)].sort(), ['acme-theme/home', 'acme-theme/section-hero']);
 });
 
 // --- item 4 ------------------------------------------------------------------
