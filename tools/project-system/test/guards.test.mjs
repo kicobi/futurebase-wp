@@ -38,6 +38,22 @@ test('placeholder VALUES are still ignored', () => {
 	assert.equal(scanText('secret: <REPLACE_WITH_REAL_VALUE>').length, 0);
 });
 
+test('a placeholder word inside the MATCH does not disarm the scanner either', () => {
+	// Round two. Moving suppression from the line to the match closed the
+	// trailing-comment case and opened two more: the whole match includes the
+	// username of a basic-auth URL, and for structured tokens it is the token
+	// itself, whose 36 random characters can contain anything.
+	assert.equal(scanText('https://example-user:ActualPassword987654321@prod.example').length, 1, 'a username must not suppress a password');
+	assert.equal(scanText(`ghp_${'example'.padEnd(36, 'z')}`).length, 1, "a token's own body must not suppress it");
+	assert.equal(scanText('AKIAIOSFODNN7EXAMPLB used by example-service').length, 1);
+});
+
+test('placeholders are still honoured where a human would write one', () => {
+	// The narrowing must not cost the suppression that keeps this usable.
+	assert.equal(scanText('https://admin:changeme-please@host').length, 0, 'a placeholder PASSWORD still suppresses');
+	assert.equal(scanText('Bearer ${DEPLOY_TOKEN_VALUE_GOES_HERE}').length, 0);
+});
+
 test('a placeholder word elsewhere on the line does not disarm the scanner', () => {
 	// The original bug: IGNORE_VALUE was tested against the whole line, so any
 	// annotation containing "example" or "redacted" suppressed a real hit.
@@ -128,6 +144,31 @@ test('containedPath refuses a path whose component is a symlink out of the root'
 });
 
 // --- sync writes -------------------------------------------------------------
+
+test('a symlinked ROOT does not become its own boundary', () => {
+	// The gap the first containment fix left, and the reason it was worse than
+	// no check: intermediate symlinks were blocked while a symlinked managed
+	// root resolved to itself, so every write "passed" containment and landed
+	// outside the tree the caller actually meant.
+	const { dir, cleanup } = sandbox();
+	try {
+		const dest = join(dir, 'dest');
+		const outside = join(dir, 'outside');
+		mkdirSync(dest, { recursive: true });
+		mkdirSync(outside, { recursive: true });
+		symlinkSync(outside, join(dest, '.project'));
+
+		const projectRoot = join(dest, '.project');
+		assert.equal(containedPath(projectRoot, 'brief/discovery.md', { boundary: dest }), null, 'the destination is the boundary, not the symlinked root');
+
+		// Without an explicit boundary the root vouches for itself — which is
+		// correct when the caller was handed that root, and is why the parameter
+		// exists rather than the default being changed.
+		assert.ok(containedPath(projectRoot, 'brief/discovery.md'));
+	} finally {
+		cleanup();
+	}
+});
 
 test('applyEntry refuses to write through a symlinked component', () => {
 	const { dir, cleanup } = sandbox();

@@ -383,15 +383,28 @@ export async function leadPromote(positional, flags) {
 	}
 
 	// Step 4: scaffold .project/ and copy the dossier per the manifest.
+	//
+	// `.project` is a path we construct, not one we were handed, so refuse it
+	// outright if the template ships it as a symlink. Resolving a symlinked
+	// managed root through realpath makes it its own boundary, and every write
+	// below then lands outside the destination while passing containment — the
+	// template is a fresh clone of something we do not control byte-for-byte,
+	// so this is reachable by whoever can commit to it.
 	const projectRoot = join(dest, '.project');
+	if (existsSync(projectRoot)) {
+		const st = lstatSync(projectRoot);
+		if (!st.isDirectory() || st.isSymbolicLink()) {
+			recover('scaffold', `${projectRoot} exists and is not a real directory — refusing to scaffold the project record into it`, EXIT.ACCESS_FAILURE);
+		}
+	}
 	for (const d of PROJECT_DIRS) mkdirSync(join(projectRoot, d), { recursive: true });
 	mkdirSync(join(projectRoot, 'private'), { recursive: true });
-	// The manifest is symlink-free, but the DESTINATION is a fresh clone of a
-	// template we do not control byte-for-byte, so resolve each target through
-	// its real path before writing. Same reasoning as sync's applyEntry: a
-	// contained-looking string is not a contained write.
+
+	// Every target resolves against DEST, not against .project. The boundary is
+	// the repository we are promoting into; .project is merely where inside it
+	// these files go.
 	const copyInto = (from, rel, root) => {
-		const to = containedPath(root, rel);
+		const to = containedPath(root, rel, { boundary: dest });
 		if (to === null) {
 			recover('copy-dossier', `refusing to write outside the project: ${rel}`, EXIT.ACCESS_FAILURE);
 			return;
