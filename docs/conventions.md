@@ -4,7 +4,7 @@ Three small grammars that everything else in this starter assumes. If you're wri
 
 ## 1. Slug substitution
 
-The starter ships with the slug `wp-starter` hard-coded into every pattern header, every `wp:pattern` reference, every text domain, and every PHP function prefix (as `wp_starter_`).
+The starter ships with the slug `wp-starter` hard-coded into every pattern header, every `wp:pattern` reference, every text domain, every PHP function prefix (as `wp_starter_`), and every global constant (as `WP_STARTER_`).
 
 When a new project adopts the starter, all of those become the project's slug in one pass — via [bin/rename-theme.sh](../bin/rename-theme.sh):
 
