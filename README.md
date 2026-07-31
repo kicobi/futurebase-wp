@@ -83,12 +83,13 @@ The script performs the following edits in one pass:
 1. **Theme slug** — lowercase, dashes only, no underscores (e.g. `acme-client`, not `acme_client` or `AcmeClient`).
 2. **Text domain** = theme slug. Replaces `'wp-starter'` → `'<slug>'` in every PHP i18n call.
 3. **Function prefix** — slug converted to `snake_case`. Replaces `wp_starter_` → `<slug_snake>_`.
-4. **Pattern slugs** — every `wp-starter/…` pattern slug becomes `<slug>/…` in both pattern headers and template `wp:pattern` references.
-5. **`style.css` header** — updates `Text Domain`; when `--theme-uri` is passed, also `Theme URI`; when `--contributors` is passed, writes or replaces a `Contributors:` line.
-6. **`composer.json`** — updates `name` field (`vendor/<slug>`).
-7. **`phpcs.xml.dist`** — updates the `text_domain` and `prefixes` properties.
-8. **`package.json`** — updates `name` field.
-9. **`docs/`, `src/`, `inc/`** — PHP snippets, text domains, pattern slugs, and backtick-wrapped `` `wp-starter` `` prose references rewrite too, so a scaffolded project doesn't ship with half the old slug still visible.
+4. **Constant prefix** — the same prefix in caps. Replaces `WP_STARTER_` → `<SLUG_SNAKE>_`, covering PHP global constants and the one env var (`WP_STARTER_DIST_DIR`) spelled that way. They share the global namespace `phpcs` checks against the renamed `prefixes` property, so a constant left behind fails lint.
+5. **Pattern slugs** — every `wp-starter/…` pattern slug becomes `<slug>/…` in both pattern headers and template `wp:pattern` references.
+6. **`style.css` header** — updates `Text Domain`; when `--theme-uri` is passed, also `Theme URI`; when `--contributors` is passed, writes or replaces a `Contributors:` line.
+7. **`composer.json`** — updates `name` field (`vendor/<slug>`).
+8. **`phpcs.xml.dist`** — updates the `text_domain` and `prefixes` properties.
+9. **`package.json`** — updates `name` field.
+10. **`docs/`, `src/`, `inc/`** — PHP snippets, text domains, pattern slugs, and backtick-wrapped `` `wp-starter` `` prose references rewrite too, so a scaffolded project doesn't ship with half the old slug still visible.
 
 Re-running the script with the same arguments is a no-op — the `Contributors:` line isn't duplicated, and already-renamed references don't match the search pattern.
 

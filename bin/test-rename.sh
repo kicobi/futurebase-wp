@@ -98,6 +98,7 @@ fi
 # --- Phase 2: a real rename succeeds cleanly --------------------------------
 REAL_SLUG="acme-client-probe"
 REAL_SNAKE="acme_client_probe"
+REAL_UPPER="ACME_CLIENT_PROBE"
 
 make_worktree
 WT2="$NEW_WT"
@@ -115,6 +116,37 @@ grep -qi "text domain:[[:space:]]*${REAL_SLUG}" "$WT2/style.css" 2>/dev/null || 
 tmpl="$WT2/tools/project-system/templates/lead/CLAUDE.md"
 if [ -f "$tmpl" ]; then
 	grep -q 'wp-starter' "$tmpl" 2>/dev/null || problems+=("tools/project-system template literal 'wp-starter' was rewritten (exclusion broken)")
+fi
+
+# Uppercase global names — PHP constants and the packaging script's env var —
+# belong to the same namespace phpcs PrefixAllGlobals checks against the
+# renamed `prefixes` element, so one left behind fails lint in the promoted
+# project. It went unnoticed for exactly as long as it did because the
+# substitution pass matched only the lowercase snake prefix AND the leftover
+# grep was case-sensitive: the rename exited 0 with the constant still there.
+#
+# Assert over the whole scanned surface rather than naming the one constant
+# that exposed it, so the next one is covered without editing this file.
+# tools/ is excluded for the reason it is excluded from the rename itself —
+# its WP_STARTER_* env vars are the starter tooling's own identity, and its
+# files are never rewritten in a promoted project.
+upper_left=$(
+	grep -rn \
+		--exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=.git \
+		--exclude-dir=build --exclude-dir=tools \
+		--exclude='rename-theme.sh' --exclude='test-rename.sh' \
+		-- 'WP_STARTER_' "$WT2" 2>/dev/null | head -20 || true
+)
+if [ -n "$upper_left" ]; then
+	problems+=("uppercase WP_STARTER_ names survived the rename (phpcs PrefixAllGlobals will fail):")
+	while IFS= read -r line; do
+		[ -n "$line" ] && problems+=("    ${line#"$WT2"/}")
+	done <<< "$upper_left"
+fi
+
+nav="$WT2/inc/navigation-migration.php"
+if [ -f "$nav" ]; then
+	grep -q "${REAL_UPPER}_" "$nav" 2>/dev/null || problems+=("inc/navigation-migration.php has no ${REAL_UPPER}_ constant — the uppercase prefix was dropped, not renamed")
 fi
 
 # Demo fixture + scorecard tooling must never hardcode the theme slug —

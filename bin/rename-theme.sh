@@ -7,6 +7,7 @@
 #
 #   - PHP text domains:                     'wp-starter' → '<slug>'
 #   - PHP function prefixes:                 wp_starter_ → <slug_snake>_
+#   - Constants and env vars:                WP_STARTER_ → <SLUG_SNAKE>_
 #   - @package docblock tags:               @package wp-starter → @package <slug>
 #   - Pattern slugs in PHP headers:         Slug: wp-starter/... → Slug: <slug>/...
 #   - Pattern slugs in template markup:     wp:pattern {"slug":"wp-starter/..."} → <slug>
@@ -115,6 +116,21 @@ fi
 NEW_SNAKE="$(echo "$NEW_SLUG" | tr '-' '_')"
 OLD_SNAKE="wp_starter"
 
+# Uppercase siblings of the snake prefix. PHP spells global constants in caps
+# (WP_STARTER_NAVIGATION_MIGRATION_VERSION in inc/navigation-migration.php),
+# and those constants are part of the same global namespace phpcs checks
+# against the `prefixes` element in phpcs.xml.dist — which this script does
+# rewrite. Leaving the constants behind therefore fails
+# WordPress.NamingConventions.PrefixAllGlobals in every renamed project.
+#
+# The one env var in the same shape, WP_STARTER_DIST_DIR in
+# bin/package-theme.sh, is renamed too, deliberately. It is a knob on a
+# project-owned script — nothing outside the renamed file set defines or reads
+# it — so unlike the project-system CLI command name, whose file under tools/
+# is never renamed, there is nothing for it to stay in step with.
+OLD_UPPER="$(echo "$OLD_SNAKE" | tr '[:lower:]' '[:upper:]')"
+NEW_UPPER="$(echo "$NEW_SNAKE" | tr '[:lower:]' '[:upper:]')"
+
 # --- Substring-collision safety check ---------------------------------------
 # If the new slug embeds the current slug (e.g. old `wp-starter`, new
 # `wp-starter-test-5`), the substitution patterns below would re-match
@@ -155,6 +171,12 @@ case "$NEW_SNAKE" in
 		SNAKE_GUARD="(?!\\Q${NEW_SNAKE#${OLD_SNAKE}_}\\E)"
 		;;
 esac
+UPPER_GUARD=""
+case "$NEW_UPPER" in
+	"${OLD_UPPER}_"*)
+		UPPER_GUARD="(?!\\Q${NEW_UPPER#${OLD_UPPER}_}\\E)"
+		;;
+esac
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -162,6 +184,7 @@ cd "$ROOT"
 echo "Renaming theme:"
 echo "  slug:    $OLD_SLUG  →  $NEW_SLUG"
 echo "  prefix:  ${OLD_SNAKE}_  →  ${NEW_SNAKE}_"
+echo "  consts:  ${OLD_UPPER}_  →  ${NEW_UPPER}_"
 echo
 
 # -------------------------------------------------------------------------
@@ -233,9 +256,16 @@ while IFS= read -r f; do TARGETS+=("$f"); done < <(
 #    escaped — a promoted project kept the starter's meta key. Excluding only
 #    alphanumerics keeps `mywp_starter_x` unmatched while letting the leading
 #    underscore through.
+#
+#    The uppercase rule is the same pattern in caps, and it is separate because
+#    perl's s/// is case-sensitive: the lowercase rule never saw a constant.
+#    Every renamed project inherited WP_STARTER_NAVIGATION_MIGRATION_VERSION
+#    and a phpcs PrefixAllGlobals failure with it, and the leftover check below
+#    was case-sensitive too, so the rename reported success while doing so.
 for f in "${TARGETS[@]}"; do
 	perl -pi -e "s/(?<![A-Za-z0-9])${OLD_SNAKE}_${SNAKE_GUARD}/${NEW_SNAKE}_/g" "$f"
 	perl -pi -e "s/\b${OLD_SNAKE}\b/${NEW_SNAKE}/g" "$f"
+	perl -pi -e "s/(?<![A-Za-z0-9])${OLD_UPPER}_${UPPER_GUARD}/${NEW_UPPER}_/g" "$f"
 done
 
 # 2. Text-domain and pattern-slug references — `wp-starter` as a word boundary
@@ -324,7 +354,13 @@ done
 # test-rename.sh is excluded here for the same reason it is excluded from the
 # substitution pass: its OLD_SLUG sentinels are deliberately preserved, so
 # reporting them as leftovers would fail every rename with exit 2.
-raw_leftover=$(grep -rn "${OLD_SLUG}\|${OLD_SNAKE}_" \
+#
+# ${OLD_UPPER}_ is a third alternative rather than a `grep -i` over the other
+# two: case-insensitivity would also start matching inside the origin-repo URLs
+# and the CLI-command references filtered below, which are spelled lowercase on
+# purpose. Without this alternative the check could not see the constants the
+# uppercase substitution rule now rewrites, so a gap there stayed silent.
+raw_leftover=$(grep -rn "${OLD_SLUG}\|${OLD_SNAKE}_\|${OLD_UPPER}_" \
 	--include='*.php' --include='*.html' --include='*.json' --include='*.css' --include='*.xml' --include='*.dist' --include='*.md' --include='*.sh' \
 	--exclude='rename-theme.sh' \
 	--exclude='test-rename.sh' \
