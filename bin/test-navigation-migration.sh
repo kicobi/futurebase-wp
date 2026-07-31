@@ -25,6 +25,20 @@ case "$wp_url" in
 		;;
 esac
 
+# wp-env mounts `"themes": [ "." ]` at wp-content/themes/<repo-dir> but never
+# activates it, so a fresh environment boots on core's bundled default theme.
+# Without this the resolution below returned twentytwentyfive's directory and
+# the eval-file failed on a path that does not exist — and had it resolved, the
+# test would still have been meaningless, because the migration functions it
+# calls live in the ACTIVE theme. Same activation demo-content.sh does, for the
+# same reason. Idempotent, and survives `npm run rename`.
+theme_slug="$(basename "$ROOT")"
+if ! wp theme activate "$theme_slug" > /dev/null 2>&1; then
+	echo "error: could not activate theme '$theme_slug'" >&2
+	echo "       wp-env mounts this repo at wp-content/themes/$theme_slug" >&2
+	exit 1
+fi
+
 theme_dir=$(
 	wp eval 'echo get_stylesheet_directory();' 2>/dev/null \
 		| grep -E '^/' \
