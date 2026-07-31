@@ -348,6 +348,7 @@ if command -v npm > /dev/null; then
 	run "npm run build"     npm run --silent build
 	run "npm run lint"      npm run --silent lint
 	run "npm run lint:css"  npm run --silent lint:css
+	run "npm run lint:pkg"  npm run --silent lint:pkg
 else
 	fail "npm not found on PATH"
 fi

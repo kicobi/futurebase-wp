@@ -14,10 +14,10 @@
 	"homepage": "https://colinlewis.se",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/colinlewis/wp-starter.git"
+		"url": "git+https://github.com/studiokicobi/wp-starter.git"
 	},
 	"bugs": {
-		"url": "https://github.com/colinlewis/wp-starter/issues"
+		"url": "https://github.com/studiokicobi/wp-starter/issues"
 	},
 	"private": true,
 	"devDependencies": {
@@ -64,6 +64,7 @@
 		"env:destroy": "wp-env destroy",
 		"env:clean": "wp-env clean all",
 		"env:cli": "wp-env run cli wp",
+		"test:navigation": "./bin/test-navigation-migration.sh",
 		"test:contract": "node --test bin/verify-contract.test.mjs"
 	}
 }

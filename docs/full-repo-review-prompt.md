@@ -2,9 +2,10 @@
 
 Everything below the line is the prompt. Hand it to an external reviewer —
 Codex, another model, a person — when you want the whole repo examined rather
-than a diff. Keep the file-count and directory claims current when the shape of
-the repo changes; a prompt that misdescribes the codebase wastes the reviewer's
-first hour.
+than a diff. Keep the scope and directory claims current when the shape of the
+repo changes; a prompt that misdescribes the codebase wastes the reviewer's
+first hour. Avoid source counts here — they become stale without changing the
+review boundary.
 
 ```bash
 codex exec "$(cat docs/full-repo-review-prompt.md)"
@@ -33,20 +34,20 @@ system**. Two distinct codebases share one checkout, with different threat
 models and different standards:
 
 1. **The theme** — a WordPress 6.9+ / PHP 8.3+ block theme.
-   `functions.php`, `inc/` (21 PHP files), `theme.json`, `style.css`,
-   18 patterns in `patterns/`, 9 templates in `templates/`, `parts/`,
-   `src/`, `assets/`, `styles/`. Output is web-facing and renders untrusted
+   `functions.php`, `inc/`, `theme.json`, `style.css`, `patterns/`,
+   `templates/`, `parts/`, `src/`, `assets/`, and `styles/`. Output is
+   web-facing and renders untrusted
    content (post content, user input via search/comments).
 
-2. **The project-system CLI** — 52 `.mjs` files under `tools/project-system/`
-   (`commands/`, `lib/`). A local Node CLI that creates isolated "lead"
+2. **The project-system CLI** — the Node code under `tools/project-system/`
+   (`commands/`, `lib/`, schemas, templates, and tests). It creates isolated "lead"
    workspaces, promotes them into real GitHub repos from a template, captures
    performance baselines, and syncs starter fixes into already-promoted client
    projects. It shells out to `git`, `gh`, `wp`, and a headless browser, reads
    and writes YAML records, and validates against JSON schemas.
 
-3. **13 shell scripts in `bin/`** — rename, verify, package, scaffold, demo
-   content, scorecard, smoke tests. Several are destructive (`wp site empty`),
+3. **The scripts in `bin/`** — rename, verify, package, scaffold, demo content,
+   migration tests, scorecard, and smoke tests. Several are destructive (`wp site empty`),
    several rewrite the entire repo in place (`rename-theme.sh`).
 
 Read `CLAUDE.md` first — it states the project's own rules — then

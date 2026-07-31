@@ -269,7 +269,15 @@ export function safeFiles(root) {
 			else if (classifyPath(rel) === CLASS.SAFE) acc.push(rel);
 		}
 	};
-	for (const r of SAFE_ROOTS) if (existsSync(join(root, r))) walk(r);
+	for (const r of SAFE_ROOTS) {
+		const abs = join(root, r);
+		try {
+			const st = lstatSync(abs);
+			if (st.isDirectory() && !st.isSymbolicLink()) walk(r);
+		} catch {
+			/* absent and unreadable roots contribute no portable files */
+		}
+	}
 	return acc;
 }
 

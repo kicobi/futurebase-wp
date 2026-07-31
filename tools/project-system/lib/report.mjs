@@ -47,9 +47,9 @@ const EVIDENCE = [
 	['notes', 'Manual notes'],
 ];
 
-export function generateReport({ runDir, reportsDir, summary, results, config, projectName, kind = 'baseline' }) {
+export function generateReport({ runDir, reportsDir, summary, results, config, projectName, kind = 'baseline', runId }) {
 	const head = headlines(runDir, results);
-	const runId = summary.run_id;
+	if (!runId) throw new Error('generateReport requires a validated runId');
 	const evidence = EVIDENCE.filter(([p]) => existsSync(join(runDir, p)));
 	const Kind = kind.charAt(0).toUpperCase() + kind.slice(1);
 

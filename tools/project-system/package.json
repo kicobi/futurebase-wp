@@ -1,22 +1,38 @@
 {
 	"name": "wp-starter-project-system",
 	"version": "0.8.0",
-	"private": true,
 	"description": "Project lifecycle system for wp-starter: isolated lead workspaces, promotion, baselines, and success metrics. Phase 1 ships `lead init` / `lead inspect`; later phases add promotion, baselines, and metrics.",
-	"type": "module",
-	"bin": {
-		"wp-starter": "./bin/wp-starter.mjs"
+	"author": "Colin Lewis",
+	"license": "GPL-2.0-or-later",
+	"keywords": [
+		"wordpress",
+		"project-lifecycle",
+		"baseline"
+	],
+	"homepage": "https://github.com/studiokicobi/wp-starter#readme",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/studiokicobi/wp-starter.git",
+		"directory": "tools/project-system"
 	},
+	"bugs": {
+		"url": "https://github.com/studiokicobi/wp-starter/issues"
+	},
+	"private": true,
 	"engines": {
 		"node": ">=22"
 	},
-	"scripts": {
-		"validate": "node validate-design.mjs",
-		"test": "node --test test/*.test.mjs"
+	"type": "module",
+	"bin": {
+		"wp-starter": "./bin/wp-starter.mjs"
 	},
 	"dependencies": {
 		"ajv": "^8.17.1",
 		"ajv-formats": "^3.0.1",
 		"js-yaml": "^4.1.0"
+	},
+	"scripts": {
+		"validate": "node validate-design.mjs",
+		"test": "node --test test/*.test.mjs"
 	}
 }

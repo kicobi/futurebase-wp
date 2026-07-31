@@ -37,21 +37,49 @@ const RULES = [
 	{ rule: 'slack-token', re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/, group: 0, suppressible: false },
 	{ rule: 'google-api-key', re: /\bAIza[0-9A-Za-z_\-]{35}\b/, group: 0, suppressible: false },
 	// Group 1 is the token itself, without the `Bearer ` prefix.
-	{ rule: 'bearer-token', re: /\bBearer\s+([A-Za-z0-9\-._~+/]{24,}=*)\b/, group: 1, suppressible: true },
+	{ rule: 'bearer-token', re: /\bBearer\s+([^\s"',;]+)/i, group: 1, suppressible: true, minLength: 24 },
 	// Group 1 is the PASSWORD only — not the scheme, and not the username,
 	// which is where `https://example-user:<real password>@host` hid.
 	{ rule: 'basic-auth-url', re: /\b[a-z][a-z0-9+.\-]*:\/\/[^/\s:@]+:([^/\s:@]{3,})@/i, group: 1, suppressible: true },
 	// Group 1 is the assigned value — never the key, never a trailing comment.
 	{
 		rule: 'assigned-secret',
-		re: /\b(?:password|passwd|secret|api[_-]?key|apikey|access[_-]?token|auth[_-]?token|client[_-]?secret|private[_-]?key)\b\s*[:=]\s*["']?([A-Za-z0-9/+_\-]{16,})["']?/i,
-		group: 1,
+		re: /\b(?:password|passwd|secret|api[_-]?key|apikey|access[_-]?token|auth[_-]?token|client[_-]?secret|private[_-]?key)\b\s*[:=]\s*(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([^\s#,;]+))/i,
+		extract: (match) => match[1] ?? match[2] ?? match[3],
 		suppressible: true,
+		minLength: 16,
 	},
 ];
 
-// Values that look like placeholders / references, not real secrets.
-const IGNORE_VALUE = /example|changeme|your[-_]?|placeholder|xxxx+|\$\{|\bprocess\.env\b|<[^>]+>|\[[A-Z_]+\]|\*{4,}|redacted/i;
+// Only whole values are suppressible. Substring matching let
+// `real-example-production-password` through. These forms are references or
+// explicit placeholders in their entirety, rather than literals that merely
+// happen to contain a placeholder-looking word.
+const PLACEHOLDER_PATTERNS = [
+	/^(?:example|changeme|change-me|placeholder|redacted|x{4,})(?:[-_ ].*)?$/i,
+	/^(?:your|replace|insert|enter|set)[-_ ](?:.+)$/i,
+	/^(?:.+)[-_ ](?:here|goes-here)$/i,
+	/^\$\{[A-Z_][A-Z0-9_]*\}$/,
+	/^\$[A-Z_][A-Z0-9_]*$/,
+	/^process\.env\.[A-Z_][A-Z0-9_]*$/,
+	/^<[A-Z_][A-Z0-9_-]*>$/,
+	/^\[[A-Z_][A-Z0-9_-]*\]$/,
+	/^\*{4,}$/,
+];
+
+const REFERENCE_PATTERNS = [
+	// Recognised configuration references, not every dotted string.
+	/^(?:config|settings|env|vars|secrets)(?:\.[A-Za-z_][A-Za-z0-9_-]*){2,}$/,
+	/^[a-z][a-z0-9+.-]*:\/\/[^\s]+$/i,
+	/^(?:\.{0,2}\/|~\/|file:\/|[A-Za-z]:[\\/])[^\s]+$/,
+	/^refs\/(?:heads|tags|remotes)\/[^\s]+$/,
+	/^(?:sha1|sha256|sha384|sha512|md5):[A-Fa-f0-9]+$/,
+];
+
+export function isSuppressedCredentialValue(rawValue) {
+	const value = String(rawValue ?? '').trim();
+	return [...PLACEHOLDER_PATTERNS, ...REFERENCE_PATTERNS].some((pattern) => pattern.test(value));
+}
 
 function redact(line) {
 	const t = line.trim();
@@ -63,7 +91,7 @@ export function scanText(text) {
 	const lines = text.split(/\r?\n/);
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
-		for (const { rule, re, group, suppressible } of RULES) {
+		for (const { rule, re, group, extract, suppressible, minLength = 0 } of RULES) {
 			const m = re.exec(line);
 			if (!m) continue;
 			// Suppress on the CREDENTIAL, and only where a placeholder is a thing
@@ -71,8 +99,9 @@ export function scanText(text) {
 			// comment disarm the scanner; testing the whole match then let a
 			// username or a token's own body do the same. What is compared now is
 			// the captured value, for the rules where that is meaningful at all.
-			const value = m[group] ?? m[0];
-			if (suppressible && IGNORE_VALUE.test(value)) continue;
+			const value = (extract ? extract(m) : m[group] ?? m[0]).trim();
+			if (suppressible && isSuppressedCredentialValue(value)) continue;
+			if (value.length < minLength) continue;
 			findings.push({ line: i + 1, rule, snippet: redact(line) });
 			break; // one finding per line is enough to flag it
 		}

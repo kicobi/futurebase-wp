@@ -8,12 +8,26 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { makeRunDir, newRunId, latestRunId } from '../lib/baseline.mjs';
+import {
+	assertRunId,
+	checkModuleEvidence,
+	enforceModuleEvidence,
+	evidenceVerdict,
+	latestRunId,
+	makeRunDir,
+	newRunId,
+	overallStatus,
+	readRunSummary,
+	runDirFor,
+} from '../lib/baseline.mjs';
 import { classifyRuns, listRuns } from '../lib/record.mjs';
+import { validateBaselineRun } from '../lib/validate.mjs';
+import { EXIT } from '../lib/output.mjs';
+import { captureExitCode } from '../commands/capture.mjs';
 
 function sandbox() {
 	const dir = mkdtempSync(join(tmpdir(), 'wp-starter-runs-'));
@@ -47,6 +61,10 @@ const MODULES_FOR = {
 function writeRun(baselineDir, runId, status) {
 	const dir = join(baselineDir, runId);
 	mkdirSync(dir, { recursive: true });
+	if (MODULES_FOR[status].some((module) => module.module === 'crawl' && ['complete', 'complete_with_warnings'].includes(module.status))) {
+		mkdirSync(join(dir, 'crawl'), { recursive: true });
+		writeFileSync(join(dir, 'crawl', 'crawl.json'), '{}\n', 'utf8');
+	}
 	writeFileSync(join(dir, 'summary.json'), JSON.stringify(summaryFor(runId, status, MODULES_FOR[status]), null, 2), 'utf8');
 	return dir;
 }
@@ -142,6 +160,8 @@ test('one complete module beside five failures is not captured evidence', () => 
 		const id = '2026-07-30T100000Z';
 		const mods = [{ module: 'crawl', status: 'complete' }, ...['lighthouse', 'axe', 'screenshots', 'wordpress', 'manual'].map((m) => ({ module: m, status: 'failed' }))];
 		mkdirSync(join(dir, id), { recursive: true });
+		mkdirSync(join(dir, id, 'crawl'));
+		writeFileSync(join(dir, id, 'crawl', 'crawl.json'), '{}\n', 'utf8');
 		writeFileSync(join(dir, id, 'summary.json'), JSON.stringify({ ...summaryFor(id, 'completed_with_warnings'), modules: mods }), 'utf8');
 
 		const { captured, incomplete } = classifyRuns(dir);
@@ -165,6 +185,8 @@ test('modules that could not run yet do not disqualify a run', () => {
 			{ module: 'manual', status: 'skipped' },
 		];
 		mkdirSync(join(dir, id), { recursive: true });
+		mkdirSync(join(dir, id, 'crawl'));
+		writeFileSync(join(dir, id, 'crawl', 'crawl.json'), '{}\n', 'utf8');
 		writeFileSync(join(dir, id, 'summary.json'), JSON.stringify({ ...summaryFor(id, 'completed_with_warnings'), modules: mods }), 'utf8');
 
 		assert.equal(classifyRuns(dir).captured.length, 1);
@@ -223,6 +245,133 @@ test('a suffixed run id validates against the schema', () => {
 		writeRun(dir, '2026-07-30T100000Z-02', 'completed');
 		const { captured, incomplete } = classifyRuns(dir);
 		assert.equal(captured.length, 1, `suffixed ids must validate (got: ${JSON.stringify(incomplete)})`);
+	} finally {
+		cleanup();
+	}
+});
+
+test('warning-bearing modules produce evidence and determine the warning exit status', () => {
+	const modules = [
+		{ module: 'axe', status: 'complete_with_warnings', evidence_path: 'accessibility/' },
+		{ module: 'crawl', status: 'complete_with_warnings', evidence_path: 'crawl/' },
+	];
+	assert.equal(overallStatus(modules), 'completed_with_warnings');
+	assert.equal(evidenceVerdict({ schema_version: 2, status: 'completed_with_warnings', modules }).captured, true);
+	assert.equal(overallStatus([{ module: 'crawl', status: 'complete' }]), 'completed');
+	assert.equal(overallStatus([{ module: 'crawl', status: 'failed' }]), 'failed');
+	assert.equal(overallStatus([{ module: 'crawl', status: 'skipped' }]), 'partial');
+	assert.equal(overallStatus([{ module: 'crawl', status: 'complete' }, { module: 'axe', status: 'failed' }]), 'completed_with_warnings');
+	assert.equal(captureExitCode('completed'), EXIT.OK);
+	assert.equal(captureExitCode('completed_with_warnings'), EXIT.WARNINGS);
+	assert.equal(captureExitCode('partial'), EXIT.WARNINGS);
+	assert.equal(captureExitCode('failed'), EXIT.MODULE_FAILURE);
+});
+
+test('schema version 2 requires evidence_path for claimed success while version 1 remains valid', () => {
+	const id = '2026-07-30T100000Z';
+	const legacy = summaryFor(id, 'completed');
+	assert.equal(validateBaselineRun(legacy).valid, true);
+	assert.equal(validateBaselineRun({ ...legacy, schema_version: 2 }).valid, false);
+	assert.equal(
+		validateBaselineRun({
+			...legacy,
+			schema_version: 2,
+			modules: [{ module: 'crawl', status: 'complete', evidence_path: 'crawl/' }],
+		}).valid,
+		true,
+	);
+});
+
+test('invalid claimed evidence is converted to a failed module before status calculation', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const runDir = join(dir, '2026-07-30T100000Z');
+		mkdirSync(runDir);
+		const missing = enforceModuleEvidence(runDir, {
+			module: 'crawl',
+			status: 'complete',
+			evidence_path: 'crawl/',
+		});
+		assert.equal(missing.status, 'failed');
+		assert.match(missing.reason, /invalid claimed evidence.*does not exist/);
+		assert.equal(overallStatus([missing]), 'failed');
+	} finally {
+		cleanup();
+	}
+});
+
+test('evidence must be contained, non-symlinked, and include a regular artifact', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const runDir = join(dir, '2026-07-30T100000Z');
+		const outside = join(dir, 'outside');
+		mkdirSync(runDir);
+		mkdirSync(outside);
+		writeFileSync(join(outside, 'artifact.json'), '{}\n');
+
+		const module = { module: 'crawl', status: 'complete' };
+		assert.equal(checkModuleEvidence(runDir, { ...module, evidence_path: '../outside/' }).valid, false);
+
+		mkdirSync(join(runDir, 'empty'));
+		assert.equal(checkModuleEvidence(runDir, { ...module, evidence_path: 'empty/' }).valid, false);
+
+		symlinkSync(outside, join(runDir, 'linked'));
+		assert.equal(checkModuleEvidence(runDir, { ...module, evidence_path: 'linked/' }).valid, false);
+
+		mkdirSync(join(runDir, 'crawl'));
+		writeFileSync(join(runDir, 'crawl', 'crawl.json'), '{}\n');
+		assert.equal(checkModuleEvidence(runDir, { ...module, evidence_path: 'crawl/' }).valid, true);
+	} finally {
+		cleanup();
+	}
+});
+
+test('legacy runs infer and verify their conventional evidence directory', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const id = '2026-07-30T100000Z';
+		const runDir = writeRun(dir, id, 'completed');
+		const summary = summaryFor(id, 'completed');
+		assert.equal(evidenceVerdict(summary, runDir).captured, true);
+		rmSync(join(runDir, 'crawl'), { recursive: true });
+		const verdict = evidenceVerdict(summary, runDir);
+		assert.equal(verdict.captured, false);
+		assert.match(verdict.reason, /predates evidence-path validation|does not exist/);
+	} finally {
+		cleanup();
+	}
+});
+
+test('run IDs, pointers, directories, and summary identities share one validator', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		assert.throws(() => assertRunId('../outside'), /invalid run id/);
+		assert.throws(() => runDirFor(dir, '2026-07-30T100000Z.json'), /invalid run id/);
+
+		const first = '2026-07-30T100000Z';
+		const second = '2026-07-30T110000Z';
+		writeRun(dir, first, 'completed');
+		writeRun(dir, second, 'completed');
+		writeFileSync(join(dir, 'latest.json'), JSON.stringify({ run_id: '../../escape' }));
+		assert.equal(latestRunId(dir), second, 'a corrupt pointer falls back to the newest valid contained run');
+
+		const wrong = summaryFor(first, 'completed');
+		writeFileSync(join(dir, second, 'summary.json'), JSON.stringify(wrong));
+		assert.throws(() => readRunSummary(dir, second), /does not match directory/);
+	} finally {
+		cleanup();
+	}
+});
+
+test('symlinked run directories are never selected', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const outside = join(dir, 'outside');
+		mkdirSync(outside);
+		const linkedId = '2026-07-30T120000Z';
+		symlinkSync(outside, join(dir, linkedId));
+		assert.deepEqual(listRuns(dir), []);
+		assert.equal(latestRunId(dir), null);
 	} finally {
 		cleanup();
 	}

@@ -23,7 +23,7 @@ Run twice so far, both times against fixes for a Codex full-repo review:
 | Run | Against | Result |
 | --- | --- | --- |
 | 2026-07-30 | 13 findings fixed in PRs #65–#71 | 9 defects — 4 P1. Verdict: 5 proper, 7 papered over, 1 **worse** |
-| 2026-07-30 | those 9 fixed in PRs #73–#77 | — |
+| 2026-07-30 | those 9 fixed in PRs #73–#77 | 9 fixes accepted; the follow-on full-repo pass opened a separate improvement plan |
 
 The first run is the argument for keeping this file. Every one of its nine
 findings reproduced. Three were the same failure mode — **a fix narrowed to the

@@ -11,7 +11,12 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkpointMismatch, CHECKPOINT_FILE } from '../commands/lead/promote.mjs';
+import {
+	checkpointMismatch,
+	CHECKPOINT_FILE,
+	recoveryReceiptMismatch,
+	recoveryReceiptPath,
+} from '../commands/lead/promote.mjs';
 
 const target = { slug: 'acme', dest: '/Users/x/Sites/acme', remote: 'studiokicobi/acme' };
 
@@ -74,4 +79,79 @@ test('template is only compared when the caller supplies one', () => {
 	// hand, without silently skipping the check for the real one.
 	assert.equal(checkpointMismatch(checkpointFor(), target), null);
 	assert.equal(checkpointMismatch(checkpointFor(), { ...target, template: 'studiokicobi/wp-starter' }), null);
+});
+
+const liveIdentity = (over = {}) => ({
+	repository_id: 123456,
+	repository_node_id: 'R_kgDOExample',
+	repository_full_name: 'studiokicobi/acme',
+	repository_created_at: '2026-07-30T10:00:05Z',
+	default_branch: 'main',
+	initial_commit_sha: 'def5678',
+	commit_count: 1,
+	template_repository: 'studiokicobi/wp-starter',
+	...over,
+});
+
+const receiptFor = (over = {}) => ({
+	schema_version: 1,
+	kind: 'promotion-recovery-receipt',
+	nonce: '11111111-1111-4111-8111-111111111111',
+	receipt_created_at: '2026-07-30T10:00:06.000Z',
+	lead_slug: 'acme',
+	dest: '/Users/x/Sites/acme',
+	remote: 'studiokicobi/acme',
+	template: 'studiokicobi/wp-starter',
+	template_commit: 'abc1234',
+	repository_id: 123456,
+	repository_node_id: 'R_kgDOExample',
+	repository_full_name: 'studiokicobi/acme',
+	repository_created_at: '2026-07-30T10:00:05Z',
+	default_branch: 'main',
+	initial_commit_sha: 'def5678',
+	initial_commit_count: 1,
+	template_repository: 'studiokicobi/wp-starter',
+	...over,
+});
+
+const recoveryTarget = { ...target, template: 'studiokicobi/wp-starter' };
+
+test('a complete receipt matching the untouched generated remote permits clone recovery', () => {
+	assert.equal(recoveryReceiptMismatch(receiptFor(), recoveryTarget, liveIdentity()), null);
+});
+
+test('clone recovery refuses an absent or incomplete receipt', () => {
+	assert.match(recoveryReceiptMismatch(null, recoveryTarget, liveIdentity()), /no matching local recovery receipt/);
+	assert.match(recoveryReceiptMismatch(receiptFor({ repository_node_id: null }), recoveryTarget, liveIdentity()), /incomplete.*repository_node_id/);
+	assert.match(recoveryReceiptMismatch(receiptFor({ remote: 42 }), recoveryTarget, liveIdentity()), /invalid field types.*remote/);
+	assert.match(recoveryReceiptMismatch(receiptFor({ initial_commit_count: '1' }), recoveryTarget, liveIdentity()), /invalid initial_commit_count/);
+	assert.match(recoveryReceiptMismatch(receiptFor(), recoveryTarget, liveIdentity({ template_repository: null })), /live GitHub repository identity.*malformed/);
+});
+
+test('clone recovery binds lead, destination, remote, and template', () => {
+	assert.match(recoveryReceiptMismatch(receiptFor({ lead_slug: 'other' }), recoveryTarget, liveIdentity()), /belongs to lead/);
+	assert.match(recoveryReceiptMismatch(receiptFor({ dest: '/tmp/elsewhere' }), recoveryTarget, liveIdentity()), /records destination/);
+	assert.match(recoveryReceiptMismatch(receiptFor({ remote: 'other/acme' }), recoveryTarget, liveIdentity()), /records remote/);
+	assert.match(recoveryReceiptMismatch(receiptFor({ template: 'other/template' }), recoveryTarget, liveIdentity()), /records template/);
+});
+
+test('a deleted and recreated repository cannot reuse the old receipt', () => {
+	assert.match(recoveryReceiptMismatch(receiptFor(), recoveryTarget, liveIdentity({ repository_id: 654321 })), /repository ID changed/);
+	assert.match(recoveryReceiptMismatch(receiptFor(), recoveryTarget, liveIdentity({ repository_node_id: 'R_recreated' })), /node ID changed/);
+	assert.match(recoveryReceiptMismatch(receiptFor(), recoveryTarget, liveIdentity({ repository_created_at: '2026-07-30T11:00:00Z' })), /creation time changed/);
+});
+
+test('a changed remote or generated commit cannot be recovered', () => {
+	assert.match(recoveryReceiptMismatch(receiptFor(), recoveryTarget, liveIdentity({ initial_commit_sha: 'changed' })), /initial commit changed/);
+	assert.match(recoveryReceiptMismatch(receiptFor(), recoveryTarget, liveIdentity({ commit_count: 2 })), /exactly one generated commit/);
+	assert.match(recoveryReceiptMismatch(receiptFor(), recoveryTarget, liveIdentity({ default_branch: 'develop' })), /default branch changed/);
+	assert.match(recoveryReceiptMismatch(receiptFor(), recoveryTarget, liveIdentity({ template_repository: 'other/template' })), /template identity changed/);
+});
+
+test('recovery receipt filenames are stable and bind destination plus remote', () => {
+	const a = recoveryReceiptPath('/Users/x/Sites/acme', 'studiokicobi/acme');
+	assert.equal(a, recoveryReceiptPath('/Users/x/Sites/acme', 'studiokicobi/acme'));
+	assert.notEqual(a, recoveryReceiptPath('/Users/x/Sites/acme-2', 'studiokicobi/acme'));
+	assert.notEqual(a, recoveryReceiptPath('/Users/x/Sites/acme', 'studiokicobi/acme-2'));
+	assert.match(a, /\.wp-starter-promotion-[a-f0-9]{20}\.json$/);
 });

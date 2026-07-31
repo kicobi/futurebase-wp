@@ -5,8 +5,8 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { EXIT, die, ok, info, emitJson } from '../../lib/output.mjs';
-import { findProjectRoot, projectPaths, loadConfig, latestRunId } from '../../lib/baseline.mjs';
-import { readJson, readYaml } from '../../lib/yaml.mjs';
+import { findProjectRoot, projectPaths, loadConfig, latestRunId, isRunId, readRunSummary } from '../../lib/baseline.mjs';
+import { readYaml } from '../../lib/yaml.mjs';
 import { generateReport } from '../../lib/report.mjs';
 
 export function baselineReport(_positional, flags) {
@@ -17,11 +17,14 @@ export function baselineReport(_positional, flags) {
 
 	const runId = flags['run-id'] || (existsSync(paths.baselineDir) ? latestRunId(paths.baselineDir) : null);
 	if (!runId) die('no baseline run to report on', EXIT.ACCESS_FAILURE, { json });
-	const runDir = join(paths.baselineDir, runId);
-	const summaryPath = join(runDir, 'summary.json');
-	if (!existsSync(summaryPath)) die(`no summary.json for run ${runId}`, EXIT.ACCESS_FAILURE, { json });
-
-	const summary = readJson(summaryPath);
+	if (!isRunId(runId)) die(`invalid run id: ${runId}`, EXIT.INVALID_CONFIG, { json });
+	let runDir;
+	let summary;
+	try {
+		({ runDir, summary } = readRunSummary(paths.baselineDir, runId));
+	} catch (err) {
+		die(`cannot report baseline run ${runId}: ${err.message}`, EXIT.INVALID_CONFIG, { json });
+	}
 
 	// Regenerate from what the RUN measured, not from the current config. The
 	// config is mutable and may have been edited since — reading it here meant a
@@ -43,7 +46,7 @@ export function baselineReport(_positional, flags) {
 
 	// results carry per-module headline; on regeneration we only have summary
 	// modules, so headlines are rebuilt from evidence on disk.
-	const { reportRel } = generateReport({ runDir, reportsDir: paths.reportsDir, summary, results: summary.modules, config, projectName });
+	const { reportRel } = generateReport({ runDir, reportsDir: paths.reportsDir, summary, results: summary.modules, config, projectName, runId });
 	const reportPath = join(paths.reportsDir, `baseline-${runId}.html`);
 
 	if (json) emitJson({ status: 'ok', run_id: runId, report: reportPath, report_rel: reportRel });

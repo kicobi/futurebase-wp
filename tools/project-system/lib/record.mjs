@@ -1,10 +1,10 @@
 // lib/record.mjs — read a .project/ record into a summary for inspect/status.
 
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { readYaml, readJson } from './yaml.mjs';
 import { validateBaselineRun } from './validate.mjs';
-import { RUN_ID_RE, evidenceVerdict } from './baseline.mjs';
+import { evidenceVerdict, isRunId, runDirFor } from './baseline.mjs';
 
 function safe(fn, fallback) {
 	try {
@@ -15,7 +15,17 @@ function safe(fn, fallback) {
 }
 
 export function listRuns(dir) {
-	return safe(() => readdirSync(dir).filter((f) => RUN_ID_RE.test(f) && statSync(join(dir, f)).isDirectory()).sort(), []);
+	return safe(
+		() =>
+			readdirSync(dir)
+				.filter((f) => {
+					if (!isRunId(f)) return false;
+					const st = lstatSync(runDirFor(dir, f));
+					return st.isDirectory() && !st.isSymbolicLink();
+				})
+				.sort(),
+		[],
+	);
 }
 
 function countFiles(dir) {
@@ -39,7 +49,11 @@ export function classifyRuns(dir) {
 			incomplete.push({ id, reason: 'summary failed schema validation' });
 			continue;
 		}
-		const verdict = evidenceVerdict(summary);
+		if (summary.run_id !== id) {
+			incomplete.push({ id, reason: `summary run id ${summary.run_id} does not match directory` });
+			continue;
+		}
+		const verdict = evidenceVerdict(summary, runDirFor(dir, id));
 		if (verdict.captured) captured.push(id);
 		else incomplete.push({ id, reason: verdict.reason });
 	}

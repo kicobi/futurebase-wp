@@ -225,8 +225,16 @@ while IFS= read -r f; do TARGETS+=("$f"); done < <(
 #    some docblocks contain both (@package wp-starter above a wp_starter_ fn).
 #    The `_` form covers function prefixes; the bare form covers phpcs
 #    `<element value="wp_starter"/>` and similar whole-word references.
+#
+#    The lookbehind, not `\b`: underscore is a word character, so `\b` finds no
+#    boundary between `_` and `w` and skipped every `_wp_starter_*` identifier.
+#    WordPress spells protected post meta with a leading underscore
+#    (`_wp_starter_navigation_migration`), which is exactly the form that
+#    escaped — a promoted project kept the starter's meta key. Excluding only
+#    alphanumerics keeps `mywp_starter_x` unmatched while letting the leading
+#    underscore through.
 for f in "${TARGETS[@]}"; do
-	perl -pi -e "s/\b${OLD_SNAKE}_${SNAKE_GUARD}/${NEW_SNAKE}_/g" "$f"
+	perl -pi -e "s/(?<![A-Za-z0-9])${OLD_SNAKE}_${SNAKE_GUARD}/${NEW_SNAKE}_/g" "$f"
 	perl -pi -e "s/\b${OLD_SNAKE}\b/${NEW_SNAKE}/g" "$f"
 done
 
@@ -335,8 +343,13 @@ raw_leftover=$(printf '%s\n' "$raw_leftover" \
 # CLI tool, whose command stays `wp-starter` in every project. They must
 # survive rename. Filter them out so docs and CLAUDE.md that document the
 # lifecycle commands are not flagged as gaps.
+#
+# The first group tracks the command groups in tools/project-system/cli/
+# dispatch.mjs; the rest are subcommands that appear bare in prose. A group
+# missing here is not a silent gap — the first doc to mention it fails the
+# rename smoke test, which is how `sync` was found.
 raw_leftover=$(printf '%s\n' "$raw_leftover" \
-	| grep -vE -- "${OLD_SLUG} (lead|project|baseline|metrics|final|compare|init|inspect|promote|archive)" \
+	| grep -vE -- "${OLD_SLUG} (lead|project|baseline|metrics|final|compare|sync|init|inspect|promote|archive)" \
 	|| true)
 
 # The CLI entrypoint path (tools/project-system/bin/wp-starter.mjs) keeps its
