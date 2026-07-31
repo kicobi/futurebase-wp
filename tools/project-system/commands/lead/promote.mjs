@@ -25,9 +25,10 @@ import { scanFiles } from '../../lib/secret-scan.mjs';
 const DEFAULT_ORG = 'studiokicobi';
 const DEFAULT_TEMPLATE = 'studiokicobi/wp-starter';
 const PROJECT_DIRS = ['brief', 'analysis', 'proposal', 'decisions', 'metrics', 'baseline', 'final', 'reports', 'follow-up'];
-// The checkpoint is removed before the promotion commit, so it never reaches a
-// completed project. The ignore line covers the interrupted case, where it sits
-// in the working tree and an operator inspecting the failure might commit it.
+// The checkpoint survives until AFTER the promotion commit, so that a commit
+// failure is still resumable — which makes the ignore line load-bearing rather
+// than belt-and-braces: it is what keeps `git add -A` from committing the
+// checkpoint into the project's first commit.
 const GITIGNORE_LINES = ['.project/private/', '.project/credentials/', '.project/auth/', '.project/**/raw-private/', '.wp-starter-promotion.json'];
 
 // --- dossier manifest -------------------------------------------------------
@@ -107,12 +108,16 @@ function readCheckpoint(dest) {
 
 // Why this destination may not be resumed, or null when it may. Exported so the
 // rule is testable without driving a real promotion.
-export function checkpointMismatch(cp, { slug, dest, remote }) {
+export function checkpointMismatch(cp, { slug, dest, remote, template }) {
 	if (!cp) return `no promotion checkpoint (${CHECKPOINT_FILE}) — this directory was not created by promoting a lead`;
 	if (cp.kind !== 'promotion-checkpoint') return `${CHECKPOINT_FILE} is not a promotion checkpoint`;
 	if (cp.lead_slug !== slug) return `checkpoint belongs to lead "${cp.lead_slug}", not "${slug}"`;
 	if (cp.dest !== dest) return `checkpoint records destination ${cp.dest}, not ${dest}`;
 	if (cp.remote !== remote) return `checkpoint records remote ${cp.remote}, not ${remote}`;
+	// Provenance was recorded and then not checked, so a resume could switch
+	// templates mid-flight and the stamped project.yml would claim a commit
+	// from a template this destination was never built from.
+	if (template !== undefined && cp.template !== template) return `checkpoint records template ${cp.template}, not ${template}`;
 	return null;
 }
 
@@ -235,7 +240,7 @@ export async function leadPromote(positional, flags) {
 	let checkpoint = null;
 	if (flags.resume && destExists) {
 		checkpoint = readCheckpoint(dest);
-		const mismatch = checkpointMismatch(checkpoint, { slug, dest, remote });
+		const mismatch = checkpointMismatch(checkpoint, { slug, dest, remote, template });
 		if (mismatch) {
 			die(
 				`refusing to resume into ${dest}: ${mismatch}.\n` +
@@ -332,7 +337,18 @@ export async function leadPromote(positional, flags) {
 		if (!created.result.ok) {
 			const detail = created.result.stderr || created.result.error?.message || 'unknown error';
 			if (created.remoteCreated) {
-				recover('clone', `remote ${remote} was created but cloning to ${dest} failed: ${detail}\n  Clone it manually (gh repo clone ${remote} ${dest}) and re-run with --resume, or delete the remote.`, EXIT.ACCESS_FAILURE);
+				// NOT resumable, and saying otherwise wasted the operator's time:
+				// the checkpoint is written after this step, so there is nothing
+				// for --resume to match and it will refuse a hand-cloned repo by
+				// design. The remote exists though, which is what needs deciding.
+				recover(
+					'clone',
+					`remote ${remote} was created but cloning to ${dest} failed: ${detail}\n` +
+						`  No checkpoint was written, so --resume cannot continue this run.\n` +
+						`  Either delete the remote and promote again, or keep it and re-run promotion\n` +
+						`  into a clean ${dest} (promotion will reuse the existing remote).`,
+					EXIT.ACCESS_FAILURE,
+				);
 			}
 			recover(created.stage || 'create', `${detail}`, EXIT.ACCESS_FAILURE);
 		}
@@ -431,6 +447,13 @@ export async function leadPromote(positional, flags) {
 	ensureGitignore(dest);
 
 	// Step 6: stamp the active project.yml.
+	//
+	// Provenance comes from the CHECKPOINT, which recorded what the destination
+	// was actually built from. Re-deriving it here would stamp whatever the
+	// template's default branch points at now — a different commit from the one
+	// this project contains whenever a resume happens days later, or the
+	// template has moved since.
+	const stampedCommit = checkpoint?.template_commit ?? templateCommit;
 	const activeCfg = {
 		schema_version: 1,
 		project: {
@@ -444,7 +467,7 @@ export async function leadPromote(positional, flags) {
 		},
 		starter: {
 			source_path: starter,
-			...(templateCommit ? { template_commit: templateCommit } : {}),
+			...(stampedCommit ? { template_commit: stampedCommit } : {}),
 			promoted_at: new Date().toISOString(),
 		},
 		urls: leadCfg.urls ?? { production: null, staging: null },
@@ -456,17 +479,21 @@ export async function leadPromote(positional, flags) {
 	if (!activeCheck.valid) recover('stamp', `generated active project.yml invalid:\n  ${activeCheck.errors.join('\n  ')}`, EXIT.INVALID_CONFIG);
 	writeYaml(join(projectRoot, 'project.yml'), activeCfg);
 
-	// The checkpoint's job ends here: everything below is the single commit and
-	// lead bookkeeping. Removing it before the commit keeps it out of history
-	// and makes a finished project non-resumable, which is what it is.
-	rmSync(join(dest, CHECKPOINT_FILE), { force: true });
-
 	// Step 7: one promotion commit.
+	//
+	// The checkpoint stays in place THROUGH this. Removing it first meant a
+	// commit failure — a missing git identity is enough — deleted the only
+	// thing that makes --resume work, and then recover() advised --resume.
+	// ensureGitignore() has already listed the checkpoint, so `git add -A`
+	// leaves it alone and it never enters history.
 	run('git', ['add', '-A'], { cwd: dest });
 	const commit = run('git', ['commit', '-m', `chore: promote ${name} — rename to ${slug} + scaffold .project record`], { cwd: dest });
 	if (!commit.ok && !/nothing to commit/i.test(commit.stdout + commit.stderr)) {
 		recover('commit', `git commit failed:\n${commit.stderr || commit.stdout}`, EXIT.MODULE_FAILURE);
 	}
+
+	// Only now is there nothing left to resume.
+	rmSync(join(dest, CHECKPOINT_FILE), { force: true });
 
 	// Step 8: SUCCESS — update lead metadata only now (never delete/move it).
 	try {
@@ -477,10 +504,13 @@ export async function leadPromote(positional, flags) {
 		warn(`project promoted, but updating lead status failed: ${err.message}`);
 	}
 
-	if (json) emitJson({ status: 'promoted', slug, remote, dest, template_commit: templateCommit, create_via: usingSeam ? 'local-clone' : 'gh' });
+	if (json) emitJson({ status: 'promoted', slug, remote, dest, template_commit: stampedCommit, create_via: usingSeam ? 'local-clone' : 'gh' });
 
 	ok(`promoted "${slug}" → ${dest}`);
-	info(`remote: ${remote}  ·  starter commit: ${templateCommit ?? 'unknown'}`);
+	// Report what was STAMPED, not what was derived. On a resume those differ,
+	// and printing the derived one told the operator a commit the project
+	// record does not contain.
+	info(`remote: ${remote}  ·  starter commit: ${stampedCommit ?? 'unknown'}`);
 	console.log('');
 	console.log('Next:');
 	console.log(`  1. cd ${dest}`);
