@@ -110,6 +110,30 @@ enquiry, or update a catalogue entry (completion / time / assistance / errors).
 Every dated run writes a `summary.json` (`schemas/baseline-run.schema.json`)
 beside its raw evidence. **Runs are immutable; never overwrite one.**
 
+New captures use baseline-run schema version 2. A module claiming `complete` or
+`complete_with_warnings` must name a relative `evidence_path`; the path must
+stay inside the run, contain no symlink, exist, and contain at least one regular
+artifact. An invalid claimed success is converted to `failed` before overall
+status is calculated. Version-1 summaries remain readable: their declared path
+or historical conventional module directory is verified when present, and
+missing unverifiable evidence leaves the legacy run incomplete rather than
+making its old schema invalid.
+
+Overall run status is derived from module results:
+
+- all clean completions → `completed` (exit 0);
+- any warning-bearing completion, or a mix of evidence and unavailable/skipped
+  modules → `completed_with_warnings` (exit 1);
+- no evidence with only pending/skipped/unavailable modules → `partial`
+  (exit 1);
+- all failures → `failed` (exit 5).
+
+Any failed module prevents that run from closing the lifecycle evidence gate.
+Before/after page identity uses normalized pathname plus the exact query
+string; fragments are ignored. A same-host path or query change blocks
+comparison unless the operator explicitly records the exception with
+`--allow-mismatch`.
+
 ## Privacy
 
 Local-only by default; leads are not git repos until promotion. Credentials

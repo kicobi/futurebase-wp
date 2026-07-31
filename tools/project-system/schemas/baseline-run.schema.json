@@ -7,7 +7,11 @@
 	"required": ["schema_version", "run_id", "project_type", "status", "modules"],
 	"additionalProperties": false,
 	"properties": {
-		"schema_version": { "type": "integer", "const": 1 },
+		"schema_version": {
+			"type": "integer",
+			"enum": [1, 2],
+			"description": "Version 2 requires verifiable evidence paths for successful modules; version 1 remains valid for historical runs."
+		},
 		"run_id": {
 			"type": "string",
 			"pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z(-[0-9]{2})?$",
@@ -72,12 +76,43 @@
 						"enum": ["complete", "complete_with_warnings", "pending", "skipped", "unavailable", "failed"]
 					},
 					"reason": { "type": "string" },
-					"evidence_path": { "type": "string" },
+					"evidence_path": {
+						"type": "string",
+						"minLength": 1,
+						"pattern": "^(?!/)(?![A-Za-z]:[\\\\/])(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
+					},
 					"tool": { "type": "string" },
 					"tool_version": { "type": "string" }
 				}
 			}
 		},
 		"report": { "type": "string", "description": "Relative path to the generated HTML/Markdown report, if any." }
-	}
+	},
+	"allOf": [
+		{
+			"if": {
+				"properties": { "schema_version": { "const": 2 } },
+				"required": ["schema_version"]
+			},
+			"then": {
+				"properties": {
+					"modules": {
+						"items": {
+							"allOf": [
+								{
+									"if": {
+										"properties": {
+											"status": { "enum": ["complete", "complete_with_warnings"] }
+										},
+										"required": ["status"]
+									},
+									"then": { "required": ["evidence_path"] }
+								}
+							]
+						}
+					}
+				}
+			}
+		}
+	]
 }

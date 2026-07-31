@@ -87,8 +87,12 @@ duplicating rename/scaffold logic.
 
 ### Steps
 1. **Validate** the lead workspace. Abort on error — lead untouched.
-2. **Create the repo** via the existing path:
-   `gh repo create studiokicobi/<name> --template studiokicobi/wp-starter --private --clone` into dest.
+2. **Create the repo** via the existing GitHub-template path. Immediately after
+   GitHub creation and before cloning, write a local recovery receipt beside
+   the destination. The receipt binds the lead, destination, remote, template,
+   intended template commit, repository ID/node ID, creation time, default
+   branch, generated initial commit, and template repository identity.
+   Clone only after that receipt is durable.
 3. **Rename** via the existing implementation: `npm run rename -- <slug>`
    (reuses `bin/rename-theme.sh`; no reimplementation).
 4. **Scaffold `.project/`** and **copy the dossier** per the manifest below.
@@ -119,8 +123,19 @@ Three classes:
 ### Partial failure & recovery
 Each step is checkpointed; the lead is unchanged until step 8.
 - *Remote creation fails* → stop; nothing else runs.
-- *Clone fails* → offer to delete the just-created remote or leave for manual
-  retry; do not proceed.
+- *Remote identity/receipt creation fails* → stop; delete the incomplete remote
+  before retrying. Without a complete receipt it cannot be adopted safely.
+- *Clone fails* → exactly two supported choices:
+  1. delete the incomplete remote and run promotion again; or
+  2. retain the remote and local receipt, empty the destination, and re-run
+     with `--reuse-remote`.
+
+  `--reuse-remote` is mutually exclusive with `--resume`. It verifies the
+  receipt against the live GitHub repository ID/node ID, creation data,
+  template identity, default branch, initial commit, and one-commit state
+  before cloning. A missing, incomplete, changed, or recreated remote is
+  refused. After cloning, promotion writes the normal checkpoint inside the
+  destination before removing the recovery receipt.
 - *Rename fails* → local project left for inspection; re-run `npm run rename` or
   discard; lead untouched.
 - *Dossier copy fails* → partial `.project/` flagged; copy is idempotent, safe to
@@ -128,7 +143,9 @@ Each step is checkpointed; the lead is unchanged until step 8.
 - *Commit fails* → project on disk, uncommitted; re-run the commit step. Lead
   metadata is still not updated (step 8 gates on commit success).
 
-`lead promote` is designed to resume idempotently from the last good checkpoint.
+`lead promote --resume` is designed to resume idempotently after a destination
+checkpoint exists. The distinct `--reuse-remote` path covers only the
+pre-destination clone-failure window.
 
 ## 3. Archive (lead → lost/abandoned)
 

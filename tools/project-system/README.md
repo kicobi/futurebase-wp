@@ -85,7 +85,8 @@ output, and clear exit codes. **✓ = implemented; the rest are designed.**
 ✓ wp-starter lead inspect  [<slug>]   # bare `lead` lists all workspaces
 ✓ wp-starter lead promote  <slug> [--org <o>] [--name <n>] [--dest <path>]
                                 [--template <owner/repo>] [--dry-run] [--confirm]
-                                [--resume] [--skip-secret-scan] [--json] [--non-interactive]
+                                [--resume|--reuse-remote] [--skip-secret-scan]
+                                [--json] [--non-interactive]
 ✓ wp-starter lead archive  <slug> [--reason lost|abandoned] [--dry-run]
 ```
 

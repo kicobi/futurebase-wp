@@ -8,7 +8,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { EXIT, die, ok, info, fail, emitJson, c } from '../lib/output.mjs';
-import { findProjectRoot, projectPaths, latestRunId } from '../lib/baseline.mjs';
+import { findProjectRoot, projectPaths, latestRunId, isRunId, readRunSummary } from '../lib/baseline.mjs';
 import { readYaml } from '../lib/yaml.mjs';
 import { loadMetrics } from '../lib/metrics.mjs';
 import { buildComparison, renderComparison } from '../lib/compare.mjs';
@@ -23,9 +23,17 @@ export function compare(_positional, flags) {
 	const finalId = flags['final-run'] || (existsSync(paths.finalDir) ? latestRunId(paths.finalDir) : null);
 	if (!baseId) die('no baseline run to compare — run: wp-starter baseline run', EXIT.ACCESS_FAILURE, { json });
 	if (!finalId) die('no final run to compare — run: wp-starter final run', EXIT.ACCESS_FAILURE, { json });
+	if (!isRunId(baseId)) die(`invalid baseline run id: ${baseId}`, EXIT.INVALID_CONFIG, { json });
+	if (!isRunId(finalId)) die(`invalid final run id: ${finalId}`, EXIT.INVALID_CONFIG, { json });
 
-	const baselineRunDir = join(paths.baselineDir, baseId);
-	const finalRunDir = join(paths.finalDir, finalId);
+	let baselineRunDir;
+	let finalRunDir;
+	try {
+		({ runDir: baselineRunDir } = readRunSummary(paths.baselineDir, baseId));
+		({ runDir: finalRunDir } = readRunSummary(paths.finalDir, finalId));
+	} catch (err) {
+		die(`cannot compare the selected runs: ${err.message}`, EXIT.INVALID_CONFIG, { json });
+	}
 
 	let projectName = root.split('/').pop();
 	try {

@@ -8,7 +8,18 @@
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { EXIT, die, ok, warn, info, fail, emitJson, c } from '../lib/output.mjs';
-import { findProjectRoot, projectPaths, loadConfig, resolvePages, newRunId, makeRunDir, writeSummary, updateLatest, overallStatus } from '../lib/baseline.mjs';
+import {
+	enforceModuleEvidence,
+	findProjectRoot,
+	projectPaths,
+	loadConfig,
+	resolvePages,
+	newRunId,
+	makeRunDir,
+	writeSummary,
+	updateLatest,
+	overallStatus,
+} from '../lib/baseline.mjs';
 import { validateBaselineConfig } from '../lib/validate.mjs';
 import { readYaml } from '../lib/yaml.mjs';
 import { generateReport } from '../lib/report.mjs';
@@ -21,6 +32,10 @@ import { run as wordpress } from '../modules/wordpress.mjs';
 import { run as manual } from '../modules/manual.mjs';
 
 export const REGISTRY = { crawl, screenshots, lighthouse, axe, wordpress, manual };
+
+export function captureExitCode(status) {
+	return status === 'completed' ? EXIT.OK : status === 'failed' ? EXIT.MODULE_FAILURE : EXIT.WARNINGS;
+}
 
 // Fields the baseline-run schema allows on a module entry (headline is stripped).
 const pickSummary = (r) => ({
@@ -77,7 +92,7 @@ export async function runCapture(kind, flags) {
 	for (const name of modules) {
 		const started = Date.now();
 		try {
-			const r = await REGISTRY[name](ctx);
+			const r = enforceModuleEvidence(runDir, await REGISTRY[name](ctx));
 			results.push(r);
 			if (!json) {
 				const mark = r.status === 'complete' ? c.green('✓') : r.status === 'failed' ? c.red('✗') : c.yellow('·');
@@ -93,7 +108,7 @@ export async function runCapture(kind, flags) {
 
 	const status = overallStatus(results);
 	const summary = {
-		schema_version: 1,
+		schema_version: 2,
 		run_id: runId,
 		project_type: config.mode,
 		kind,
@@ -121,13 +136,13 @@ export async function runCapture(kind, flags) {
 	} catch {
 		/* ignore */
 	}
-	const { reportRel } = generateReport({ runDir, reportsDir: paths.reportsDir, summary, results, config, projectName, kind });
+	const { reportRel } = generateReport({ runDir, reportsDir: paths.reportsDir, summary, results, config, projectName, kind, runId });
 	summary.report = reportRel;
 
 	writeSummary(runDir, summary);
 	updateLatest(dir, runId);
 
-	const exit = status === 'completed' ? EXIT.OK : status === 'failed' ? EXIT.MODULE_FAILURE : EXIT.WARNINGS;
+	const exit = captureExitCode(status);
 	const reportPath = join(paths.reportsDir, `${kind}-${runId}.html`);
 	if (json) emitJson({ status, kind, run_id: runId, run_dir: runDir, report: reportPath, modules: summary.modules }, exit);
 

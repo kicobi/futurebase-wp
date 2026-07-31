@@ -25,14 +25,18 @@ This is stricter than both WordPress core (which only requires PHP 7.4 in WP 7.0
 
 **Do not use this template as a base for projects targeting legacy shared hosts.** Fork a different starter for those.
 
-Dependabot alerts on this template currently trace to `@wordpress/*` transitive dependencies — they clear when upstream releases a bump and are safe to accept as-is.
+Dependency updates are reviewed as build-tooling changes, even when automated:
+rebase the update, inspect its direct and transitive changes, and run the full
+verification stack before merging. An alert in a development-only dependency
+does not affect the shipped theme runtime, but it can still affect local builds
+and CI.
 
 ### Tested against
 
 | Package | Version |
 | --- | --- |
-| `@wordpress/scripts` | `32.0.0` |
-| `@wordpress/env` | `11.4.0` |
+| `@wordpress/scripts` | `34.0.0` |
+| `@wordpress/env` | `11.12.0` |
 | WordPress | 6.9 |
 | PHP | 8.3 |
 
@@ -64,7 +68,7 @@ Enabling and verifying GitHub's **Template repository** flag is a manual reposit
 
 ## Rename checklist (mandatory on every new project)
 
-The template ships with the slug `wp-starter` everywhere. **Use the rename script** — doing this by hand is error-prone (the rename touches ~70 references across PHP, JSON, HTML, XML, and Markdown).
+The template ships with the slug `wp-starter` everywhere. **Use the rename script** — doing this by hand is error-prone because the rename spans PHP, JSON, HTML, XML, shell scripts, and Markdown.
 
 ```bash
 npm run rename -- acme-client \
@@ -120,6 +124,7 @@ npm run lint:pkg       # lint package.json against @wordpress/scripts rules
 npm run format         # format source/docs (honours .prettierignore)
 npm run verify         # block theme standards + lint + phpcs + phpstan + pa11y
 npm run a11y           # pa11y-ci against the local wp-env (expects :8888 — verify probes the real port)
+npm run test:navigation # destructive navigation-migration scenarios against disposable wp-env
 npm run rename -- <slug> [--contributors "foo, bar"] [--theme-uri <url>]
                        # rename the theme slug across every file that references it; flags fill style.css
 npm run env:start      # boot wp-env (latest stable WordPress, theme mounted)
@@ -239,7 +244,8 @@ wp-starter/
 │   ├── rename-theme.sh
 │   └── verify-theme.sh
 ├── inc/
-│   └── post-types/<slug>.php # CPT registrations (auto-loaded)
+│   ├── navigation-migration.php # versioned navigation adoption/repair
+│   └── post-types/<slug>.php    # CPT registrations (auto-loaded)
 ├── scripts/
 │   └── ai-after-edit.sh      # lint hook
 ├── theme.json                # v3 — primary styling/config

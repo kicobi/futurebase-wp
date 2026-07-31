@@ -87,7 +87,14 @@ For deploys, use the host's recommended flow rather than running `rsync` or `scp
 
 ## Dependency audit posture
 
-Every dev dep in this repo is transitively used by `@wordpress/scripts`, `@wordpress/env`, or `pa11y-ci` — three direct deps that are already pinned at their latest major. Dependabot alerts on transitives are inevitable while upstream ships the next release. None of the packages in `devDependencies` are runtime deps of the theme (the shipped artifact is `build/main.{js,css}`), so a CVE in `webpack-dev-server` or `lodash` is a build-machine/CI exposure, not a production one.
+Every development dependency in this repo is used through the build, local
+WordPress, or accessibility toolchain. None is a runtime dependency of the
+shipped theme (the artifact contains `build/main.{js,css}`), so an advisory in
+`webpack-dev-server` or `lodash` is a build-machine/CI exposure rather than a
+production WordPress exposure. Still inspect automated updates, rebase them,
+and run the full build, static analysis, package, and disposable-WordPress
+checks before merging; do not accept a dependency PR solely because it is
+automated.
 
 `package.json` ships an `overrides` block that pins newer patched versions for a few transitives where the upgrade is low-risk (`lodash`, `serialize-javascript`, `markdownlint-cli`'s `minimatch`). Alerts that would require a major downgrade of a direct dep (e.g. `webpack-dev-server` 4 → 5 via a `@wordpress/scripts` downgrade) are intentionally left to upstream — revisit them when `@wordpress/scripts` cuts a new major. If a new override is warranted, run `npm audit` to confirm the fix version, add the pin, and re-run `npm run verify` before committing.
 

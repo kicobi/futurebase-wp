@@ -48,9 +48,13 @@ const hostOf = (url) => {
 	}
 };
 // Trailing slash is not a difference worth blocking a comparison over.
+// Query strings are: they can select a language, product, filter, or other
+// materially different resource while keeping the same pathname. Fragments
+// stay irrelevant because they never reach the server.
 const pathOf = (url) => {
 	try {
-		return new URL(url).pathname.replace(/\/+$/, '') || '/';
+		const parsed = new URL(url);
+		return `${parsed.pathname.replace(/\/+$/, '') || '/'}${parsed.search}`;
 	} catch {
 		return String(url ?? '').replace(/\/+$/, '') || '/';
 	}
@@ -123,7 +127,7 @@ export function compareTargets(baselineSummary, finalSummary) {
 		if (pathOf(was) !== pathOf(p.url)) moved.push(`${p.name}: ${was} → ${p.url}`);
 	}
 	if (moved.length) {
-		const message = `the same page name measures a different path (${moved.join(' · ')})`;
+		const message = `the same page name measures a different path or query (${moved.join(' · ')})`;
 		if (bHost === fHost) blocking.push(`${message} — on the same host, that is a different page, not a changed one`);
 		else limitations.push(`${message} — expected alongside the domain move, but confirm each pairing is the page you mean`);
 	}

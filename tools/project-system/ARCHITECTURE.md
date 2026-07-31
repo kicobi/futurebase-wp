@@ -40,7 +40,7 @@ tools/project-system/
 ## Versioning policy
 
 - `VERSION` holds the design's `system_version` (semver).
-- Every schema has a stable `$id` and a `schema_version` const; instance
+- Every schema has a stable `$id` and an explicit `schema_version`; instance
   documents declare the `schema_version` they target, so migrations are
   detectable. `metrics`, `observations`, and `journeys` are **versioned
   document objects** (`{schema_version, kind, items[]}`), never bare arrays.
@@ -75,7 +75,8 @@ failure · `6` privacy/safety violation.
 - **Phase 1 (done):** `lead init`, templates, `wp-starter-context.md` generator,
   `lead inspect` — the CLI (`bin/`, `cli/`, `commands/lead/`, `lib/`).
 - **Phase 2 (done):** `lead promote` (wrap gh + rename, confirmation gate,
-  checkpointed recovery, `--resume`), `lead archive`, `.project/` scaffold,
+  receipt-backed clone recovery via `--reuse-remote`, destination checkpoints
+  via `--resume`), `lead archive`, `.project/` scaffold,
   secret scanner (`lib/secret-scan`, `lib/proc`).
 - **Phase 3 (done):** baseline MVP — `crawl` (fetch), `screenshots` (Playwright),
   `lighthouse`, `axe` (axe-core), `manual`; dated immutable runs, schema-valid

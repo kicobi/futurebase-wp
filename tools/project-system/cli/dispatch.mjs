@@ -76,6 +76,7 @@ const OPTIONS = {
 	'dry-run': { type: 'boolean', default: false },
 	confirm: { type: 'boolean', default: false },
 	resume: { type: 'boolean', default: false },
+	'reuse-remote': { type: 'boolean', default: false },
 	'skip-secret-scan': { type: 'boolean', default: false },
 	// shared
 	git: { type: 'boolean', default: false },
@@ -132,7 +133,7 @@ Flags:
   --non-interactive              never prompt; fail if a required value is missing
 
   promote:  --org <o> --name <n> --dest <path> --template <owner/repo>
-            --dry-run --confirm --resume --skip-secret-scan
+            --dry-run --confirm --resume --reuse-remote --skip-secret-scan
   archive:  --reason lost|abandoned --dry-run
   baseline: --project-root <path> --url <base> --page name=url --module <m>
             --run-id <id> --dry-run

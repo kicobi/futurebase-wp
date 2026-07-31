@@ -93,6 +93,22 @@ test('a trailing slash is not a different page', () => {
 	assert.deepEqual(compareTargets(run(), final).blocking, []);
 });
 
+test('an exact query-string change blocks on the same host', () => {
+	const baseline = run({ target: { pages: [{ name: 'home', url: 'https://example.com/?lang=sv' }] } });
+	const final = run({ target: { pages: [{ name: 'home', url: 'https://example.com/?lang=en' }] } });
+	const { blocking } = compareTargets(baseline, final);
+	assert.equal(blocking.length, 1);
+	assert.match(blocking[0], /different path or query/);
+	assert.match(blocking[0], /lang=sv/);
+	assert.match(blocking[0], /lang=en/);
+});
+
+test('fragments do not affect comparison identity', () => {
+	const baseline = run({ target: { pages: [{ name: 'home', url: 'https://example.com/about/#team' }] } });
+	const final = run({ target: { pages: [{ name: 'home', url: 'https://example.com/about/#contact' }] } });
+	assert.deepEqual(compareTargets(baseline, final).blocking, []);
+});
+
 test('a differing module set is disclosed', () => {
 	const final = run({ target: { modules: ['crawl'] } });
 	const { limitations } = compareTargets(run(), final);

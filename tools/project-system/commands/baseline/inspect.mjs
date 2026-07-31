@@ -5,8 +5,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { EXIT, die, ok, warn, info, emitJson, c } from '../../lib/output.mjs';
-import { findProjectRoot, projectPaths, loadConfig, latestRunId } from '../../lib/baseline.mjs';
-import { readJson } from '../../lib/yaml.mjs';
+import { findProjectRoot, projectPaths, loadConfig, latestRunId, readRunSummary } from '../../lib/baseline.mjs';
 
 export function baselineInspect(_positional, flags) {
 	const json = !!flags.json;
@@ -20,7 +19,7 @@ export function baselineInspect(_positional, flags) {
 	let summary = null;
 	if (runId) {
 		try {
-			summary = readJson(join(paths.baselineDir, runId, 'summary.json'));
+			({ summary } = readRunSummary(paths.baselineDir, runId));
 		} catch {
 			/* ignore */
 		}

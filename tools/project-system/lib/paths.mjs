@@ -1,9 +1,9 @@
 // lib/paths.mjs — resolve the well-known locations the CLI works with, and
 // keep operations inside them.
 
-import { realpathSync } from 'node:fs';
+import { lstatSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, resolve, join, relative, isAbsolute } from 'node:path';
+import { dirname, resolve, join, relative, isAbsolute, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url)); // tools/project-system/lib
@@ -103,4 +103,34 @@ export function containedPath(root, rel, { boundary = root } = {}) {
 	const tail = relative(anc.virtual, abs);
 	const resolved = tail ? join(anc.real, tail) : anc.real;
 	return isInside(boundaryReal, resolved) ? resolved : null;
+}
+
+// Lexically contained path with no symlink in any existing component,
+// including the root and final target. Unlike containedPath(), this does not
+// resolve a symlink that happens to stay inside the boundary: promotion writes
+// are building an immutable project record, and an accidental link is a
+// configuration error even when it currently points somewhere harmless.
+//
+// Non-existent trailing components are allowed so callers can safely create a
+// directory tree after this check. Existing non-directory intermediate
+// components are refused as well.
+export function symlinkFreePath(root, rel = '.') {
+	const rootAbs = resolve(root);
+	const target = resolve(rootAbs, rel);
+	if (!isInside(rootAbs, target)) return null;
+
+	let cursor = rootAbs;
+	const components = ['.', ...relative(rootAbs, target).split(sep).filter(Boolean)];
+	for (let index = 0; index < components.length; index++) {
+		if (components[index] !== '.') cursor = join(cursor, components[index]);
+		try {
+			const st = lstatSync(cursor);
+			if (st.isSymbolicLink()) return null;
+			if (index === 0 && !st.isDirectory()) return null;
+			if (index < components.length - 1 && !st.isDirectory()) return null;
+		} catch (err) {
+			if (err?.code !== 'ENOENT') return null;
+		}
+	}
+	return target;
 }

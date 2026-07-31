@@ -9,7 +9,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { EXIT, die, ok, info, emitJson } from '../../lib/output.mjs';
-import { findProjectRoot, projectPaths, latestRunId } from '../../lib/baseline.mjs';
+import { findProjectRoot, projectPaths, latestRunId, readRunSummary } from '../../lib/baseline.mjs';
 import { readYaml } from '../../lib/yaml.mjs';
 import { loadMetrics } from '../../lib/metrics.mjs';
 import { buildComparison } from '../../lib/compare.mjs';
@@ -33,7 +33,16 @@ export function caseStudy(_positional, flags) {
 
 	const baseId = existsSync(paths.baselineDir) ? latestRunId(paths.baselineDir) : null;
 	const finalId = existsSync(paths.finalDir) ? latestRunId(paths.finalDir) : null;
-	const comparison = baseId && finalId ? buildComparison(join(paths.baselineDir, baseId), join(paths.finalDir, finalId)) : null;
+	let comparison = null;
+	if (baseId && finalId) {
+		try {
+			const { runDir: baseDir } = readRunSummary(paths.baselineDir, baseId);
+			const { runDir: finalDir } = readRunSummary(paths.finalDir, finalId);
+			comparison = buildComparison(baseDir, finalDir);
+		} catch (err) {
+			die(`cannot build a case study from the selected runs: ${err.message}`, EXIT.INVALID_CONFIG, { json });
+		}
+	}
 
 	const md = [];
 	md.push(`# Case study — ${name}`);

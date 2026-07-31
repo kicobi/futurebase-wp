@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { scanText, scanFiles } from '../lib/secret-scan.mjs';
-import { containedPath, isInside } from '../lib/paths.mjs';
+import { containedPath, isInside, symlinkFreePath } from '../lib/paths.mjs';
 import { applyEntry } from '../lib/sync.mjs';
 import { classify } from '../commands/lead/promote.mjs';
 
@@ -35,7 +35,11 @@ test('a real credential is found', () => {
 test('placeholder VALUES are still ignored', () => {
 	assert.equal(scanText('api_key: your-key-goes-here-xxxx').length, 0);
 	assert.equal(scanText('password: ${DEPLOY_PASSWORD}').length, 0);
+	assert.equal(scanText('password: $DEPLOY_PASSWORD').length, 0);
+	assert.equal(scanText('password: process.env.DEPLOY_PASSWORD').length, 0);
 	assert.equal(scanText('secret: <REPLACE_WITH_REAL_VALUE>').length, 0);
+	assert.equal(scanText('secret: [REPLACE_WITH_REAL_VALUE]').length, 0);
+	assert.equal(scanText('secret: ****').length, 0);
 });
 
 test('a placeholder word inside the MATCH does not disarm the scanner either', () => {
@@ -60,6 +64,41 @@ test('a placeholder word elsewhere on the line does not disarm the scanner', () 
 	assert.equal(scanText('api_key: AbcdEFGHijklMNOP123456789 # example production key').length, 1);
 	assert.equal(scanText(`ghp_${'a'.repeat(36)} (redacted below)`).length, 1);
 	assert.equal(scanText('# for example, the key below is live\npassword: Zx9QwErTyUiOpAsDfGh').length, 1);
+});
+
+test('placeholder-looking substrings inside literals do not suppress secrets', () => {
+	for (const value of [
+		'live-example-password-987654',
+		'production-changeme-token-876543',
+		'abc-your-api-key-def-7654321',
+		'real-redacted-secret-654321',
+	]) {
+		assert.equal(scanText(`secret: ${value}`).length, 1, value);
+	}
+});
+
+test('common special characters in literal assigned secrets are scanned', () => {
+	for (const value of ['A!b@C#d$E%f^G&h*9', 'prod.token/value+with=salt', 'p@ss word with spaces 987!']) {
+		assert.equal(scanText(`password: "${value}"`).length, 1, value);
+	}
+});
+
+test('recognised configuration, path, URL, and hash references stay silent', () => {
+	for (const value of [
+		'config.production.settings.value',
+		'../secrets/deployment-password.txt',
+		'https://vault.example.test/secret/path',
+		`sha256:${'a'.repeat(64)}`,
+		'refs/heads/deploy-production',
+	]) {
+		assert.equal(scanText(`api_key: ${value}`).length, 0, value);
+	}
+});
+
+test('arbitrary dotted, slashed, and special-character literals are not ignored', () => {
+	for (const value of ['live.prod.token.987654321', 'customer/team/token/987654', 'prod!secret:value=987654']) {
+		assert.equal(scanText(`access_token: ${value}`).length, 1, value);
+	}
 });
 
 test('oversized and unreadable files fail closed', () => {
@@ -138,6 +177,29 @@ test('containedPath refuses a path whose component is a symlink out of the root'
 		// A sibling real directory in the same root still resolves.
 		mkdirSync(join(root, 'fixtures'), { recursive: true });
 		assert.ok(containedPath(root, 'fixtures/demo.json'));
+	} finally {
+		cleanup();
+	}
+});
+
+test('symlinkFreePath rejects root, nested, and final symlinks even when they stay contained', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const realRoot = join(dir, 'real');
+		const linkedRoot = join(dir, 'linked-root');
+		mkdirSync(join(realRoot, 'nested'), { recursive: true });
+		symlinkSync(realRoot, linkedRoot);
+		assert.equal(symlinkFreePath(linkedRoot, 'file.txt'), null, 'a symlinked root is refused');
+
+		symlinkSync(join(realRoot, 'nested'), join(realRoot, 'linked-nested'));
+		assert.equal(symlinkFreePath(realRoot, 'linked-nested/file.txt'), null, 'a nested symlink is refused');
+
+		writeFileSync(join(realRoot, 'target.txt'), 'target');
+		symlinkSync(join(realRoot, 'target.txt'), join(realRoot, 'linked-final.txt'));
+		assert.equal(symlinkFreePath(realRoot, 'linked-final.txt'), null, 'a final symlink is refused');
+
+		assert.equal(symlinkFreePath(realRoot, 'nested/new/file.txt'), join(realRoot, 'nested/new/file.txt'));
+		assert.equal(symlinkFreePath(realRoot, '../escape.txt'), null);
 	} finally {
 		cleanup();
 	}
