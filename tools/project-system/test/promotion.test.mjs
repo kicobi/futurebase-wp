@@ -60,3 +60,18 @@ test('an unrelated JSON file that happens to sit at that path is refused', () =>
 	const why = checkpointMismatch({ kind: 'something-else', lead_slug: 'acme' }, target);
 	assert.match(why, /not a promotion checkpoint/);
 });
+
+test('a checkpoint from a different template is refused', () => {
+	// Provenance was recorded from the start and then never compared, so a
+	// resume could switch templates and the stamped project.yml would claim a
+	// commit from a template the destination was never built from.
+	const why = checkpointMismatch(checkpointFor(), { ...target, template: 'someone-else/other-starter' });
+	assert.match(why, /records template studiokicobi\/wp-starter/);
+});
+
+test('template is only compared when the caller supplies one', () => {
+	// Keeps the rule usable from tests and any caller that has no template in
+	// hand, without silently skipping the check for the real one.
+	assert.equal(checkpointMismatch(checkpointFor(), target), null);
+	assert.equal(checkpointMismatch(checkpointFor(), { ...target, template: 'studiokicobi/wp-starter' }), null);
+});
