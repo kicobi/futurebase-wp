@@ -108,7 +108,12 @@ jobs:
                   npm run build
                   npm run verify
 
+            # This workflow is CLASS.SAFE and syncs verbatim into every client
+            # and promoted project. Without the guard, the template-only check
+            # asserts each client is still Futurebase WP and fails their CI
+            # permanently. bin/test-rename.sh asserts this guard stays exact.
             - name: Require Futurebase WP rename template smoke test
+              if: github.repository == 'kicobi/futurebase-wp'
               run: bash bin/test-rename.sh --require-template
 
     package:

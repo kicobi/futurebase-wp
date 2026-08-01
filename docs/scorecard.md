@@ -65,7 +65,7 @@ tags, and PRs labeled `scorecard`.
 **Measuring the public demo site (the publishable numbers):**
 
 ```sh
-npm run scorecard -- --url=https://<demo-host>
+npm run scorecard -- --url=https://futurebase-wp.kicobi.com
 ```
 
 Remote mode skips wp-env and the import — the fixture must already be

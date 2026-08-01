@@ -16,6 +16,13 @@ FUTUREBASE_TOOL_TEMPLATE_SENTINEL='references/futurebase-context.md'
 FUTUREBASE_UPPER_SENTINEL='FUTUREBASE_'
 FUTUREBASE_DISPLAY_SENTINEL='Futurebase'
 
+# The source repository. .github/ is outside the rename scan surface, so this
+# literal survives into every client — which is what lets the template-only CI
+# step identify itself and skip everywhere else. Workflows are CLASS.SAFE and
+# sync verbatim, so an unguarded template-only step would fail client CI
+# permanently; bin/test-rename.sh asserts the guard is present and exact.
+FUTUREBASE_TEMPLATE_REPOSITORY='kicobi/futurebase-wp'
+
 FUTUREBASE_LEGACY_FORMS=(
 	'wp-starter'
 	'wp_starter'

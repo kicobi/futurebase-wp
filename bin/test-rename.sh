@@ -49,6 +49,28 @@ if [ "$(grep -cF '<!-- template-setup:start -->' README.md 2>/dev/null || true)"
 	exit 1
 fi
 
+# The template-only CI step must carry an exact single-repository guard.
+# .github/workflows is CLASS.SAFE and syncs verbatim into every client, so an
+# unguarded step — or one broadened to the whole org — turns every promoted
+# project's CI red on a check that can never pass there. The window is read
+# around the run line so the guard is tied to that step rather than merely
+# present somewhere in the file, and either YAML key order is accepted.
+WORKFLOW="$ROOT/.github/workflows/ci.yml"
+guard_window="$(grep -B2 -A2 -F 'bash bin/test-rename.sh --require-template' "$WORKFLOW" 2>/dev/null || true)"
+guard_problem=""
+if [ -z "$guard_window" ]; then
+	guard_problem="the required-template step is missing from .github/workflows/ci.yml"
+elif ! printf '%s\n' "$guard_window" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+	| grep -qxF "if: github.repository == '$FUTUREBASE_TEMPLATE_REPOSITORY'"; then
+	guard_problem="the required-template step lacks the exact guard: if: github.repository == '$FUTUREBASE_TEMPLATE_REPOSITORY'"
+elif printf '%s\n' "$guard_window" | grep -qE 'repository_owner|startsWith|contains\('; then
+	guard_problem="the required-template guard was broadened beyond a single repository"
+fi
+if [ -n "$guard_problem" ]; then
+	echo "rename non-regression: FAIL ($guard_problem)"
+	exit 1
+fi
+
 WORKTREES=()
 LOG="$(mktemp -t rename-contract-test-log.XXXXXX)"
 
