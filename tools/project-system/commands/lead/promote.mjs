@@ -194,11 +194,37 @@ function writeRecoveryReceipt(dest, remote, receipt) {
 	return path;
 }
 
-function repositoryIdentity(remote) {
-	const repository = run('gh', ['api', `repos/${remote}`]);
+// `gh repo create --template` returns as soon as GitHub accepts the request,
+// but the template copy is asynchronous: for the first seconds of a new
+// repository's life the commits endpoint answers 409 "Git Repository is
+// empty". Reading identity on the next line therefore failed every time,
+// aborting promotion and orphaning the repository it had just created — for a
+// real client, a repo named after them that must be deleted before retrying.
+//
+// Poll until the generated commit appears. Bounded: a repository that never
+// populates is a genuine failure and must still surface, and every other error
+// (auth, not found, rate limit) returns immediately rather than waiting out
+// the whole budget.
+//
+// No test covers this path. Promotion's own e2e runs through the local-clone
+// seam (FUTUREBASE_PROMOTE_CLONE_FROM), which never calls `gh repo create`, so
+// the retry is exercised through an injected runner instead.
+const EMPTY_REPOSITORY = /Git Repository is empty/i;
+
+function sleepSync(ms) {
+	if (ms > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+export function repositoryIdentity(remote, { waitForCommits = false, attempts = 15, delayMs = 1000, runner = run, sleep = sleepSync } = {}) {
+	const repository = runner('gh', ['api', `repos/${remote}`]);
 	if (!repository.ok) return { ok: false, error: repository.stderr || repository.error?.message || 'GitHub repository metadata unavailable' };
 
-	const commits = run('gh', ['api', `repos/${remote}/commits?per_page=2`]);
+	let commits = runner('gh', ['api', `repos/${remote}/commits?per_page=2`]);
+	for (let attempt = 1; !commits.ok && waitForCommits && attempt < attempts; attempt++) {
+		if (!EMPTY_REPOSITORY.test(commits.stderr || '')) break;
+		sleep(delayMs);
+		commits = runner('gh', ['api', `repos/${remote}/commits?per_page=2`]);
+	}
 	if (!commits.ok) return { ok: false, error: commits.stderr || commits.error?.message || 'GitHub commit metadata unavailable' };
 
 	try {
@@ -570,7 +596,11 @@ export async function leadPromote(positional, flags) {
 				const created = run('gh', ['repo', 'create', remote, '--template', template, '--private']);
 				if (!created.ok) recover('create', created.stderr || created.error?.message || 'GitHub repository creation failed', EXIT.ACCESS_FAILURE, { showResume: false });
 
-				const identityResult = repositoryIdentity(remote);
+				// Wait here only: the repository was just created, so an empty
+				// one means the template copy is still in flight. The
+				// --reuse-remote path below reads an established repository,
+				// where empty is a real problem rather than a slow one.
+				const identityResult = repositoryIdentity(remote, { waitForCommits: true });
 				if (!identityResult.ok) {
 					recover(
 						'recovery-receipt',

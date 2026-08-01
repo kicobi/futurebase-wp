@@ -16,6 +16,7 @@ import {
 	CHECKPOINT_FILE,
 	recoveryReceiptMismatch,
 	recoveryReceiptPath,
+	repositoryIdentity,
 	templateNamesEquivalent,
 } from '../commands/lead/promote.mjs';
 
@@ -187,4 +188,68 @@ test('recovery receipt filenames are stable and bind destination plus remote', (
 	assert.notEqual(a, recoveryReceiptPath('/Users/x/Sites/acme-2', 'studiokicobi/acme'));
 	assert.notEqual(a, recoveryReceiptPath('/Users/x/Sites/acme', 'studiokicobi/acme-2'));
 	assert.match(a, /\.futurebase-promotion-[a-f0-9]{20}\.json$/);
+});
+
+// --- template-copy wait -----------------------------------------------------
+//
+// `gh repo create --template` returns before GitHub finishes copying, so the
+// commits endpoint answers 409 "Git Repository is empty" for the first seconds.
+// Reading identity immediately failed every time and orphaned the repository
+// promotion had just created. Promotion's e2e runs through the local-clone seam
+// and never calls `gh repo create`, so this path is covered here instead, with
+// an injected runner and no sleeping.
+
+const EMPTY = { ok: false, stderr: 'gh: Git Repository is empty. (HTTP 409)', stdout: '' };
+const REPO = { ok: true, stdout: JSON.stringify({ id: 1, node_id: 'R_1', full_name: 'kicobi/acme', created_at: 't', default_branch: 'main', template_repository: { full_name: 'kicobi/futurebase-wp' } }), stderr: '' };
+const COMMITS = { ok: true, stdout: JSON.stringify([{ sha: 'abc123' }]), stderr: '' };
+
+// Returns a runner that answers the repo call, then fails `emptyTimes` commit
+// calls with the 409 before succeeding. Records how many calls it saw.
+function fakeRunner(emptyTimes, { finalCommits = COMMITS } = {}) {
+	const calls = { commits: 0 };
+	const runner = (_cmd, args) => {
+		if (!String(args[1]).includes('/commits')) return REPO;
+		calls.commits += 1;
+		return calls.commits <= emptyTimes ? EMPTY : finalCommits;
+	};
+	return { runner, calls };
+}
+
+const noSleep = () => {};
+
+test('repositoryIdentity waits out an in-flight template copy', () => {
+	const { runner, calls } = fakeRunner(3);
+	const result = repositoryIdentity('kicobi/acme', { waitForCommits: true, runner, sleep: noSleep });
+	assert.equal(result.ok, true);
+	assert.equal(result.identity.initial_commit_sha, 'abc123');
+	assert.equal(result.identity.commit_count, 1);
+	assert.equal(calls.commits, 4, 'should retry until the generated commit appears');
+});
+
+test('repositoryIdentity gives up on a repository that never populates', () => {
+	const { runner, calls } = fakeRunner(Infinity);
+	const result = repositoryIdentity('kicobi/acme', { waitForCommits: true, attempts: 5, runner, sleep: noSleep });
+	assert.equal(result.ok, false);
+	assert.match(result.error, /Git Repository is empty/);
+	assert.equal(calls.commits, 5, 'bounded by the attempt budget, not unbounded');
+});
+
+test('repositoryIdentity does not wait out an unrelated failure', () => {
+	const calls = { commits: 0 };
+	const runner = (_cmd, args) => {
+		if (!String(args[1]).includes('/commits')) return REPO;
+		calls.commits += 1;
+		return { ok: false, stderr: 'gh: Not Found (HTTP 404)', stdout: '' };
+	};
+	const result = repositoryIdentity('kicobi/acme', { waitForCommits: true, runner, sleep: noSleep });
+	assert.equal(result.ok, false);
+	assert.match(result.error, /Not Found/);
+	assert.equal(calls.commits, 1, 'auth/not-found errors must fail fast, not burn the budget');
+});
+
+test('repositoryIdentity does not retry when not waiting for a fresh copy', () => {
+	const { runner, calls } = fakeRunner(1);
+	const result = repositoryIdentity('kicobi/acme', { runner, sleep: noSleep });
+	assert.equal(result.ok, false, 'the --reuse-remote path reads an established repo; empty is a real problem there');
+	assert.equal(calls.commits, 1);
 });
