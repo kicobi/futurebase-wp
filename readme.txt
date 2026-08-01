@@ -1,18 +1,18 @@
-=== WP Starter ===
-Contributors: colinlewis
+=== Futurebase WP ===
+Contributors: kicobi
 Tags: full-site-editing, block-patterns, block-styles, style-variations, wide-blocks, template-editing, one-column, accessibility-ready, custom-colors, custom-logo, featured-images, rtl-language-support, sticky-post, threaded-comments, translation-ready
 Requires at least: 6.9
 Tested up to: 6.9
 Requires PHP: 8.3
-Stable tag: 1.0.2
+Stable tag: 2.0.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-A modern Full Site Editing WordPress starter theme for managed/VPS hosting.
+A modern Full Site Editing foundation for managed/VPS WordPress hosting and current local development stacks.
 
 == Description ==
 
-A Full Site Editing starter theme built on top of them.es/starter-fse, tuned for modern WordPress (6.9+) and PHP 8.3+. Intended as a base for client projects on managed or VPS hosting, not as a broad shared-hosting compatibility base.
+A Full Site Editing foundation built on top of them.es/starter-fse, tuned for modern WordPress (6.9+) and PHP 8.3+. Intended as a base for client projects on managed or VPS hosting, not as a broad shared-hosting compatibility base.
 
 * Full Site Editing (block theme) with templates, template parts, and patterns
 * `theme.json` v3 as the primary source of styling and configuration
@@ -27,6 +27,9 @@ A Full Site Editing starter theme built on top of them.es/starter-fse, tuned for
 4. Follow the rename checklist in `README.md` before development.
 
 == Changelog ==
+
+= 2.0.0 =
+* Rename the WordPress foundation to Futurebase WP and strengthen client promotion, synchronization, and identity verification.
 
 = 1.0.2 =
 * Tighten rename, scaffold, theme.json, and verification guardrails.

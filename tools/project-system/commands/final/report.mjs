@@ -1,6 +1,6 @@
 // commands/final/report.mjs — (re)generate the report for a final run.
 //
-// wp-starter final report [--run-id <id>] [--project-root <p>] [--json]
+// futurebase final report [--run-id <id>] [--project-root <p>] [--json]
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -16,7 +16,7 @@ export function finalReport(_positional, flags) {
 	const paths = projectPaths(root);
 
 	const runId = flags['run-id'] || (existsSync(paths.finalDir) ? latestRunId(paths.finalDir) : null);
-	if (!runId) die('no final run to report on — run: wp-starter final run', EXIT.ACCESS_FAILURE, { json });
+	if (!runId) die('no final run to report on — run: futurebase final run', EXIT.ACCESS_FAILURE, { json });
 	if (!isRunId(runId)) die(`invalid run id: ${runId}`, EXIT.INVALID_CONFIG, { json });
 	let runDir;
 	let summary;

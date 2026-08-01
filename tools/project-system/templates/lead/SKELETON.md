@@ -15,7 +15,7 @@ It holds discovery and proposal work for a project that **has not been awarded**
 │   └── attachments/              # supplied files (mark private/ for sensitive)
 ├── analysis/
 │   ├── requirements.md           # confirmed requirements only
-│   ├── technical-review.md       # feasibility, stack, reuse from wp-starter
+│   ├── technical-review.md       # feasibility, stack, reuse from futurebase
 │   ├── risks.md
 │   ├── assumptions.md
 │   └── open-questions.md
@@ -26,7 +26,7 @@ It holds discovery and proposal work for a project that **has not been awarded**
 ├── metrics/
 │   └── proposed-success-metrics.md   # draft metrics to agree with the client
 ├── references/
-│   └── wp-starter-context.md     # generated starter summary — READ THIS FIRST
+│   └── futurebase-context.md     # generated starter summary — READ THIS FIRST
 └── notes/                        # scratch; may be excluded at promotion
 ```
 
@@ -35,12 +35,12 @@ It holds discovery and proposal work for a project that **has not been awarded**
 On `lead promote`, the dossier is copied into the new project's `.project/`
 per the copy manifest (see `docs/project-lifecycle.md`): `brief/` (minus
 private attachments), `analysis/`, `proposal/`, `metrics/`, and
-`references/wp-starter-context.md` are versioned; anything private lands in
+`references/futurebase-context.md` are versioned; anything private lands in
 gitignored `.project/private/`; `notes/` scratch may be excluded. The original
 lead workspace is left untouched.
 
 ## Reading order for agents
 
 1. `brief/` — the actual client brief and responses.
-2. `references/wp-starter-context.md` — reusable starter capabilities.
+2. `references/futurebase-context.md` — reusable starter capabilities.
 3. The real starter, **read-only**, only when verification is needed.

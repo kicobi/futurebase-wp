@@ -1,6 +1,6 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
-	"$id": "https://wp-starter.local/schemas/baseline-run.schema.json",
+	"$id": "https://futurebase.local/schemas/baseline-run.schema.json",
 	"title": "Baseline run summary (summary.json)",
 	"description": "The machine-readable summary written at the root of each dated baseline/final run directory. Raw evidence lives beside it and is never overwritten.",
 	"type": "object",

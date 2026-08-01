@@ -31,7 +31,7 @@ npm run build:blocks    # blocks only
 npm run start:blocks    # watch mode for blocks
 ```
 
-Blocks auto-register via `wp_starter_register_blocks()` in
+Blocks auto-register via `futurebase_register_blocks()` in
 [`functions.php`](../functions.php), which scans `build/blocks/*/block.json` on
 `init`. No per-block PHP wiring required.
 

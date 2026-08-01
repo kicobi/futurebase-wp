@@ -2,7 +2,7 @@
 
 The starter now migrates navigation menus through a versioned, retry-bounded
 routine in `inc/navigation-migration.php`. This change is intentionally not
-copied into existing promoted projects by `wp-starter sync`: `functions.php`
+copied into existing promoted projects by `futurebase sync`: `functions.php`
 and `inc/` are client-owned theme code. The sync report surfaces this guide as
 a manual-port item instead.
 
@@ -31,9 +31,9 @@ Version 2:
 Do this on staging first and take a database backup.
 
 1. Port `inc/navigation-migration.php`, replacing the starter prefix
-   `wp_starter_` and text domain `wp-starter` with the project's existing
+   `futurebase_` and text domain `futurebase` with the project's existing
    renamed values. Do not overwrite unrelated client code in `inc/`.
-2. Remove the old `wp_starter_seed_navigation_menus()` implementation from the
+2. Remove the old `futurebase_seed_navigation_menus()` implementation from the
    project's `functions.php`. Require the migrated file in its place:
 
    ```php
@@ -51,9 +51,14 @@ Do this on staging first and take a database backup.
    the notice.
 
 The migration state lives in the renamed equivalent of
-`wp_starter_navigation_migration` and contains `version`, `status`, `attempts`,
-and `last_error`. The obsolete `wp_starter_navigation_seeded` option is removed
+`futurebase_navigation_migration` and contains `version`, `status`, `attempts`,
+and `last_error`. The obsolete `futurebase_navigation_seeded` option is removed
 only after both regions are valid.
+
+For pre-2.0 Futurebase WP installations, debugging data may still use the protected
+post-meta key `_wp_starter_navigation_migration`. The PHP constant name was
+never persisted; only this lowercase meta key can remain in an older database.
+No automated database conversion is required for the disposable base install.
 
 ## Reference-scan boundary
 

@@ -1,16 +1,16 @@
 /*
-Theme Name: WP Starter
-Theme URI: https://github.com/studiokicobi/wp-starter
-Author: Colin Lewis
-Author URI: https://colinlewis.se
-Description: A modern Full Site Editing starter theme built for managed/VPS WordPress hosting and current local dev stacks. Targets PHP 8.3+ and WordPress 6.9+. Intentionally not a broad shared-hosting compatibility base.
-Version: 1.0.2
+Theme Name: Futurebase WP
+Theme URI: https://github.com/kicobi/futurebase-wp
+Author: Kicobi
+Author URI: https://kicobi.com
+Description: A modern Full Site Editing foundation for managed/VPS WordPress hosting and current local development stacks. Targets PHP 8.3+ and WordPress 6.9+; not intended as a broad shared-hosting compatibility base.
+Version: 2.0.0
 Requires at least: 6.9
 Tested up to: 6.9
 Requires PHP: 8.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
-Text Domain: wp-starter
+Text Domain: futurebase
 Tags: full-site-editing, block-patterns, block-styles, style-variations, wide-blocks, template-editing, one-column, accessibility-ready, custom-colors, custom-logo, featured-images, rtl-language-support, sticky-post, threaded-comments, translation-ready
 */
 

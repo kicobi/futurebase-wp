@@ -1,6 +1,6 @@
 # Homepage build spec
 
-Build specification for the homepage on a project based on `wp-starter`. It captures the design intent (tokens, composition, a11y), the Technical Contract the build must satisfy, the delivery gates, and the failure modes to reject.
+Build specification for the homepage on a project based on `futurebase`. It captures the design intent (tokens, composition, a11y), the Technical Contract the build must satisfy, the delivery gates, and the failure modes to reject.
 
 The block below is the canonical form handed to an AI coding agent (Claude Code, Codex, etc.) to execute the build — fill the `[UPPERCASE]` fields and paste. The same document doubles as human-readable documentation of how the homepage was architected: read it without pasting if you're onboarding onto the project.
 
@@ -244,7 +244,7 @@ If Findings is empty, nothing is pending. If it's long, triage by kind before ap
 ### When to edit the spec vs. the inputs
 
 - **Edit inputs** for: this specific build's copy, tokens, reference, variations.
-- **Edit the spec** for: new structural rules that should apply to *every* build (a new guardrail, a new contract item). Spec edits belong in version control alongside the starter theme, and should move together with [CLAUDE.md](../CLAUDE.md) and [bin/verify-theme.sh](../bin/verify-theme.sh) — the three stay in sync or the agent drifts.
+- **Edit the spec** for: new structural rules that should apply to *every* build (a new guardrail, a new contract item). Spec edits belong in version control alongside the foundation, and should move together with [CLAUDE.md](../CLAUDE.md) and [bin/verify-theme.sh](../bin/verify-theme.sh) — the three stay in sync or the agent drifts.
 
 ### Common failure modes
 

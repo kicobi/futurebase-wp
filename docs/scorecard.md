@@ -1,6 +1,6 @@
 # Scorecard
 
-Futurebase measures itself. Every scorecard run imports a deterministic demo
+Futurebase WP measures itself. Every scorecard run imports a deterministic demo
 fixture, then audits one URL per shipped template family with Lighthouse
 (mobile + desktop) and pa11y (WCAG 2.1 AA, desktop + mobile viewports).
 
@@ -65,7 +65,7 @@ tags, and PRs labeled `scorecard`.
 **Measuring the public demo site (the publishable numbers):**
 
 ```sh
-npm run scorecard -- --url=https://<demo-host>
+npm run scorecard -- --url=https://futurebase-wp.kicobi.com
 ```
 
 Remote mode skips wp-env and the import — the fixture must already be

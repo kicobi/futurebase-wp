@@ -3,7 +3,7 @@
 // The WP-CLI invocation is configurable so it works against a direct `wp`, a
 // wp-env container, or an SSH alias:
 //   - config.wordpress.cli  (e.g. "wp"  or  "npx wp-env run cli wp")
-//   - env WP_STARTER_WP_CLI
+//   - env FUTUREBASE_WP_CLI
 //   - default: "wp"
 // Read-only commands only. If the base command is unreachable the module
 // reports "unavailable" without failing the run.
@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { run } from '../lib/proc.mjs';
 
 function wpRunner(config) {
-	const cli = (config.wordpress?.cli || process.env.WP_STARTER_WP_CLI || 'wp').trim().split(/\s+/);
+	const cli = (config.wordpress?.cli || process.env.FUTUREBASE_WP_CLI || process.env.WP_STARTER_WP_CLI || 'wp').trim().split(/\s+/);
 	const cwd = config.wordpress?.cwd || undefined;
 	return (args) => run(cli[0], [...cli.slice(1), ...args], { cwd });
 }

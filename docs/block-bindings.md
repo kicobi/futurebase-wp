@@ -36,11 +36,11 @@ Assumes ACF Pro is installed (see [docs/acf-pro-setup.md](acf-pro-setup.md)) and
 <?php
 /**
  * Title: Author card
- * Slug: wp-starter/_author-card
+ * Slug: futurebase/_author-card
  * Inserter: no
  * Description: Binds heading / paragraph / image to ACF fields on the current post.
  *
- * @package wp-starter
+ * @package futurebase
  */
 ?>
 <!-- wp:group {"className":"is-style-section","layout":{"type":"constrained"}} -->
@@ -119,14 +119,14 @@ Then in a pattern:
 
 ## Creating a custom binding source
 
-When a project needs data that isn't post meta or an ACF field (a transient, a remote API result, a computed value), register a custom source. Minimal worked example — a `wp-starter/environment` binding that reveals the WordPress environment type:
+When a project needs data that isn't post meta or an ACF field (a transient, a remote API result, a computed value), register a custom source. Minimal worked example — a `futurebase/environment` binding that reveals the WordPress environment type:
 
 ```php
 add_action( 'init', function () {
 	register_block_bindings_source(
-		'wp-starter/environment',
+		'futurebase/environment',
 		array(
-			'label'              => __( 'Environment type', 'wp-starter' ),
+			'label'              => __( 'Environment type', 'futurebase' ),
 			'get_value_callback' => function () {
 				return wp_get_environment_type();
 			},
@@ -142,7 +142,7 @@ Use in a pattern:
 	"className": "env-banner",
 	"metadata": {
 		"bindings": {
-			"content": { "source": "wp-starter/environment" }
+			"content": { "source": "futurebase/environment" }
 		}
 	}
 } -->

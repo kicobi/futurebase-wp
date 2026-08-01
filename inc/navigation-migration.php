@@ -2,35 +2,35 @@
 /**
  * Versioned navigation-region migration and recovery.
  *
- * @package wp-starter
+ * @package futurebase
  */
 
-if ( ! defined( 'WP_STARTER_NAVIGATION_MIGRATION_VERSION' ) ) {
-	define( 'WP_STARTER_NAVIGATION_MIGRATION_VERSION', 2 );
+if ( ! defined( 'FUTUREBASE_NAVIGATION_MIGRATION_VERSION' ) ) {
+	define( 'FUTUREBASE_NAVIGATION_MIGRATION_VERSION', 2 );
 }
 
-if ( ! function_exists( 'wp_starter_navigation_seed_definition' ) ) {
+if ( ! function_exists( 'futurebase_navigation_seed_definition' ) ) {
 	/**
 	 * Return the starter navigation-region definition.
 	 *
 	 * @param string $region Region slug.
 	 * @return array{title: string, links: array<int, array{0: string, 1: string}>}
 	 */
-	function wp_starter_navigation_seed_definition( $region ) {
+	function futurebase_navigation_seed_definition( $region ) {
 		$regions = array(
 			'primary-navigation' => array(
-				'title' => __( 'Primary navigation', 'wp-starter' ),
+				'title' => __( 'Primary navigation', 'futurebase' ),
 				'links' => array(
-					array( __( 'About', 'wp-starter' ), '/about/' ),
-					array( __( 'Services', 'wp-starter' ), '/services/' ),
-					array( __( 'Blog', 'wp-starter' ), '/blog/' ),
+					array( __( 'About', 'futurebase' ), '/about/' ),
+					array( __( 'Services', 'futurebase' ), '/services/' ),
+					array( __( 'Blog', 'futurebase' ), '/blog/' ),
 				),
 			),
 			'footer-navigation'  => array(
-				'title' => __( 'Footer navigation', 'wp-starter' ),
+				'title' => __( 'Footer navigation', 'futurebase' ),
 				'links' => array(
-					array( __( 'About', 'wp-starter' ), '/about/' ),
-					array( __( 'Blog', 'wp-starter' ), '/blog/' ),
+					array( __( 'About', 'futurebase' ), '/about/' ),
+					array( __( 'Blog', 'futurebase' ), '/blog/' ),
 				),
 			),
 		);
@@ -39,15 +39,15 @@ if ( ! function_exists( 'wp_starter_navigation_seed_definition' ) ) {
 	}
 }
 
-if ( ! function_exists( 'wp_starter_navigation_seed_content' ) ) {
+if ( ! function_exists( 'futurebase_navigation_seed_content' ) ) {
 	/**
 	 * Build the canonical starter links for a region.
 	 *
 	 * @param string $region Region slug.
 	 * @return string
 	 */
-	function wp_starter_navigation_seed_content( $region ) {
-		$definition = wp_starter_navigation_seed_definition( $region );
+	function futurebase_navigation_seed_content( $region ) {
+		$definition = futurebase_navigation_seed_definition( $region );
 		$content    = '';
 
 		foreach ( $definition['links'] as $link ) {
@@ -62,14 +62,14 @@ if ( ! function_exists( 'wp_starter_navigation_seed_content' ) ) {
 	}
 }
 
-if ( ! function_exists( 'wp_starter_navigation_region_post' ) ) {
+if ( ! function_exists( 'futurebase_navigation_region_post' ) ) {
 	/**
 	 * Resolve a published navigation-region post.
 	 *
 	 * @param string $slug Region slug.
 	 * @return WP_Post|null
 	 */
-	function wp_starter_navigation_region_post( $slug ) {
+	function futurebase_navigation_region_post( $slug ) {
 		$post = get_page_by_path( $slug, OBJECT, 'wp_navigation' );
 		if ( ! $post instanceof WP_Post || 'publish' !== $post->post_status ) {
 			return null;
@@ -79,7 +79,7 @@ if ( ! function_exists( 'wp_starter_navigation_region_post' ) ) {
 	}
 }
 
-if ( ! function_exists( 'wp_starter_navigation_legacy_posts' ) ) {
+if ( ! function_exists( 'futurebase_navigation_legacy_posts' ) ) {
 	/**
 	 * Find published non-region navigation posts in core fallback order.
 	 *
@@ -90,7 +90,7 @@ if ( ! function_exists( 'wp_starter_navigation_legacy_posts' ) ) {
 	 * @param WP_Post|null $older_than Optional post that candidates must predate.
 	 * @return array<int, WP_Post>
 	 */
-	function wp_starter_navigation_legacy_posts( $older_than = null ) {
+	function futurebase_navigation_legacy_posts( $older_than = null ) {
 		$posts = get_posts(
 			array(
 				'post_type'              => 'wp_navigation',
@@ -118,7 +118,7 @@ if ( ! function_exists( 'wp_starter_navigation_legacy_posts' ) ) {
 	}
 }
 
-if ( ! function_exists( 'wp_starter_navigation_primary_title' ) ) {
+if ( ! function_exists( 'futurebase_navigation_primary_title' ) ) {
 	/**
 	 * Preserve a client title unless it is unsuitable as the landmark label.
 	 *
@@ -130,27 +130,27 @@ if ( ! function_exists( 'wp_starter_navigation_primary_title' ) ) {
 	 * @param WP_Post|null $footer Existing footer navigation.
 	 * @return string
 	 */
-	function wp_starter_navigation_primary_title( $post, $footer ) {
+	function futurebase_navigation_primary_title( $post, $footer ) {
 		$title        = trim( $post->post_title );
 		$footer_title = $footer instanceof WP_Post ? trim( $footer->post_title ) : '';
 
 		if ( '' === $title || 'navigation' === $post->post_name || ( '' !== $footer_title && 0 === strcasecmp( $title, $footer_title ) ) ) {
-			return __( 'Primary navigation', 'wp-starter' );
+			return __( 'Primary navigation', 'futurebase' );
 		}
 
 		return $title;
 	}
 }
 
-if ( ! function_exists( 'wp_starter_navigation_insert_region' ) ) {
+if ( ! function_exists( 'futurebase_navigation_insert_region' ) ) {
 	/**
 	 * Insert a starter-owned navigation region.
 	 *
 	 * @param string $region Region slug.
 	 * @return int|WP_Error
 	 */
-	function wp_starter_navigation_insert_region( $region ) {
-		$definition = wp_starter_navigation_seed_definition( $region );
+	function futurebase_navigation_insert_region( $region ) {
+		$definition = futurebase_navigation_seed_definition( $region );
 
 		return wp_insert_post(
 			array(
@@ -158,14 +158,14 @@ if ( ! function_exists( 'wp_starter_navigation_insert_region' ) ) {
 				'post_status'  => 'publish',
 				'post_title'   => $definition['title'],
 				'post_name'    => $region,
-				'post_content' => wp_starter_navigation_seed_content( $region ),
+				'post_content' => futurebase_navigation_seed_content( $region ),
 			),
 			true
 		);
 	}
 }
 
-if ( ! function_exists( 'wp_starter_navigation_collect_references' ) ) {
+if ( ! function_exists( 'futurebase_navigation_collect_references' ) ) {
 	/**
 	 * Recursively collect numeric core/navigation ref attributes.
 	 *
@@ -173,7 +173,7 @@ if ( ! function_exists( 'wp_starter_navigation_collect_references' ) ) {
 	 * @param array<int, bool>                 $references Reference set.
 	 * @return void
 	 */
-	function wp_starter_navigation_collect_references( $blocks, &$references ) {
+	function futurebase_navigation_collect_references( $blocks, &$references ) {
 		foreach ( $blocks as $block ) {
 			if ( 'core/navigation' === ( $block['blockName'] ?? null ) ) {
 				$ref = $block['attrs']['ref'] ?? null;
@@ -183,13 +183,13 @@ if ( ! function_exists( 'wp_starter_navigation_collect_references' ) ) {
 			}
 
 			if ( ! empty( $block['innerBlocks'] ) && is_array( $block['innerBlocks'] ) ) {
-				wp_starter_navigation_collect_references( $block['innerBlocks'], $references );
+				futurebase_navigation_collect_references( $block['innerBlocks'], $references );
 			}
 		}
 	}
 }
 
-if ( ! function_exists( 'wp_starter_navigation_references' ) ) {
+if ( ! function_exists( 'futurebase_navigation_references' ) ) {
 	/**
 	 * Find stored numeric navigation references in database-backed content.
 	 *
@@ -202,7 +202,7 @@ if ( ! function_exists( 'wp_starter_navigation_references' ) ) {
 	 * @param array<int, int> $candidate_ids Navigation IDs relevant to repair.
 	 * @return array<int, bool>
 	 */
-	function wp_starter_navigation_references( $candidate_ids ) {
+	function futurebase_navigation_references( $candidate_ids ) {
 		$references = array();
 		$special    = array( 'wp_template', 'wp_template_part', 'wp_block' );
 		$post_types = $special;
@@ -230,7 +230,7 @@ if ( ! function_exists( 'wp_starter_navigation_references' ) ) {
 			);
 
 			foreach ( $query->posts as $post_id ) {
-				wp_starter_navigation_collect_references( parse_blocks( (string) get_post_field( 'post_content', $post_id ) ), $references );
+				futurebase_navigation_collect_references( parse_blocks( (string) get_post_field( 'post_content', $post_id ) ), $references );
 			}
 		}
 
@@ -239,28 +239,28 @@ if ( ! function_exists( 'wp_starter_navigation_references' ) ) {
 	}
 }
 
-if ( ! function_exists( 'wp_starter_navigation_matches_seed' ) ) {
+if ( ! function_exists( 'futurebase_navigation_matches_seed' ) ) {
 	/**
 	 * Check whether a post still contains the canonical untouched primary seed.
 	 *
 	 * @param WP_Post $post Navigation post.
 	 * @return bool
 	 */
-	function wp_starter_navigation_matches_seed( $post ) {
+	function futurebase_navigation_matches_seed( $post ) {
 		return serialize_blocks( parse_blocks( $post->post_content ) )
-			=== serialize_blocks( parse_blocks( wp_starter_navigation_seed_content( 'primary-navigation' ) ) );
+			=== serialize_blocks( parse_blocks( futurebase_navigation_seed_content( 'primary-navigation' ) ) );
 	}
 }
 
-if ( ! function_exists( 'wp_starter_navigation_snapshot' ) ) {
+if ( ! function_exists( 'futurebase_navigation_snapshot' ) ) {
 	/**
 	 * Snapshot fields changed by the repair routine.
 	 *
 	 * @param WP_Post $post Navigation post.
 	 * @return array{ID: int, post_status: string, post_title: string, post_name: string, post_content: string, migration_meta_exists: bool, migration_meta: mixed}
 	 */
-	function wp_starter_navigation_snapshot( $post ) {
-		$meta_key = '_wp_starter_navigation_migration';
+	function futurebase_navigation_snapshot( $post ) {
+		$meta_key = '_futurebase_navigation_migration';
 
 		return array(
 			'ID'                    => $post->ID,
@@ -274,14 +274,14 @@ if ( ! function_exists( 'wp_starter_navigation_snapshot' ) ) {
 	}
 }
 
-if ( ! function_exists( 'wp_starter_navigation_restore' ) ) {
+if ( ! function_exists( 'futurebase_navigation_restore' ) ) {
 	/**
 	 * Best-effort restore of a navigation post after a multi-step failure.
 	 *
 	 * @param array{ID: int, post_status: string, post_title: string, post_name: string, post_content: string, migration_meta_exists: bool, migration_meta: mixed} $snapshot Post snapshot.
 	 * @return void
 	 */
-	function wp_starter_navigation_restore( $snapshot ) {
+	function futurebase_navigation_restore( $snapshot ) {
 		$post = array_intersect_key(
 			$snapshot,
 			array_flip( array( 'ID', 'post_status', 'post_title', 'post_name', 'post_content' ) )
@@ -289,14 +289,14 @@ if ( ! function_exists( 'wp_starter_navigation_restore' ) ) {
 		wp_update_post( $post, true );
 
 		if ( $snapshot['migration_meta_exists'] ) {
-			update_post_meta( $snapshot['ID'], '_wp_starter_navigation_migration', $snapshot['migration_meta'] );
+			update_post_meta( $snapshot['ID'], '_futurebase_navigation_migration', $snapshot['migration_meta'] );
 		} else {
-			delete_post_meta( $snapshot['ID'], '_wp_starter_navigation_migration' );
+			delete_post_meta( $snapshot['ID'], '_futurebase_navigation_migration' );
 		}
 	}
 }
 
-if ( ! function_exists( 'wp_starter_navigation_retire' ) ) {
+if ( ! function_exists( 'futurebase_navigation_retire' ) ) {
 	/**
 	 * Retain an unused navigation post as a recoverable draft.
 	 *
@@ -304,7 +304,7 @@ if ( ! function_exists( 'wp_starter_navigation_retire' ) ) {
 	 * @param int     $survivor_id ID preserved by the migration.
 	 * @return int|WP_Error
 	 */
-	function wp_starter_navigation_retire( $post, $survivor_id ) {
+	function futurebase_navigation_retire( $post, $survivor_id ) {
 		$result = wp_update_post(
 			array(
 				'ID'          => $post->ID,
@@ -316,19 +316,19 @@ if ( ! function_exists( 'wp_starter_navigation_retire' ) ) {
 
 		if ( ! is_wp_error( $result ) ) {
 			$metadata_value = array(
-				'version'     => WP_STARTER_NAVIGATION_MIGRATION_VERSION,
+				'version'     => FUTUREBASE_NAVIGATION_MIGRATION_VERSION,
 				'retired_at'  => gmdate( 'c' ),
 				'survivor_id' => $survivor_id,
 			);
 			$metadata       = update_post_meta(
 				$post->ID,
-				'_wp_starter_navigation_migration',
+				'_futurebase_navigation_migration',
 				$metadata_value
 			);
-			if ( false === $metadata && get_post_meta( $post->ID, '_wp_starter_navigation_migration', true ) !== $metadata_value ) {
+			if ( false === $metadata && get_post_meta( $post->ID, '_futurebase_navigation_migration', true ) !== $metadata_value ) {
 				return new WP_Error(
 					'navigation_retirement_metadata_failed',
-					__( 'The unused navigation post was drafted, but its recovery metadata could not be saved.', 'wp-starter' )
+					__( 'The unused navigation post was drafted, but its recovery metadata could not be saved.', 'futurebase' )
 				);
 			}
 		}
@@ -337,7 +337,7 @@ if ( ! function_exists( 'wp_starter_navigation_retire' ) ) {
 	}
 }
 
-if ( ! function_exists( 'wp_starter_navigation_repair_seeded_state' ) ) {
+if ( ! function_exists( 'futurebase_navigation_repair_seeded_state' ) ) {
 	/**
 	 * Repair the old seeder's orphaned-client-menu state.
 	 *
@@ -346,21 +346,21 @@ if ( ! function_exists( 'wp_starter_navigation_repair_seeded_state' ) ) {
 	 * @param WP_Post|null $footer  Footer region, when one already exists.
 	 * @return true|WP_Error
 	 */
-	function wp_starter_navigation_repair_seeded_state( $primary, $legacy, $footer ) {
-		$references       = wp_starter_navigation_references( array( $primary->ID, $legacy->ID ) );
+	function futurebase_navigation_repair_seeded_state( $primary, $legacy, $footer ) {
+		$references       = futurebase_navigation_references( array( $primary->ID, $legacy->ID ) );
 		$primary_referred = isset( $references[ $primary->ID ] );
 		$legacy_referred  = isset( $references[ $legacy->ID ] );
 
 		if ( $primary_referred && $legacy_referred ) {
 			return new WP_Error(
 				'navigation_needs_attention',
-				__( 'Both the seeded and legacy navigation posts are referenced. Choose the intended primary menu manually; no content was changed.', 'wp-starter' )
+				__( 'Both the seeded and legacy navigation posts are referenced. Choose the intended primary menu manually; no content was changed.', 'futurebase' )
 			);
 		}
 
-		$primary_snapshot = wp_starter_navigation_snapshot( $primary );
-		$legacy_snapshot  = wp_starter_navigation_snapshot( $legacy );
-		$title            = wp_starter_navigation_primary_title( $legacy, $footer );
+		$primary_snapshot = futurebase_navigation_snapshot( $primary );
+		$legacy_snapshot  = futurebase_navigation_snapshot( $legacy );
+		$title            = futurebase_navigation_primary_title( $legacy, $footer );
 
 		if ( $primary_referred ) {
 			$updated = wp_update_post(
@@ -377,20 +377,20 @@ if ( ! function_exists( 'wp_starter_navigation_repair_seeded_state' ) ) {
 				return $updated;
 			}
 
-			$retired = wp_starter_navigation_retire( $legacy, $primary->ID );
+			$retired = futurebase_navigation_retire( $legacy, $primary->ID );
 			if ( is_wp_error( $retired ) ) {
-				wp_starter_navigation_restore( $primary_snapshot );
-				wp_starter_navigation_restore( $legacy_snapshot );
+				futurebase_navigation_restore( $primary_snapshot );
+				futurebase_navigation_restore( $legacy_snapshot );
 				return $retired;
 			}
 
 			return true;
 		}
 
-		$retired = wp_starter_navigation_retire( $primary, $legacy->ID );
+		$retired = futurebase_navigation_retire( $primary, $legacy->ID );
 		if ( is_wp_error( $retired ) ) {
-			wp_starter_navigation_restore( $primary_snapshot );
-			wp_starter_navigation_restore( $legacy_snapshot );
+			futurebase_navigation_restore( $primary_snapshot );
+			futurebase_navigation_restore( $legacy_snapshot );
 			return $retired;
 		}
 
@@ -404,8 +404,8 @@ if ( ! function_exists( 'wp_starter_navigation_repair_seeded_state' ) ) {
 			true
 		);
 		if ( is_wp_error( $updated ) ) {
-			wp_starter_navigation_restore( $primary_snapshot );
-			wp_starter_navigation_restore( $legacy_snapshot );
+			futurebase_navigation_restore( $primary_snapshot );
+			futurebase_navigation_restore( $legacy_snapshot );
 			return $updated;
 		}
 
@@ -413,40 +413,40 @@ if ( ! function_exists( 'wp_starter_navigation_repair_seeded_state' ) ) {
 	}
 }
 
-if ( ! function_exists( 'wp_starter_navigation_apply_migration' ) ) {
+if ( ! function_exists( 'futurebase_navigation_apply_migration' ) ) {
 	/**
 	 * Apply normal adoption/seeding or the narrowly identified damage repair.
 	 *
 	 * @return true|WP_Error
 	 */
-	function wp_starter_navigation_apply_migration() {
-		$primary = wp_starter_navigation_region_post( 'primary-navigation' );
-		$footer  = wp_starter_navigation_region_post( 'footer-navigation' );
+	function futurebase_navigation_apply_migration() {
+		$primary = futurebase_navigation_region_post( 'primary-navigation' );
+		$footer  = futurebase_navigation_region_post( 'footer-navigation' );
 
-		if ( $primary instanceof WP_Post && get_option( 'wp_starter_navigation_seeded' ) ) {
-			$legacy_posts = wp_starter_navigation_legacy_posts( $primary );
+		if ( $primary instanceof WP_Post && get_option( 'futurebase_navigation_seeded' ) ) {
+			$legacy_posts = futurebase_navigation_legacy_posts( $primary );
 			if ( ! empty( $legacy_posts ) ) {
 				$legacy = $legacy_posts[0];
-				if ( ! wp_starter_navigation_matches_seed( $primary ) || $primary->post_modified !== $primary->post_date ) {
+				if ( ! futurebase_navigation_matches_seed( $primary ) || $primary->post_modified !== $primary->post_date ) {
 					return new WP_Error(
 						'navigation_needs_attention',
-						__( 'An older navigation menu exists, but the seeded primary menu has been edited or cannot be identified safely. No content was changed.', 'wp-starter' )
+						__( 'An older navigation menu exists, but the seeded primary menu has been edited or cannot be identified safely. No content was changed.', 'futurebase' )
 					);
 				}
 
 				// Resolve the only ambiguous survivor case before creating a
 				// missing footer. "Needs attention" must be a read-only result.
-				$references = wp_starter_navigation_references( array( $primary->ID, $legacy->ID ) );
+				$references = futurebase_navigation_references( array( $primary->ID, $legacy->ID ) );
 				if ( isset( $references[ $primary->ID ], $references[ $legacy->ID ] ) ) {
 					return new WP_Error(
 						'navigation_needs_attention',
-						__( 'Both the seeded and legacy navigation posts are referenced. Choose the intended primary menu manually; no content was changed.', 'wp-starter' )
+						__( 'Both the seeded and legacy navigation posts are referenced. Choose the intended primary menu manually; no content was changed.', 'futurebase' )
 					);
 				}
 
 				$created_footer_id = 0;
 				if ( ! $footer instanceof WP_Post ) {
-					$footer_id = wp_starter_navigation_insert_region( 'footer-navigation' );
+					$footer_id = futurebase_navigation_insert_region( 'footer-navigation' );
 					if ( is_wp_error( $footer_id ) ) {
 						return $footer_id;
 					}
@@ -454,7 +454,7 @@ if ( ! function_exists( 'wp_starter_navigation_apply_migration' ) ) {
 					$footer            = get_post( $footer_id );
 				}
 
-				$repair = wp_starter_navigation_repair_seeded_state( $primary, $legacy, $footer );
+				$repair = futurebase_navigation_repair_seeded_state( $primary, $legacy, $footer );
 				if ( is_wp_error( $repair ) && $created_footer_id ) {
 					wp_delete_post( $created_footer_id, true );
 				}
@@ -464,7 +464,7 @@ if ( ! function_exists( 'wp_starter_navigation_apply_migration' ) ) {
 		}
 
 		if ( ! $primary instanceof WP_Post ) {
-			$legacy_posts = wp_starter_navigation_legacy_posts();
+			$legacy_posts = futurebase_navigation_legacy_posts();
 			if ( ! empty( $legacy_posts ) ) {
 				$legacy  = $legacy_posts[0];
 				$updated = wp_update_post(
@@ -472,7 +472,7 @@ if ( ! function_exists( 'wp_starter_navigation_apply_migration' ) ) {
 						'ID'          => $legacy->ID,
 						'post_status' => 'publish',
 						'post_name'   => 'primary-navigation',
-						'post_title'  => wp_starter_navigation_primary_title( $legacy, $footer ),
+						'post_title'  => futurebase_navigation_primary_title( $legacy, $footer ),
 					),
 					true
 				);
@@ -480,7 +480,7 @@ if ( ! function_exists( 'wp_starter_navigation_apply_migration' ) ) {
 					return $updated;
 				}
 			} else {
-				$primary_id = wp_starter_navigation_insert_region( 'primary-navigation' );
+				$primary_id = futurebase_navigation_insert_region( 'primary-navigation' );
 				if ( is_wp_error( $primary_id ) ) {
 					return $primary_id;
 				}
@@ -488,7 +488,7 @@ if ( ! function_exists( 'wp_starter_navigation_apply_migration' ) ) {
 		}
 
 		if ( ! $footer instanceof WP_Post ) {
-			$footer_id = wp_starter_navigation_insert_region( 'footer-navigation' );
+			$footer_id = futurebase_navigation_insert_region( 'footer-navigation' );
 			if ( is_wp_error( $footer_id ) ) {
 				return $footer_id;
 			}
@@ -498,7 +498,7 @@ if ( ! function_exists( 'wp_starter_navigation_apply_migration' ) ) {
 	}
 }
 
-if ( ! function_exists( 'wp_starter_navigation_regions_complete' ) ) {
+if ( ! function_exists( 'futurebase_navigation_regions_complete' ) ) {
 	/**
 	 * Read-only completion check used after retry writes stop.
 	 *
@@ -508,14 +508,14 @@ if ( ! function_exists( 'wp_starter_navigation_regions_complete' ) ) {
 	 *
 	 * @return bool
 	 */
-	function wp_starter_navigation_regions_complete() {
-		$primary = wp_starter_navigation_region_post( 'primary-navigation' );
-		$footer  = wp_starter_navigation_region_post( 'footer-navigation' );
+	function futurebase_navigation_regions_complete() {
+		$primary = futurebase_navigation_region_post( 'primary-navigation' );
+		$footer  = futurebase_navigation_region_post( 'footer-navigation' );
 		if ( ! $primary instanceof WP_Post || ! $footer instanceof WP_Post || $primary->ID === $footer->ID ) {
 			return false;
 		}
 
-		if ( get_option( 'wp_starter_navigation_seeded' ) && ! empty( wp_starter_navigation_legacy_posts( $primary ) ) ) {
+		if ( get_option( 'futurebase_navigation_seeded' ) && ! empty( futurebase_navigation_legacy_posts( $primary ) ) ) {
 			return false;
 		}
 
@@ -523,20 +523,20 @@ if ( ! function_exists( 'wp_starter_navigation_regions_complete' ) ) {
 	}
 }
 
-if ( ! function_exists( 'wp_starter_navigation_migration_state' ) ) {
+if ( ! function_exists( 'futurebase_navigation_migration_state' ) ) {
 	/**
 	 * Normalize migration state from the option table.
 	 *
 	 * @return array{version: int, status: string, attempts: int, last_error: string}
 	 */
-	function wp_starter_navigation_migration_state() {
-		$state = get_option( 'wp_starter_navigation_migration', array() );
+	function futurebase_navigation_migration_state() {
+		$state = get_option( 'futurebase_navigation_migration', array() );
 		if ( ! is_array( $state ) ) {
 			$state = array();
 		}
 
 		return array(
-			'version'    => isset( $state['version'] ) ? (int) $state['version'] : WP_STARTER_NAVIGATION_MIGRATION_VERSION,
+			'version'    => isset( $state['version'] ) ? (int) $state['version'] : FUTUREBASE_NAVIGATION_MIGRATION_VERSION,
 			'status'     => isset( $state['status'] ) ? (string) $state['status'] : 'pending',
 			'attempts'   => isset( $state['attempts'] ) ? (int) $state['attempts'] : 0,
 			'last_error' => isset( $state['last_error'] ) ? (string) $state['last_error'] : '',
@@ -544,43 +544,43 @@ if ( ! function_exists( 'wp_starter_navigation_migration_state' ) ) {
 	}
 }
 
-if ( ! function_exists( 'wp_starter_migrate_navigation_regions' ) ) {
+if ( ! function_exists( 'futurebase_migrate_navigation_regions' ) ) {
 	/**
 	 * Run the version-2 navigation migration with bounded technical retries.
 	 *
 	 * @return void
 	 */
-	function wp_starter_migrate_navigation_regions() {
-		$state = wp_starter_navigation_migration_state();
-		if ( WP_STARTER_NAVIGATION_MIGRATION_VERSION === $state['version'] && 'complete' === $state['status'] ) {
+	function futurebase_migrate_navigation_regions() {
+		$state = futurebase_navigation_migration_state();
+		if ( FUTUREBASE_NAVIGATION_MIGRATION_VERSION === $state['version'] && 'complete' === $state['status'] ) {
 			return;
 		}
 
 		if ( 'needs_attention' === $state['status'] || $state['attempts'] >= 3 ) {
-			if ( wp_starter_navigation_regions_complete() ) {
+			if ( futurebase_navigation_regions_complete() ) {
 				update_option(
-					'wp_starter_navigation_migration',
+					'futurebase_navigation_migration',
 					array(
-						'version'    => WP_STARTER_NAVIGATION_MIGRATION_VERSION,
+						'version'    => FUTUREBASE_NAVIGATION_MIGRATION_VERSION,
 						'status'     => 'complete',
 						'attempts'   => $state['attempts'],
 						'last_error' => '',
 					),
 					false
 				);
-				delete_option( 'wp_starter_navigation_seeded' );
+				delete_option( 'futurebase_navigation_seeded' );
 			}
 			return;
 		}
 
-		$result = wp_starter_navigation_apply_migration();
+		$result = futurebase_navigation_apply_migration();
 		if ( is_wp_error( $result ) ) {
 			$is_attention = 'navigation_needs_attention' === $result->get_error_code();
 			$attempts     = $is_attention ? $state['attempts'] : $state['attempts'] + 1;
 			update_option(
-				'wp_starter_navigation_migration',
+				'futurebase_navigation_migration',
 				array(
-					'version'    => WP_STARTER_NAVIGATION_MIGRATION_VERSION,
+					'version'    => FUTUREBASE_NAVIGATION_MIGRATION_VERSION,
 					'status'     => $is_attention || $attempts >= 3 ? 'needs_attention' : 'failed',
 					'attempts'   => $attempts,
 					'last_error' => $result->get_error_message(),
@@ -590,15 +590,15 @@ if ( ! function_exists( 'wp_starter_migrate_navigation_regions' ) ) {
 			return;
 		}
 
-		if ( ! wp_starter_navigation_regions_complete() ) {
+		if ( ! futurebase_navigation_regions_complete() ) {
 			$attempts = $state['attempts'] + 1;
 			update_option(
-				'wp_starter_navigation_migration',
+				'futurebase_navigation_migration',
 				array(
-					'version'    => WP_STARTER_NAVIGATION_MIGRATION_VERSION,
+					'version'    => FUTUREBASE_NAVIGATION_MIGRATION_VERSION,
 					'status'     => $attempts >= 3 ? 'needs_attention' : 'failed',
 					'attempts'   => $attempts,
-					'last_error' => __( 'The migration returned without two valid, distinct navigation regions.', 'wp-starter' ),
+					'last_error' => __( 'The migration returned without two valid, distinct navigation regions.', 'futurebase' ),
 				),
 				false
 			);
@@ -606,55 +606,55 @@ if ( ! function_exists( 'wp_starter_migrate_navigation_regions' ) ) {
 		}
 
 		update_option(
-			'wp_starter_navigation_migration',
+			'futurebase_navigation_migration',
 			array(
-				'version'    => WP_STARTER_NAVIGATION_MIGRATION_VERSION,
+				'version'    => FUTUREBASE_NAVIGATION_MIGRATION_VERSION,
 				'status'     => 'complete',
 				'attempts'   => $state['attempts'],
 				'last_error' => '',
 			),
 			false
 		);
-		delete_option( 'wp_starter_navigation_seeded' );
+		delete_option( 'futurebase_navigation_seeded' );
 	}
 }
 
-if ( ! function_exists( 'wp_starter_seed_navigation_menus' ) ) {
+if ( ! function_exists( 'futurebase_seed_navigation_menus' ) ) {
 	/**
 	 * Backward-compatible entry point for the former one-shot seeder.
 	 *
 	 * @return void
 	 */
-	function wp_starter_seed_navigation_menus() {
-		wp_starter_migrate_navigation_regions();
+	function futurebase_seed_navigation_menus() {
+		futurebase_migrate_navigation_regions();
 	}
 }
 
-if ( ! function_exists( 'wp_starter_navigation_migration_notice' ) ) {
+if ( ! function_exists( 'futurebase_navigation_migration_notice' ) ) {
 	/**
 	 * Show migration failures only to users who can manage the theme.
 	 *
 	 * @return void
 	 */
-	function wp_starter_navigation_migration_notice() {
+	function futurebase_navigation_migration_notice() {
 		if ( ! current_user_can( 'edit_theme_options' ) ) {
 			return;
 		}
 
-		$state = wp_starter_navigation_migration_state();
+		$state = futurebase_navigation_migration_state();
 		if ( 'needs_attention' !== $state['status'] ) {
 			return;
 		}
 		?>
 		<div class="notice notice-warning">
 			<p>
-				<strong><?php esc_html_e( 'Navigation migration needs attention.', 'wp-starter' ); ?></strong>
+				<strong><?php esc_html_e( 'Navigation migration needs attention.', 'futurebase' ); ?></strong>
 				<?php echo esc_html( $state['last_error'] ); ?>
 				<?php
 				printf(
 					' <a href="%s">%s</a>',
 					esc_url( admin_url( 'site-editor.php?path=/navigation' ) ),
-					esc_html__( 'Review navigation menus', 'wp-starter' )
+					esc_html__( 'Review navigation menus', 'futurebase' )
 				);
 				?>
 			</p>
@@ -663,6 +663,6 @@ if ( ! function_exists( 'wp_starter_navigation_migration_notice' ) ) {
 	}
 }
 
-add_action( 'after_switch_theme', 'wp_starter_migrate_navigation_regions' );
-add_action( 'admin_init', 'wp_starter_migrate_navigation_regions' );
-add_action( 'admin_notices', 'wp_starter_navigation_migration_notice' );
+add_action( 'after_switch_theme', 'futurebase_migrate_navigation_regions' );
+add_action( 'admin_init', 'futurebase_migrate_navigation_regions' );
+add_action( 'admin_notices', 'futurebase_navigation_migration_notice' );

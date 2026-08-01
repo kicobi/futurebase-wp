@@ -3,7 +3,7 @@
 // A promoted project shares NO git history with the starter: `lead promote`
 // uses the GitHub template flow, which squashes to a fresh initial commit. So
 // starter fixes cannot reach a project through merge, rebase, or cherry-pick,
-// and a wholesale copy would reintroduce `wp-starter` literals across every
+// and a wholesale copy would reintroduce `futurebase` literals across every
 // renamed file. This module plans that flow one path at a time.
 //
 // Classification IS the safety model. The project has deliberately diverged —
@@ -78,7 +78,7 @@ const RULES = [
 	// The client's work, and generated output. Never touched, never reported.
 	[CLASS.NEVER, (r) => r.startsWith('.project/')],
 	[CLASS.NEVER, (r) => /^(patterns|templates|parts|inc|src|assets|languages|build|styles)\//.test(r)],
-	[CLASS.NEVER, (r) => ['theme.json', 'style.css', 'functions.php'].includes(r)],
+	[CLASS.NEVER, (r) => ['theme.json', 'style.css', 'functions.php', 'readme.txt'].includes(r)],
 	[CLASS.NEVER, (r) => r.startsWith('node_modules/') || r.startsWith('vendor/')],
 ];
 
@@ -360,32 +360,49 @@ export function planDeps({ projectRoot, starter, ref }) {
 	const pkgRaw = existsSync(join(projectRoot, 'package.json')) ? readFileSync(join(projectRoot, 'package.json'), 'utf8') : null;
 	const upPkgRaw = textAt(starter, ref, 'package.json');
 	let projectPkgName = null;
+	let projectPkgVersion = null;
 	let npmExtra = [];
 	if (pkgRaw && upPkgRaw) {
 		const pkg = JSON.parse(pkgRaw);
 		const up = JSON.parse(upPkgRaw);
 		projectPkgName = pkg.name;
+		projectPkgVersion = pkg.version;
 		npmExtra = projectOnlyDeps(pkg, up, NPM_KEYS);
 		propose('package.json', serialize(unionKeys({ ...pkg }, up, NPM_KEYS), detectIndent(pkgRaw)));
 	}
 
 	// package-lock.json — adopt upstream wholesale, then restore the project's
-	// own package name. Bumping the manifest alone is not enough: an
+	// own package name and version. Bumping the manifest alone is not enough: an
 	// incremental install keeps previously pinned transitive versions, so the
-	// advisories the starter already fixed survive. Only two fields are
-	// slug-bearing.
+	// advisories Futurebase already fixed survive. Four root-package fields are
+	// client-owned; package.json is authoritative for all four.
 	//
 	// Guarded: if the project declares a dependency upstream does not have, the
 	// starter's lock cannot describe this project, and adopting it would drop
 	// that package on the next clean install.
 	const upLockRaw = textAt(starter, ref, 'package-lock.json');
-	if (upLockRaw && projectPkgName) {
-		if (npmExtra.length) {
-			entries.push({ rel: 'package-lock.json', cls: CLASS.DEPS, state: 'blocked', note: `project-only dependencies (${npmExtra.join(', ')}) — run npm install after the manifest merge` });
+	if (upLockRaw) {
+		const missingLockIdentity = [
+			!projectPkgName && 'name',
+			!projectPkgVersion && 'version',
+		].filter(Boolean);
+		if (missingLockIdentity.length) {
+			entries.push({
+				rel: 'package-lock.json',
+				cls: CLASS.DEPS,
+				state: 'blocked',
+				note: `client package.json is missing lockfile identity field(s): ${missingLockIdentity.join(', ')} — add the missing field(s) and rerun sync`,
+			});
+		} else if (npmExtra.length) {
+			entries.push({ rel: 'package-lock.json', cls: CLASS.DEPS, state: 'blocked', note: `project-only dependencies (${npmExtra.join(', ')}) — run npm install --package-lock-only after reconciling the manifest` });
 		} else {
 			const lock = JSON.parse(upLockRaw);
 			lock.name = projectPkgName;
-			if (lock.packages && lock.packages['']) lock.packages[''].name = projectPkgName;
+			lock.version = projectPkgVersion;
+			if (lock.packages && lock.packages['']) {
+				lock.packages[''].name = projectPkgName;
+				lock.packages[''].version = projectPkgVersion;
+			}
 			propose('package-lock.json', serialize(lock, detectIndent(upLockRaw)));
 		}
 	}

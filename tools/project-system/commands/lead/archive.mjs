@@ -4,7 +4,7 @@
 // creating any implementation scaffold. Moves the workspace under
 // <leads>/_archive/<slug>/ and stamps its status. Reversible (it's a move).
 //
-// wp-starter lead archive <slug> [--reason lost|abandoned] [--dry-run] [--json]
+// futurebase lead archive <slug> [--reason lost|abandoned] [--dry-run] [--json]
 
 import { cpSync, existsSync, rmSync, renameSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';

@@ -1,11 +1,11 @@
 <?php
 /**
  * Title: Footer navigation
- * Slug: wp-starter/_nav-footer
+ * Slug: futurebase/_nav-footer
  * Inserter: no
  * Description: Footer navigation. Its own wp_navigation post, distinct from the header's, so the two regions are separately editable.
  *
- * @package wp-starter
+ * @package futurebase
  */
 
 /**
@@ -17,18 +17,18 @@
  * reader users two identical landmarks to tell apart.
  */
 
-$wp_starter_nav = get_page_by_path( 'footer-navigation', OBJECT, 'wp_navigation' );
+$futurebase_nav = get_page_by_path( 'footer-navigation', OBJECT, 'wp_navigation' );
 
-if ( $wp_starter_nav instanceof WP_Post ) :
+if ( $futurebase_nav instanceof WP_Post ) :
 	?>
-	<!-- wp:navigation {"ref":<?php echo (int) $wp_starter_nav->ID; ?>,"overlayMenu":"never","layout":{"type":"flex","justifyContent":"right","orientation":"horizontal"}} /-->
+	<!-- wp:navigation {"ref":<?php echo (int) $futurebase_nav->ID; ?>,"overlayMenu":"never","layout":{"type":"flex","justifyContent":"right","orientation":"horizontal"}} /-->
 	<?php
 else :
 	?>
 	<!-- wp:navigation {"overlayMenu":"never","layout":{"type":"flex","justifyContent":"right","orientation":"horizontal"}} -->
 		<?php // See _nav-primary.php: home_url() so a subdirectory install links inside itself. ?>
-		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'About', 'wp-starter' ); ?>","url":"<?php echo esc_url( home_url( '/about/' ) ); ?>"} /-->
-		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'Blog', 'wp-starter' ); ?>","url":"<?php echo esc_url( home_url( '/blog/' ) ); ?>"} /-->
+		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'About', 'futurebase' ); ?>","url":"<?php echo esc_url( home_url( '/about/' ) ); ?>"} /-->
+		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'Blog', 'futurebase' ); ?>","url":"<?php echo esc_url( home_url( '/blog/' ) ); ?>"} /-->
 	<!-- /wp:navigation -->
 	<?php
 endif;

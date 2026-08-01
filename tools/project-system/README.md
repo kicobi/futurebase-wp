@@ -22,7 +22,7 @@ success metrics → launch comparison → follow-up → case study.
 ## What's here
 
 ```text
-bin/wp-starter.mjs      # CLI entry point
+bin/futurebase.mjs      # CLI entry point
 cli/dispatch.mjs        # command router
 commands/lead/          # init, inspect (implemented)
 lib/                    # yaml, slug, paths, output, validate, starter-context
@@ -42,18 +42,18 @@ cd tools/project-system
 npm install
 
 # create an isolated lead workspace under ~/Sites/leads/<slug>/
-node bin/wp-starter.mjs lead init "Acme Client" --type redesign
+node bin/futurebase.mjs lead init "Acme Client" --type redesign
 
 # report on it (or list all leads with a bare `lead`)
-node bin/wp-starter.mjs lead inspect acme-client
+node bin/futurebase.mjs lead inspect acme-client
 
-# optional: link it so `wp-starter …` works from anywhere
-npm link   # then: wp-starter lead init "Acme Client" --type redesign
+# optional: link it so `futurebase …` works from anywhere
+npm link   # then: futurebase lead init "Acme Client" --type redesign
 ```
 
 `lead init` creates the dossier skeleton, copies the lead-stage agent
 instructions, writes a schema-valid `project.yml`, and generates
-`references/wp-starter-context.md` from a **read-only** inspection of the
+`references/futurebase-context.md` from a **read-only** inspection of the
 starter. It does **not** initialize git unless `--git` is passed, and never
 touches the shared starter.
 
@@ -78,25 +78,25 @@ output, and clear exit codes. **✓ = implemented; the rest are designed.**
 
 **Lead (meta layer — operates across projects):**
 ```
-✓ wp-starter lead init "Client Name" --type new|redesign [--platform codeable|direct|other]
+✓ futurebase lead init "Client Name" --type new|redesign [--platform codeable|direct|other]
                                     [--slug <slug>] [--workspace-root <path>]
                                     [--starter-path <path>] [--git|--no-git]
                                     [--json] [--non-interactive]
-✓ wp-starter lead inspect  [<slug>]   # bare `lead` lists all workspaces
-✓ wp-starter lead promote  <slug> [--org <o>] [--name <n>] [--dest <path>]
+✓ futurebase lead inspect  [<slug>]   # bare `lead` lists all workspaces
+✓ futurebase lead promote  <slug> [--org <o>] [--name <n>] [--dest <path>]
                                 [--template <owner/repo>] [--dry-run] [--confirm]
                                 [--resume|--reuse-remote] [--skip-secret-scan]
                                 [--json] [--non-interactive]
-✓ wp-starter lead archive  <slug> [--reason lost|abandoned] [--dry-run]
+✓ futurebase lead archive  <slug> [--reason lost|abandoned] [--dry-run]
 ```
 
 **Project record (per-project):**
 ```
-✓ wp-starter project init [--name <n>] [--slug <s>] [--type new|redesign] [--force]
-✓ wp-starter project inspect     # record dashboard
-✓ wp-starter project status      # lifecycle checklist + next step
-✓ wp-starter project validate    # schema + structural + secret scan (exit 6 on a leak)
-✓ wp-starter project tasks [--format markdown|json|github] [--launch-date <date>]
+✓ futurebase project init [--name <n>] [--slug <s>] [--type new|redesign] [--force]
+✓ futurebase project inspect     # record dashboard
+✓ futurebase project status      # lifecycle checklist + next step
+✓ futurebase project validate    # schema + structural + secret scan (exit 6 on a leak)
+✓ futurebase project tasks [--format markdown|json|github] [--launch-date <date>]
 ```
 `tasks` generates the state-aware lifecycle task tree (spec §24) — Markdown
 checklist, a JSON sync payload (project/task id, milestone, owner, due date,
@@ -110,10 +110,10 @@ secret-scans the committed record (private/credentials/auth are excluded).
 
 **Baseline (per-project — run inside an active project):**
 ```
-✓ wp-starter baseline init [--type new|redesign] [--url <base>] [--page name=url] [--force]
-✓ wp-starter baseline inspect
-✓ wp-starter baseline run [--module crawl|screenshots|lighthouse|axe|wordpress|manual] [--url <base>] [--dry-run]
-✓ wp-starter baseline report [--run-id <id>]
+✓ futurebase baseline init [--type new|redesign] [--url <base>] [--page name=url] [--force]
+✓ futurebase baseline inspect
+✓ futurebase baseline run [--module crawl|screenshots|lighthouse|axe|wordpress|manual] [--url <base>] [--dry-run]
+✓ futurebase baseline report [--run-id <id>]
    flags: --project-root <path> --json
 ```
 Runs write dated, immutable evidence under `.project/baseline/<run-id>/`
@@ -126,13 +126,13 @@ failing the run.
 
 **Metrics (per-project):**
 ```
-✓ wp-starter metrics suggest [--preset <name>] [--dry-run]   # merge preset metric drafts
-✓ wp-starter metrics review                                  # launch vs post-launch table
-✓ wp-starter metrics validate                                # schema + semantic checks
-✓ wp-starter metrics baseline --id <id> --value <v> [--unit <u>] [--at <when>]
-✓ wp-starter metrics client-message [--write]                # spec §11.1 client wording
-✓ wp-starter metrics survey --period baseline|30-days|90-days [--write]
-✓ wp-starter metrics follow-up                               # survey deltas + metric checklist
+✓ futurebase metrics suggest [--preset <name>] [--dry-run]   # merge preset metric drafts
+✓ futurebase metrics review                                  # launch vs post-launch table
+✓ futurebase metrics validate                                # schema + semantic checks
+✓ futurebase metrics baseline --id <id> --value <v> [--unit <u>] [--at <when>]
+✓ futurebase metrics client-message [--write]                # spec §11.1 client wording
+✓ futurebase metrics survey --period baseline|30-days|90-days [--write]
+✓ futurebase metrics follow-up                               # survey deltas + metric checklist
 ```
 Surveys write a human form (`survey-<p>.md`) + a results template (`survey-<p>.yml`)
 into `.project/follow-up/`; fill the `.yml`, then `follow-up` computes
@@ -144,10 +144,10 @@ evidence type, owner, target, and timing; `suggest` is idempotent (matched by id
 
 **Final / comparison (per-project):**
 ```
-✓ wp-starter final run [--module <m>] [--dry-run]     # same engine as baseline, → .project/final/
-✓ wp-starter final report [--run-id <id>]
-✓ wp-starter compare [--baseline-run <id>] [--final-run <id>]   # before/after, internal + client-safe
-✓ wp-starter project case-study                       # editable Markdown draft
+✓ futurebase final run [--module <m>] [--dry-run]     # same engine as baseline, → .project/final/
+✓ futurebase final report [--run-id <id>]
+✓ futurebase compare [--baseline-run <id>] [--final-run <id>]   # before/after, internal + client-safe
+✓ futurebase project case-study                       # editable Markdown draft
 ```
 `compare` diffs the latest baseline against the latest final run (crawl,
 Lighthouse, axe, WordPress) and writes `comparison-<id>.html` (internal),
@@ -157,7 +157,7 @@ either side are reported as "not comparable", never invented.
 
 **Sync (per-project — reconcile with the starter):**
 ```
-✓ wp-starter sync [--ref <ref>] [--starter-path <p>] [--fetch]
+✓ futurebase sync [--ref <ref>] [--starter-path <p>] [--fetch]
                   [--only safe|deps|review] [--apply] [--confirm]
                   [--repair-provenance] [--json]
 ```
@@ -227,12 +227,12 @@ Planned (listed here, not stubbed): `wordpress-rebuild`, `performance-rescue`,
 
 ## Relationship to the starter
 
-This tooling lives **in** `wp-starter` deliberately: the per-project commands
+This tooling lives **in** `futurebase` deliberately: the per-project commands
 (`baseline`, `metrics`, `final`, `compare`) ride into each promoted project via
 the GitHub template, which is exactly where they're needed. The `lead *`
 commands are the cross-project meta layer. Lead **data** always lives outside
 the starter, under `~/Sites/leads/<slug>/`.
 
 `bin/rename-theme.sh` deliberately does **not** scan `tools/` — the templates
-here carry literal `wp-starter` / `studiokicobi/wp-starter` references that are
+here carry literal `futurebase` / `kicobi/futurebase-wp` references that are
 the starter's identity, not client slugs to rewrite.

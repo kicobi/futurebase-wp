@@ -1,6 +1,6 @@
 // commands/project/inspect.mjs — dashboard of the .project/ record.
 //
-// wp-starter project inspect [--project-root <p>] [--json]
+// futurebase project inspect [--project-root <p>] [--json]
 
 import { EXIT, die, info, emitJson, c } from '../../lib/output.mjs';
 import { findProjectRoot, projectPaths } from '../../lib/baseline.mjs';
@@ -9,7 +9,7 @@ import { recordSummary } from '../../lib/record.mjs';
 export function projectInspect(_positional, flags) {
 	const json = !!flags.json;
 	const root = findProjectRoot(process.cwd(), flags['project-root']);
-	if (!root) die('not inside an active project (no .project/ found). Run `wp-starter project init` first.', EXIT.ACCESS_FAILURE, { json });
+	if (!root) die('not inside an active project (no .project/ found). Run `futurebase project init` first.', EXIT.ACCESS_FAILURE, { json });
 	const paths = projectPaths(root);
 	const s = recordSummary(paths);
 

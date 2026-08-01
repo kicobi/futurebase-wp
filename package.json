@@ -1,7 +1,7 @@
 {
-	"name": "wp-starter",
-	"version": "1.0.2",
-	"description": "A modern FSE WordPress starter theme (PHP 8.3+, WordPress 6.9+).",
+	"name": "futurebase",
+	"version": "2.0.0",
+	"description": "A modern Full Site Editing foundation for accessible, maintainable WordPress websites.",
 	"author": "Colin Lewis",
 	"license": "GPL-2.0-or-later",
 	"keywords": [
@@ -9,15 +9,15 @@
 		"wordpress-theme",
 		"block-theme",
 		"full-site-editing",
-		"starter-theme"
+		"wordpress-foundation"
 	],
 	"homepage": "https://colinlewis.se",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/studiokicobi/wp-starter.git"
+		"url": "git+https://github.com/kicobi/futurebase-wp.git"
 	},
 	"bugs": {
-		"url": "https://github.com/studiokicobi/wp-starter/issues"
+		"url": "https://github.com/kicobi/futurebase-wp/issues"
 	},
 	"private": true,
 	"devDependencies": {
@@ -65,6 +65,8 @@
 		"env:clean": "wp-env clean all",
 		"env:cli": "wp-env run cli wp",
 		"test:navigation": "./bin/test-navigation-migration.sh",
-		"test:contract": "node --test bin/verify-contract.test.mjs"
+		"test:contract": "node --test bin/verify-contract.test.mjs",
+		"identity:audit": "./bin/audit-identity.sh",
+		"version:audit": "node bin/verify-version-surfaces.mjs"
 	}
 }

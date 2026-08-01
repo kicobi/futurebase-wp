@@ -1,6 +1,6 @@
 // commands/compare.mjs — diff the latest baseline against the latest final run.
 //
-// wp-starter compare [--baseline-run <id>] [--final-run <id>] [--allow-mismatch]
+// futurebase compare [--baseline-run <id>] [--final-run <id>] [--allow-mismatch]
 //                    [--json] [--project-root <p>]
 //
 // Writes an internal + client-safe comparison report into .project/reports/.
@@ -21,8 +21,8 @@ export function compare(_positional, flags) {
 
 	const baseId = flags['baseline-run'] || (existsSync(paths.baselineDir) ? latestRunId(paths.baselineDir) : null);
 	const finalId = flags['final-run'] || (existsSync(paths.finalDir) ? latestRunId(paths.finalDir) : null);
-	if (!baseId) die('no baseline run to compare — run: wp-starter baseline run', EXIT.ACCESS_FAILURE, { json });
-	if (!finalId) die('no final run to compare — run: wp-starter final run', EXIT.ACCESS_FAILURE, { json });
+	if (!baseId) die('no baseline run to compare — run: futurebase baseline run', EXIT.ACCESS_FAILURE, { json });
+	if (!finalId) die('no final run to compare — run: futurebase final run', EXIT.ACCESS_FAILURE, { json });
 	if (!isRunId(baseId)) die(`invalid baseline run id: ${baseId}`, EXIT.INVALID_CONFIG, { json });
 	if (!isRunId(finalId)) die(`invalid final run id: ${finalId}`, EXIT.INVALID_CONFIG, { json });
 

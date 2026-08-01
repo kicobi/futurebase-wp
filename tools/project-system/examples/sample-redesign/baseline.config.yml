@@ -1,5 +1,5 @@
 # Validates against schemas/baseline-config.schema.json.
-# `wp-starter baseline init` generates this inside a project's .project/.
+# `futurebase baseline init` generates this inside a project's .project/.
 schema_version: 1
 kind: baseline-config
 mode: redesign

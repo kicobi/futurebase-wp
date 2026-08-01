@@ -1,6 +1,6 @@
 // commands/metrics/survey.mjs — generate a survey form + results template.
 //
-// wp-starter metrics survey --period baseline|30-days|90-days [--write] [--json]
+// futurebase metrics survey --period baseline|30-days|90-days [--write] [--json]
 //
 // Prints the survey. With --write, writes the human form (survey-<p>.md) and an
 // empty schema-valid results template (survey-<p>.yml) into .project/follow-up/.
@@ -40,7 +40,7 @@ export function metricsSurvey(_positional, flags) {
 		if (json) emitJson({ status: 'written', period, form: join(followUpDir, `survey-${period}.md`), results_template: ymlPath });
 		ok(`survey written: ${join(followUpDir, `survey-${period}.md`)}`);
 		info(`fill in answers:  ${ymlPath}`);
-		info('then combine periods:  wp-starter metrics follow-up');
+		info('then combine periods:  futurebase metrics follow-up');
 		process.exit(EXIT.OK);
 	}
 

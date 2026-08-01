@@ -1,6 +1,6 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
-	"$id": "https://wp-starter.local/schemas/survey-results.schema.json",
+	"$id": "https://futurebase.local/schemas/survey-results.schema.json",
 	"title": "Survey results",
 	"description": "A versioned document holding the answers to one survey period. Null values mean unanswered.",
 	"type": "object",

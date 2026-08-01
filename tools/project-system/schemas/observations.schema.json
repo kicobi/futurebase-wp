@@ -1,6 +1,6 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
-	"$id": "https://wp-starter.local/schemas/observations.schema.json",
+	"$id": "https://futurebase.local/schemas/observations.schema.json",
 	"title": "Observations document",
 	"description": "A versioned document object of agent/human interpretations. Kept SEPARATE from measured metric values (facts-vs-interpretation boundary).",
 	"type": "object",

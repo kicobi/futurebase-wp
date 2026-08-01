@@ -1,10 +1,10 @@
 // commands/lead/init.mjs — create an isolated lead workspace.
 //
-// wp-starter lead init "Client Name" --type new|redesign [flags]
+// futurebase lead init "Client Name" --type new|redesign [flags]
 //
 // Creates ~/Sites/leads/<slug>/ with the lead-stage dossier skeleton, copies the
 // lead-stage agent instructions, writes a schema-valid project.yml, and
-// generates references/wp-starter-context.md from a READ-ONLY inspection of the
+// generates references/futurebase-context.md from a READ-ONLY inspection of the
 // starter. Local-only; git is NOT initialized unless --git is passed.
 
 import { execFileSync } from 'node:child_process';
@@ -26,7 +26,7 @@ const STUBS = {
 	'brief/original-brief.md': '# Original brief\n\n_Paste the client\'s brief here, verbatim._\n',
 	'brief/client-responses.md': '# Client responses\n\n_Answers to your questions. Attribute and date them._\n',
 	'analysis/requirements.md': '# Requirements\n\n_Confirmed requirements only. Assumptions go in assumptions.md._\n',
-	'analysis/technical-review.md': '# Technical review\n\n_Feasibility, stack fit, and reusable wp-starter capabilities._\n',
+	'analysis/technical-review.md': '# Technical review\n\n_Feasibility, stack fit, and reusable futurebase capabilities._\n',
 	'analysis/risks.md': '# Risks\n\n_Delivery, technical, and dependency risks._\n',
 	'analysis/assumptions.md': '# Assumptions\n\n_Working guesses to confirm with the client._\n',
 	'analysis/open-questions.md': '# Open questions\n\n_Unresolved questions blocking scope or estimate._\n',
@@ -119,7 +119,7 @@ export async function leadInit(positional, flags) {
 
 	// Read-only starter summary — the first thing an agent reads.
 	writeFileSync(
-		join(dir, 'references', 'wp-starter-context.md'),
+		join(dir, 'references', 'futurebase-context.md'),
 		generateStarterContext(starter, { commit: starterCommit }),
 		'utf8'
 	);
@@ -145,7 +145,7 @@ export async function leadInit(positional, flags) {
 	console.log('');
 	console.log('Next:');
 	console.log(`  1. Paste the brief into ${slug}/brief/original-brief.md`);
-	console.log(`  2. Open the workspace with Claude/Codex — read references/wp-starter-context.md first`);
-	console.log(`  3. Inspect it any time:  wp-starter lead inspect ${slug}`);
+	console.log(`  2. Open the workspace with Claude/Codex — read references/futurebase-context.md first`);
+	console.log(`  3. Inspect it any time:  futurebase lead inspect ${slug}`);
 	process.exit(EXIT.OK);
 }

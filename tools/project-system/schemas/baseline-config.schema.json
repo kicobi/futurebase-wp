@@ -1,6 +1,6 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
-	"$id": "https://wp-starter.local/schemas/baseline-config.schema.json",
+	"$id": "https://futurebase.local/schemas/baseline-config.schema.json",
 	"title": "Baseline config (.project/baseline.config.yml)",
 	"description": "Declares what a baseline run captures: target URL, representative pages, enabled modules, and screenshot viewports.",
 	"type": "object",

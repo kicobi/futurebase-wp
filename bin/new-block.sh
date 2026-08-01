@@ -4,7 +4,7 @@
 #
 # Creates a dynamic (server-rendered) block using the @wordpress/scripts
 # discovery convention. The block auto-registers via
-# wp_starter_register_blocks() in functions.php after `npm run build`.
+# futurebase_register_blocks() in functions.php after `npm run build`.
 #
 # Theme-bound blocks (what this scaffold makes) live with the theme.
 # Reusable cross-project blocks belong in a companion plugin — see
@@ -142,4 +142,4 @@ echo "Next steps:"
 echo "  1. Edit $TARGET/block.json — refine title, description, supports."
 echo "  2. Flesh out edit.js and render.php."
 echo "  3. npm run build   (compiles src/blocks/ → build/blocks/)"
-echo "  4. Block auto-registers via wp_starter_register_blocks() in functions.php."
+echo "  4. Block auto-registers via futurebase_register_blocks() in functions.php."

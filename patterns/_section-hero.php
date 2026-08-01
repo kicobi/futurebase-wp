@@ -1,7 +1,7 @@
 <?php
 /**
  * Title: Section — Hero
- * Slug: wp-starter/section-hero
+ * Slug: futurebase/section-hero
  * Categories: featured, banner
  * Description: Homepage hero section. Full-bleed cover with heading, supporting copy, and a CTA.
  * Keywords: hero, banner, intro
@@ -10,7 +10,7 @@
  * TODO(content): replace CTA URL (currently href="#") before launch.
  * TODO(copy): replace starter CTA copy ("Get started") with project copy.
  *
- * @package wp-starter
+ * @package futurebase
  *
  * Cover-block a11y note: `backgroundColor` is set in addition to `overlayColor`
  * so the preset class lands on the wrapper itself, not just the positioned
@@ -25,17 +25,17 @@
 	<span aria-hidden="true" class="wp-block-cover__background has-background-dim-100 has-contrast-background-color has-background-dim"></span>
 	<div class="wp-block-cover__inner-container">
 		<!-- wp:heading {"textAlign":"center","level":1,"textColor":"base"} -->
-		<h1 class="wp-block-heading has-text-align-center has-base-color has-text-color"><?php echo esc_html__( 'A headline that sets the tone', 'wp-starter' ); ?></h1>
+		<h1 class="wp-block-heading has-text-align-center has-base-color has-text-color"><?php echo esc_html__( 'A headline that sets the tone', 'futurebase' ); ?></h1>
 		<!-- /wp:heading -->
 
 		<!-- wp:paragraph {"align":"center","textColor":"base","fontSize":"medium"} -->
-		<p class="has-text-align-center has-base-color has-text-color has-medium-font-size"><?php echo esc_html__( 'One supporting sentence that earns the click.', 'wp-starter' ); ?></p>
+		<p class="has-text-align-center has-base-color has-text-color has-medium-font-size"><?php echo esc_html__( 'One supporting sentence that earns the click.', 'futurebase' ); ?></p>
 		<!-- /wp:paragraph -->
 
 		<!-- wp:buttons {"layout":{"type":"flex","justifyContent":"center"}} -->
 		<div class="wp-block-buttons">
 			<!-- wp:button -->
-			<div class="wp-block-button"><a class="wp-block-button__link wp-element-button" href="#"><?php echo esc_html__( 'Get started', 'wp-starter' ); ?></a></div>
+			<div class="wp-block-button"><a class="wp-block-button__link wp-element-button" href="#"><?php echo esc_html__( 'Get started', 'futurebase' ); ?></a></div>
 			<!-- /wp:button -->
 		</div>
 		<!-- /wp:buttons -->

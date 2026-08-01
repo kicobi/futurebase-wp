@@ -51,7 +51,7 @@ done
 # outside this file defines or reads it. bin/rename-theme.sh therefore rewrites
 # its prefix along with the theme's other uppercase global names, rather than
 # allowlisting it the way the project-system CLI command name is allowlisted.
-dist_dir="${WP_STARTER_DIST_DIR:-.dist}"
+dist_dir="${FUTUREBASE_DIST_DIR:-.dist}"
 case "$dist_dir" in
 	/*) dist_abs="$dist_dir" ;;
 	*) dist_abs="$ROOT/$dist_dir" ;;

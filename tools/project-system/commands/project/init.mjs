@@ -1,6 +1,6 @@
 // commands/project/init.mjs — scaffold a .project/ record into an existing project.
 //
-// wp-starter project init [--project-root <p>] [--name <n>] [--slug <s>]
+// futurebase project init [--project-root <p>] [--name <n>] [--slug <s>]
 //     [--type new|redesign] [--force] [--json]
 //
 // For retrofitting the project record onto a repo that wasn't created via
@@ -102,6 +102,6 @@ export function projectInit(_positional, flags) {
 	if (json) emitJson({ status: 'created', slug, name, type, path: paths.projectDir });
 	ok(`project record created: ${paths.projectDir}`);
 	info(`${name} (${slug}) · ${type}`);
-	info('next:  wp-starter baseline init   ·   wp-starter metrics suggest');
+	info('next:  futurebase baseline init   ·   futurebase metrics suggest');
 	process.exit(EXIT.OK);
 }

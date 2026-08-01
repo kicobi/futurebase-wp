@@ -46,9 +46,9 @@ metrics. See `docs/project-lifecycle.md` and `docs/baseline-system.md`.
 
 - Prospective client work does **not** happen in this repo. New client planning
   lives in a local, isolated lead workspace under `~/Sites/leads/<slug>/`
-  (`wp-starter lead init`). Keep client-specific analysis there.
+  (`futurebase lead init`). Keep client-specific analysis there.
 - `/planning/` (gitignored) is for starter-development scratch only.
-- An awarded lead is **promoted** (`wp-starter lead promote <slug>`), which wraps
+- An awarded lead is **promoted** (`futurebase lead promote <slug>`), which wraps
   the existing template + `npm run rename` flow and copies the dossier into
   `.project/`. Do not convert a lead by hand.
 - `bin/rename-theme.sh` does not scan `tools/` — templates there carry literal
@@ -65,6 +65,26 @@ metrics. See `docs/project-lifecycle.md` and `docs/baseline-system.md`.
 - For interactive frontend block behavior, prefer the Interactivity API and `viewScriptModule`.
 - Use namespaces, autoloading, and clear separation of PHP / JS / CSS / render logic in larger plugins.
 - Sanitize input, escape output, verify capabilities, and use permission callbacks / nonces where relevant.
+
+## Frontend house style: Every Layout & Inclusive Components
+
+Two skills cover how we build UI here:
+
+- **`every-layout`** — intrinsic, media-query-free CSS layout primitives: Stack, Box, Center, Cluster, Sidebar, Switcher, Cover, Grid, Frame, plus the underlying rudiments (units, modular scale, axioms, global vs. local styling).
+- **`inclusive-components`** — accessible component patterns: linked cards, toggle buttons, menus & menu buttons, tooltips & toggletips, theme switchers, tabbed interfaces, collapsible sections, content sliders, notifications & live regions, data tables, add/remove lists, and modal dialogs.
+
+Both are distilled from the Heydon Pickering books of the same names. Each reference file carries the recommended pattern *and* the approaches the books reject, with the reasoning — which is the part that matters, because the rejected version is usually the one you'd write by default.
+
+**Use them.** When a task involves arranging anything on a page, or building/modifying any interactive component, consult the relevant skill and read the specific reference file before writing code. Prefer these patterns over ad-hoc flexbox/grid one-offs, breakpoint-driven layout CSS, and hand-rolled ARIA. If you deviate, say why.
+
+A couple of standing preferences that follow from them:
+
+- Clickable cards use a heading-wrapped anchor as the only link, with the whole card made clickable via the pseudo-content trick or a redundant click handler — never an `<a>` wrapping the entire card.
+- Layout adapts to its container, not the viewport. Reach for Sidebar, Switcher, or Grid before writing a `@media` breakpoint.
+
+**Precedence in block-theme markup.** In `templates/`, `parts/`, and `patterns/`, block supports and `theme.json` express spacing, alignment, and flex/grid behavior first — a layout primitive is not a licence to hand-write layout CSS into a pattern. Every Layout applies where custom CSS is already the right answer: `src/` block styles, site chrome, and anything outside the pattern-composition workflow. Its values still resolve to `theme.json` tokens.
+
+**Availability.** These two are installed at *user* level (`~/.codex/skills/`, symlinked from `~/Sites/inclusive-skill` — private, derived from purchased books, not for redistribution). Unlike the vendored WordPress skills in `.codex/skills/`, they do **not** travel with a clone of this repo, and must not be committed into one. If they aren't loadable in the current session, the rules stated above are still in force: follow them from this file, and say the expanded reference wasn't available.
 
 ## Tooling rules
 

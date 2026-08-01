@@ -1,6 +1,6 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
-	"$id": "https://wp-starter.local/schemas/project.schema.json",
+	"$id": "https://futurebase.local/schemas/project.schema.json",
 	"title": "Project config (project.yml)",
 	"description": "Machine-readable config for a lead workspace or an active project. The `stage` field discriminates the two. Credentials must never appear here — see docs/baseline-system.md (Privacy).",
 	"type": "object",
@@ -37,22 +37,22 @@
 			"type": "object",
 			"additionalProperties": false,
 			"properties": {
-				"source_path": { "type": "string", "description": "Human-facing path to the wp-starter checkout used. Not machine-authoritative." },
+				"source_path": { "type": "string", "description": "Human-facing path to the futurebase checkout used. Not machine-authoritative." },
 				"template_commit": {
 					"type": "string",
-					"description": "Commit the CREATED project repo was generated from (template provenance), not merely local wp-starter HEAD."
+					"description": "Commit the CREATED project repo was generated from (template provenance), not merely local futurebase HEAD."
 				},
 				"promoted_at": { "type": "string", "format": "date-time" },
 				"synced_commit": {
 					"type": "string",
-					"description": "Starter commit this project was last reconciled with by `wp-starter sync`. Unlike template_commit this is always accurate, being stamped by the command that did the work."
+					"description": "Starter commit this project was last reconciled with by `futurebase sync`. Unlike template_commit this is always accurate, being stamped by the command that did the work."
 				},
 				"synced_at": { "type": "string", "format": "date-time" }
 			}
 		},
 		"promoted_to": {
 			"type": "string",
-			"description": "For a promoted lead: the remote repo the lead became (e.g. studiokicobi/acme-client)."
+			"description": "For a promoted lead: the remote repo the lead became (e.g. kicobi/acme-client)."
 		},
 		"urls": {
 			"type": "object",

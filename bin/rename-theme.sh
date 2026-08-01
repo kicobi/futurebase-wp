@@ -1,79 +1,81 @@
 #!/usr/bin/env bash
+# Rename the Futurebase WP theme layer for a client project.
 #
-# bin/rename-theme.sh — single-pass theme slug rename.
-#
-# Renames every reference to `wp-starter` (and its snake_case sibling
-# `wp_starter_`) to a project-specific slug, across:
-#
-#   - PHP text domains:                     'wp-starter' → '<slug>'
-#   - PHP function prefixes:                 wp_starter_ → <slug_snake>_
-#   - Constants and env vars:                WP_STARTER_ → <SLUG_SNAKE>_
-#   - @package docblock tags:               @package wp-starter → @package <slug>
-#   - Pattern slugs in PHP headers:         Slug: wp-starter/... → Slug: <slug>/...
-#   - Pattern slugs in template markup:     wp:pattern {"slug":"wp-starter/..."} → <slug>
-#   - Enqueue handles in functions.php:     'wp-starter-style' etc. → '<slug>-…'
-#   - style.css header:                     Text Domain, Theme URI
-#   - composer.json:                        "name": "vendor/wp-starter" → "vendor/<slug>"
-#   - package.json:                         "name": "wp-starter" → "<slug>"
-#   - phpcs.xml.dist:                       text_domain + prefixes elements
-#   - README.md, CLAUDE.md, docs/*.md, src/**, inc/**:
-#                                           PHP snippets, pattern refs, slugs in prose
-#   - bin/*.sh (except this script):        scaffolding-script prefix + tempfile refs
-#
-# Optional flags also set values that vary per project:
-#   --contributors "foo, bar"  writes/updates style.css Contributors header
-#   --theme-uri    <url>       writes/updates style.css Theme URI header
-#
-# Project-specific fields that still need a manual pass: Theme Name,
-# Description, Author, Tags, composer vendor, package.json repository /
-# homepage / bugs URLs. See the manual-steps output at the end.
-#
-# Usage: npm run rename -- <new-slug> [--contributors "foo, bar"] [--theme-uri <url>]
-#        bin/rename-theme.sh <new-slug> [--contributors "foo, bar"] [--theme-uri <url>]
+# Futurebase intentionally uses the same lowercase token for its dashed slug
+# and PHP prefix. That means this script must rename by syntax/context; a broad
+# lowercase pass would turn text domains into snake_case client prefixes.
 
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+CONTRACT="$ROOT/tools/project-system/config/rename-contract.sh"
+if [ ! -f "$CONTRACT" ]; then
+	echo "error: missing shared rename contract: $CONTRACT" >&2
+	exit 1
+fi
+# shellcheck source=../tools/project-system/config/rename-contract.sh
+source "$CONTRACT"
+
 usage() {
 	cat <<EOF
-Usage: $0 <new-slug> [--contributors "foo, bar"] [--theme-uri <url>]
+Usage: $0 <new-slug> [options]
 
-<new-slug> must be lowercase, dashes-only (no underscores, no spaces).
-Example: $0 acme-client --contributors "acme, jsmith" --theme-uri https://github.com/acme/acme-client
+Options:
+  --theme-name <name>       Client-facing theme name (default: title-cased slug)
+  --theme-version <semver>  Client theme/package version (default: 1.0.0)
+  --theme-uri <url>         Theme URI header
+  --repository <owner/repo> GitHub repository identity
+  --contributors <names>   WordPress.org Contributors header
+
+Example:
+  $0 acme-client --theme-name "Acme Client" --theme-version 1.0.0 \
+    --theme-uri https://github.com/acme/acme-client \
+    --repository acme/acme-client
 EOF
 }
 
 NEW_SLUG=""
-CONTRIBUTORS=""
+THEME_NAME=""
+THEME_VERSION="1.0.0"
 THEME_URI=""
+REPOSITORY=""
+CONTRIBUTORS=""
+
+require_value() {
+	if [ -z "${2:-}" ]; then
+		echo "error: $1 requires a value" >&2
+		exit 1
+	fi
+}
 
 while [ "$#" -gt 0 ]; do
 	case "$1" in
 		-h|--help)
 			usage
-			exit 1
+			exit 0
 			;;
-		--contributors)
-			CONTRIBUTORS="${2:-}"
-			if [ -z "$CONTRIBUTORS" ]; then
-				echo "error: --contributors requires a value" >&2
-				exit 1
-			fi
+		--theme-name|--theme-version|--theme-uri|--repository|--contributors)
+			require_value "$1" "${2:-}"
+			case "$1" in
+				--theme-name) THEME_NAME="$2" ;;
+				--theme-version) THEME_VERSION="$2" ;;
+				--theme-uri) THEME_URI="$2" ;;
+				--repository) REPOSITORY="$2" ;;
+				--contributors) CONTRIBUTORS="$2" ;;
+			esac
 			shift 2
 			;;
-		--contributors=*)
-			CONTRIBUTORS="${1#--contributors=}"
-			shift
-			;;
-		--theme-uri)
-			THEME_URI="${2:-}"
-			if [ -z "$THEME_URI" ]; then
-				echo "error: --theme-uri requires a value" >&2
-				exit 1
-			fi
-			shift 2
-			;;
-		--theme-uri=*)
-			THEME_URI="${1#--theme-uri=}"
+		--theme-name=*|--theme-version=*|--theme-uri=*|--repository=*|--contributors=*)
+			key="${1%%=*}"
+			value="${1#*=}"
+			require_value "$key" "$value"
+			case "$key" in
+				--theme-name) THEME_NAME="$value" ;;
+				--theme-version) THEME_VERSION="$value" ;;
+				--theme-uri) THEME_URI="$value" ;;
+				--repository) REPOSITORY="$value" ;;
+				--contributors) CONTRIBUTORS="$value" ;;
+			esac
 			shift
 			;;
 		--*|-*)
@@ -82,13 +84,11 @@ while [ "$#" -gt 0 ]; do
 			exit 1
 			;;
 		*)
-			if [ -z "$NEW_SLUG" ]; then
-				NEW_SLUG="$1"
-			else
+			if [ -n "$NEW_SLUG" ]; then
 				echo "error: unexpected extra positional argument: $1" >&2
-				usage >&2
 				exit 1
 			fi
+			NEW_SLUG="$1"
 			shift
 			;;
 	esac
@@ -98,341 +98,217 @@ if [ -z "$NEW_SLUG" ]; then
 	usage
 	exit 1
 fi
-
-OLD_SLUG="wp-starter"
-
-# Validate: lowercase letters, digits, single dashes.
-if ! echo "$NEW_SLUG" | grep -qE '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'; then
+if ! printf '%s\n' "$NEW_SLUG" | grep -qE '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'; then
 	echo "error: slug must be lowercase, start with a letter, and use dashes only" >&2
-	echo "       got: $NEW_SLUG" >&2
 	exit 1
 fi
-
-if [ "$NEW_SLUG" = "$OLD_SLUG" ]; then
-	echo "error: new slug is identical to the current slug ($OLD_SLUG)" >&2
+if [ "$NEW_SLUG" = "$FUTUREBASE_BASE_SLUG" ]; then
+	echo "error: new slug is identical to the Futurebase template slug" >&2
 	exit 1
 fi
-
-NEW_SNAKE="$(echo "$NEW_SLUG" | tr '-' '_')"
-OLD_SNAKE="wp_starter"
-
-# Uppercase siblings of the snake prefix. PHP spells global constants in caps
-# (WP_STARTER_NAVIGATION_MIGRATION_VERSION in inc/navigation-migration.php),
-# and those constants are part of the same global namespace phpcs checks
-# against the `prefixes` element in phpcs.xml.dist — which this script does
-# rewrite. Leaving the constants behind therefore fails
-# WordPress.NamingConventions.PrefixAllGlobals in every renamed project.
-#
-# The one env var in the same shape, WP_STARTER_DIST_DIR in
-# bin/package-theme.sh, is renamed too, deliberately. It is a knob on a
-# project-owned script — nothing outside the renamed file set defines or reads
-# it — so unlike the project-system CLI command name, whose file under tools/
-# is never renamed, there is nothing for it to stay in step with.
-OLD_UPPER="$(echo "$OLD_SNAKE" | tr '[:lower:]' '[:upper:]')"
-NEW_UPPER="$(echo "$NEW_SNAKE" | tr '[:lower:]' '[:upper:]')"
-
-# --- Substring-collision safety check ---------------------------------------
-# If the new slug embeds the current slug (e.g. old `wp-starter`, new
-# `wp-starter-test-5`), the substitution patterns below would re-match
-# inside an already-rewritten slug on a second pass and produce double-suffix
-# output like `wp-starter-test-5-test-5`. Reject the input up front with a
-# clear message. The substitution regex below also carries a negative-
-# lookahead guard as defence-in-depth. See Issue #4.
 case "$NEW_SLUG" in
-	*"$OLD_SLUG"*)
-		cat >&2 <<ERR
-error: new slug '$NEW_SLUG' embeds the current slug '$OLD_SLUG' as a substring.
-
-       Running this rename would cause substring collisions — the substitution
-       patterns would match inside the already-rewritten new slug on a second
-       pass and produce double-suffix output (e.g. 'wp-starter-test-test').
-
-       Choose a slug that does not contain '$OLD_SLUG'.
-ERR
+	*"$FUTUREBASE_BASE_SLUG"*)
+		echo "error: new slug must not contain '$FUTUREBASE_BASE_SLUG' (substring collision)" >&2
 		exit 1
 		;;
 esac
+if ! printf '%s\n' "$THEME_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$'; then
+	echo "error: --theme-version must be a semantic version" >&2
+	exit 1
+fi
+if [ -n "$REPOSITORY" ] && ! printf '%s\n' "$REPOSITORY" | grep -qE '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'; then
+	echo "error: --repository must be owner/repository" >&2
+	exit 1
+fi
 
-# --- Defensive substitution guards -------------------------------------------
-# Negative lookaheads that stop `\b${OLD_SLUG}-` and `\b${OLD_SNAKE}_` from
-# re-matching inside a new-slug token that shares the old slug's prefix. The
-# safety check above rejects this input entirely, so these guards are always
-# empty at runtime — but they remain wired into the regex as a second line
-# of defence against regression of the safety check.
-SLUG_GUARD=""
-case "$NEW_SLUG" in
-	"${OLD_SLUG}-"*)
-		SLUG_GUARD="(?!\\Q${NEW_SLUG#${OLD_SLUG}-}\\E)"
-		;;
-esac
-SNAKE_GUARD=""
-case "$NEW_SNAKE" in
-	"${OLD_SNAKE}_"*)
-		SNAKE_GUARD="(?!\\Q${NEW_SNAKE#${OLD_SNAKE}_}\\E)"
-		;;
-esac
-UPPER_GUARD=""
-case "$NEW_UPPER" in
-	"${OLD_UPPER}_"*)
-		UPPER_GUARD="(?!\\Q${NEW_UPPER#${OLD_UPPER}_}\\E)"
-		;;
-esac
+if [ -z "$THEME_NAME" ]; then
+	THEME_NAME="$(printf '%s\n' "$NEW_SLUG" | awk -F- '{ for (i = 1; i <= NF; i++) { printf "%s%s", (i > 1 ? " " : ""), toupper(substr($i, 1, 1)) substr($i, 2) } }')"
+fi
+if [ -z "$THEME_URI" ] && [ -n "$REPOSITORY" ]; then
+	THEME_URI="https://kicobi.com"
+fi
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+NEW_SNAKE="$(printf '%s' "$NEW_SLUG" | tr '-' '_')"
+NEW_UPPER="$(printf '%s' "$NEW_SNAKE" | tr '[:lower:]' '[:upper:]')"
+
 cd "$ROOT"
 
-echo "Renaming theme:"
-echo "  slug:    $OLD_SLUG  →  $NEW_SLUG"
-echo "  prefix:  ${OLD_SNAKE}_  →  ${NEW_SNAKE}_"
-echo "  consts:  ${OLD_UPPER}_  →  ${NEW_UPPER}_"
+# A repository name may begin with the technical slug (futurebase-wp). Keep
+# the existing Theme URI out of generic slug/handle rewriting unless the caller
+# explicitly supplies its replacement.
+ORIGINAL_THEME_URI="$(sed -n 's/^Theme URI:[[:space:]]*//p' style.css | head -1)"
+
+echo "Renaming $FUTUREBASE_BASE_DISPLAY theme:"
+echo "  slug:     $FUTUREBASE_BASE_SLUG → $NEW_SLUG"
+echo "  prefix:   ${FUTUREBASE_BASE_SNAKE}_ → ${NEW_SNAKE}_"
+echo "  constants:${FUTUREBASE_BASE_UPPER}_ → ${NEW_UPPER}_"
+echo "  name:     $FUTUREBASE_BASE_DISPLAY → $THEME_NAME"
+echo "  version:  $THEME_VERSION"
 echo
 
-# -------------------------------------------------------------------------
-# Replacement helpers. perl -i is consistent across macOS/Linux.
-# -------------------------------------------------------------------------
-replace_in() {
-	local from="$1"
-	local to="$2"
-	shift 2
-	for f in "$@"; do
-		[ -f "$f" ] || continue
-		perl -pi -e "s/\Q${from}\E/${to}/g" "$f"
-	done
-}
-
-# List of files to touch. Keep this narrow — the package manager lockfiles,
-# node_modules, vendor, and build outputs must not be rewritten.
-#
-# docs/, src/, inc/ are scanned so that PHP snippets, text domains, and
-# pattern slugs inside docs and scaffolded source directories rename with
-# the rest of the project. Prose sentences that discuss "the starter" by
-# name will also get rewritten — that is a known trade-off; review
-# docs/conventions.md by hand after rename if the starter-history text
-# matters to you.
-# bin/*.sh is scanned so scaffolding scripts — new-block, new-cpt, verify-theme —
-# carry the project's prefix instead of the template's. rename-theme.sh itself
-# is excluded; its comments and OLD_SLUG/OLD_SNAKE variables are the template's
-# self-documentation, kept stable for future maintainers.
-#
-# test-rename.sh is excluded for the same reason: it asserts against this
-# script's OLD_SLUG, which is never rewritten. Renaming its sentinels in
-# lockstep with the theme left it comparing the project slug against itself,
-# so its "skip on a promoted project" guard never tripped and every promoted
-# project inherited a false-failing smoke test.
+# Keep the surface narrow. readme.txt is the only .txt file intentionally
+# included; package-manager locks, fixtures, tools, vendor, and build output are
+# never passed through text substitution.
 TARGETS=()
-while IFS= read -r f; do TARGETS+=("$f"); done < <(
-	# Only scan directories that actually exist at the repo root.
-	scan_roots=(functions.php style.css composer.json package.json phpcs.xml.dist)
+while IFS= read -r file; do TARGETS+=("$file"); done < <(
+	scan_roots=(functions.php style.css composer.json package.json phpcs.xml.dist readme.txt)
 	[ -f README.md ] && scan_roots+=(README.md)
 	[ -f CLAUDE.md ] && scan_roots+=(CLAUDE.md)
-	# This is an ALLOWLIST -- only these roots are scanned. tools/ is
-	# deliberately absent: the tools/project-system project lifecycle system
-	# ships templates carrying literal wp-starter and studiokicobi/wp-starter
-	# references that form the identity of the starter itself, not client
-	# slugs to rewrite. Do NOT add tools here. See docs/project-lifecycle.md.
-	# Keep this comment free of quotes, apostrophes, backticks, and parens:
-	# macOS bash 3.2 miscounts them inside a process substitution.
-	for d in patterns templates parts docs src inc bin; do
-		[ -d "$d" ] && scan_roots+=("$d")
+	for dir in patterns templates parts docs src inc bin; do
+		[ -d "$dir" ] && scan_roots+=("$dir")
 	done
-	find \
-		"${scan_roots[@]}" \
-		-type f \
-		\( -name '*.php' -o -name '*.html' -o -name '*.json' -o -name '*.css' -o -name '*.dist' -o -name '*.xml' -o -name '*.md' -o -name '*.sh' \) \
+	find "${scan_roots[@]}" -type f \
+		\( -name '*.php' -o -name '*.html' -o -name '*.json' -o -name '*.css' -o -name '*.dist' -o -name '*.xml' -o -name '*.md' -o -name '*.sh' -o -name 'readme.txt' \) \
 		-not -name 'rename-theme.sh' \
 		-not -name 'test-rename.sh' \
+		-not -name 'audit-identity.sh' \
+		-not -path 'docs/project-lifecycle.md' \
 		2>/dev/null
 )
 
-# 1. Snake-case function prefix. Must run before the dashed-slug pass, since
-#    some docblocks contain both (@package wp-starter above a wp_starter_ fn).
-#    The `_` form covers function prefixes; the bare form covers phpcs
-#    `<element value="wp_starter"/>` and similar whole-word references.
-#
-#    The lookbehind, not `\b`: underscore is a word character, so `\b` finds no
-#    boundary between `_` and `w` and skipped every `_wp_starter_*` identifier.
-#    WordPress spells protected post meta with a leading underscore
-#    (`_wp_starter_navigation_migration`), which is exactly the form that
-#    escaped — a promoted project kept the starter's meta key. Excluding only
-#    alphanumerics keeps `mywp_starter_x` unmatched while letting the leading
-#    underscore through.
-#
-#    The uppercase rule is the same pattern in caps, and it is separate because
-#    perl's s/// is case-sensitive: the lowercase rule never saw a constant.
-#    Every renamed project inherited WP_STARTER_NAVIGATION_MIGRATION_VERSION
-#    and a phpcs PrefixAllGlobals failure with it, and the leftover check below
-#    was case-sensitive too, so the rename reported success while doing so.
-for f in "${TARGETS[@]}"; do
-	perl -pi -e "s/(?<![A-Za-z0-9])${OLD_SNAKE}_${SNAKE_GUARD}/${NEW_SNAKE}_/g" "$f"
-	perl -pi -e "s/\b${OLD_SNAKE}\b/${NEW_SNAKE}/g" "$f"
-	perl -pi -e "s/(?<![A-Za-z0-9])${OLD_UPPER}_${UPPER_GUARD}/${NEW_UPPER}_/g" "$f"
+# PHPCS stores the text domain and prefix in identically-shaped nested value
+# elements, so the owning property provides the context for each replacement.
+# Do this before the generic quoted-slug substitutions below.
+NEW_SNAKE="$NEW_SNAKE" NEW_SLUG="$NEW_SLUG" perl -0777 -i -pe '
+	s#(<property\s+name="prefixes".*?<element\s+value=")futurebase("\s*/>.*?</property>)#$1$ENV{NEW_SNAKE}$2#s;
+	s#(<property\s+name="text_domain".*?<element\s+value=")futurebase("\s*/>.*?</property>)#$1$ENV{NEW_SLUG}$2#s;
+' phpcs.xml.dist
+
+for file in "${TARGETS[@]}"; do
+	# PHP functions/options/meta and other underscore-prefixed identifiers.
+	perl -pi -e "s/(?<![A-Za-z0-9])${FUTUREBASE_BASE_SNAKE}_/${NEW_SNAKE}_/g" "$file"
+	# Constants and the client-owned distribution environment variable.
+	perl -pi -e "s/(?<![A-Za-z0-9])${FUTUREBASE_BASE_UPPER}_/${NEW_UPPER}_/g" "$file"
+	# Slug contexts: exact strings, pattern namespaces, handles, package names,
+	# docblocks, and the style.css text-domain header.
+	perl -pi -e "s/'${FUTUREBASE_BASE_SLUG}'/'${NEW_SLUG}'/g" "$file"
+	perl -pi -e "s/\"${FUTUREBASE_BASE_SLUG}\"/\"${NEW_SLUG}\"/g" "$file"
+	perl -pi -e "s/\`${FUTUREBASE_BASE_SLUG}\`/\`${NEW_SLUG}\`/g" "$file"
+	perl -pi -e "s#(?<!/)${FUTUREBASE_BASE_SLUG}/#${NEW_SLUG}/#g" "$file"
+	perl -pi -e "s#/${FUTUREBASE_BASE_SLUG}\"#/${NEW_SLUG}\"#g" "$file"
+	# Only these dashed identifiers belong to the theme. Family-level lifecycle
+	# names such as futurebase-context and --futurebase-path remain canonical.
+	perl -pi -e "s/\b${FUTUREBASE_BASE_SLUG}-(style|main|script)\b/${NEW_SLUG}-\$1/g" "$file"
+	perl -pi -e "s/(\@package\s+)${FUTUREBASE_BASE_SLUG}\b/\$1${NEW_SLUG}/g" "$file"
+	perl -pi -e "s/(Text Domain:\s*)${FUTUREBASE_BASE_SLUG}\b/\$1${NEW_SLUG}/g" "$file"
+	# Consume the full two-token product display name. Bare family references are
+	# provenance or base-only prose and must never be globally rewritten.
+	BASE_DISPLAY="$FUTUREBASE_BASE_DISPLAY" DISPLAY="$THEME_NAME" perl -i -pe '
+		s/\Q$ENV{BASE_DISPLAY}\E/$ENV{DISPLAY}/g;
+	' "$file"
 done
 
-# 2. Text-domain and pattern-slug references — `wp-starter` as a word boundary
-#    (single quotes, double quotes, slashes, spaces).
-for f in "${TARGETS[@]}"; do
-	# 'wp-starter'      (PHP i18n)
-	perl -pi -e "s/'${OLD_SLUG}'/'${NEW_SLUG}'/g" "$f"
-	# "wp-starter"      (JSON package names, JSON block attrs)
-	perl -pi -e "s/\"${OLD_SLUG}\"/\"${NEW_SLUG}\"/g" "$f"
-	# `wp-starter`      (markdown prose in docs/)
-	perl -pi -e "s/\`${OLD_SLUG}\`/\`${NEW_SLUG}\`/g" "$f"
-	# wp-starter/       (pattern slugs in several contexts:
-	#   - PHP header:          Slug: wp-starter/foo
-	#   - block attribute:     {"slug":"wp-starter/foo"}
-	#   - doc comment:         `wp-starter/foo`
-	# A negative lookbehind on `/` blocks URL path segments like
-	# https://github.com/owner/wp-starter/issues — the template's origin
-	# repo URLs must survive rename.)
-	perl -pi -e "s#(?<!/)${OLD_SLUG}/#${NEW_SLUG}/#g" "$f"
-	# /wp-starter"      (composer vendor/package: "vendor/wp-starter")
-	perl -pi -e "s#/${OLD_SLUG}\"#/${NEW_SLUG}\"#g" "$f"
-	# wp-starter-       (enqueue handles: 'wp-starter-style' → quoted form handled above, but handle the tail)
-	#                   ${SLUG_GUARD} is a negative lookahead that prevents this
-	#                   pattern from re-matching inside a new-slug token when
-	#                   NEW_SLUG starts with `${OLD_SLUG}-` (Issue #4 defence).
-	perl -pi -e "s/\b${OLD_SLUG}-${SLUG_GUARD}/${NEW_SLUG}-/g" "$f"
-	# @package wp-starter
-	perl -pi -e "s/(\@package\s+)${OLD_SLUG}\b/\$1${NEW_SLUG}/g" "$f"
-	# Text Domain: wp-starter   (style.css)
-	perl -pi -e "s/(Text Domain:\s*)${OLD_SLUG}\b/\$1${NEW_SLUG}/g" "$f"
-	# "the wp-starter theme"    (phpcs.xml.dist description)
-	perl -pi -e "s/\bthe ${OLD_SLUG} theme\b/the ${NEW_SLUG} theme/g" "$f"
-	# Theme Name: WP Starter    — NOT replaced; project sets this by hand.
-done
+# Explicit identity/version fields.
+DISPLAY="$THEME_NAME" VERSION="$THEME_VERSION" perl -i -pe '
+	s/^(Theme Name:\s*).*$/$1$ENV{DISPLAY}/;
+	s/^(Version:\s*).*$/$1$ENV{VERSION}/;
+' style.css
+DISPLAY="$THEME_NAME" VERSION="$THEME_VERSION" perl -i -pe '
+	s/^=== .* ===$/=== $ENV{DISPLAY} ===/ if $. == 1;
+	s/^(Stable tag:\s*).*$/$1$ENV{VERSION}/;
+' readme.txt
+VERSION="$THEME_VERSION" perl -0777 -i -pe 's/== Changelog ==\n.*\z/== Changelog ==\n\n= $ENV{VERSION} =\n* Initial client theme release.\n/s' readme.txt
 
-# 3. Optional header edits. Re-running with the same flag values must be a
-#    no-op — grep-first, then either update the existing line in place or
-#    insert a new one. The existing-line regex anchors on the field name so
-#    the replacement is safe even if the value contains forward slashes or
-#    colons.
+# Root package identity is client-owned. The lock helper then copies these
+# authoritative values to the four root lockfile fields without resolution.
+PKG_NAME="$NEW_SLUG" VERSION="$THEME_VERSION" perl -i -pe '
+	s/^(\s*"name":\s*)"[^"]+"/$1"$ENV{PKG_NAME}"/ if $. == 2;
+	s/^(\s*"version":\s*)"[^"]+"/$1"$ENV{VERSION}"/ if $. == 3;
+' package.json
+if [ -n "$REPOSITORY" ]; then
+	REPO="$REPOSITORY" perl -i -pe '
+		s#^(\s*"homepage":\s*)"[^"]+"#$1"https://github.com/$ENV{REPO}"#;
+		s#^(\s*"url":\s*)"git\+https://github\.com/[^"]+\.git"#$1"git+https://github.com/$ENV{REPO}.git"#;
+		s#^(\s*"url":\s*)"https://github\.com/[^"]+/issues"#$1"https://github.com/$ENV{REPO}/issues"#;
+	' package.json
+	OWNER="${REPOSITORY%%/*}"
+	OWNER="$OWNER" SLUG="$NEW_SLUG" perl -i -pe 's/^(\s*"name":\s*)"[^"]+"/$1"$ENV{OWNER}\/$ENV{SLUG}"/ if $. == 2' composer.json
+fi
+node bin/reconcile-package-lock.mjs --manifest package.json --lock package-lock.json
+
+if [ -n "$THEME_URI" ]; then
+	URI="$THEME_URI" perl -i -pe 's|^(Theme URI:\s*).*$|$1$ENV{URI}|' style.css
+elif [ -n "$ORIGINAL_THEME_URI" ]; then
+	URI="$ORIGINAL_THEME_URI" perl -i -pe 's|^(Theme URI:\s*).*$|$1$ENV{URI}|' style.css
+fi
 if [ -n "$CONTRIBUTORS" ]; then
-	if grep -q '^Contributors:' style.css; then
-		CONTRIB="$CONTRIBUTORS" perl -i -pe 's/^Contributors:.*$/"Contributors: $ENV{CONTRIB}"/e' style.css
+	if grep -q '^Contributors:' readme.txt; then
+		CONTRIB="$CONTRIBUTORS" perl -i -pe 's/^Contributors:.*$/"Contributors: $ENV{CONTRIB}"/e' readme.txt
 	else
-		# Insert right after the first Theme URI line (always present in
-		# this starter). $done guards against multiple matches.
-		CONTRIB="$CONTRIBUTORS" perl -i -pe '
-			if (/^Theme URI:/ && !$done) {
-				$_ .= "Contributors: $ENV{CONTRIB}\n";
-				$done = 1;
-			}
-		' style.css
+		CONTRIB="$CONTRIBUTORS" perl -i -pe 'if ($. == 1) { $_ .= "Contributors: $ENV{CONTRIB}\n" }' readme.txt
 	fi
 fi
 
-if [ -n "$THEME_URI" ]; then
-	URI="$THEME_URI" perl -i -pe 's|^(Theme URI:\s*).*$|"$1" . $ENV{URI}|e' style.css
+# Client README identity has a stable, bounded shape. Product positioning stays
+# in the Futurebase source document and is not copied into a promoted theme.
+if ! grep -q '<!-- project-intro:start -->' README.md || ! grep -q '<!-- project-intro:end -->' README.md; then
+	echo "error: README.md is missing the managed project-intro markers" >&2
+	exit 1
 fi
+DISPLAY="$THEME_NAME" perl -0777 -i -pe '
+	$replacement = "<!-- project-intro:start -->\n# $ENV{DISPLAY}\n\n**The WordPress theme for $ENV{DISPLAY}.**\n\nBuilt on Futurebase WP.\n<!-- project-intro:end -->";
+	s/<!-- project-intro:start -->.*?<!-- project-intro:end -->/$replacement/s;
+' README.md
 
-# 4. phpcs.xml.dist needs both slug (text_domain) and snake (prefix) elements.
-#    Those are handled above because both patterns are already applied to
-#    phpcs.xml.dist. Confirm by printing what we landed on.
-echo "Summary:"
-printf "  %-30s %s\n" "functions.php prefixes:" "$(grep -c "${NEW_SNAKE}_" functions.php || true)"
-printf "  %-30s %s\n" "pattern slugs on '${NEW_SLUG}':" "$(grep -rE "${NEW_SLUG}/" patterns templates parts 2>/dev/null | wc -l | tr -d ' ')"
-printf "  %-30s %s\n" "PHP text domains '${NEW_SLUG}':" "$(grep -rE "'${NEW_SLUG}'" patterns templates functions.php 2>/dev/null | wc -l | tr -d ' ')"
+# Template setup and rename instructions have served their purpose once a
+# client identity exists. Strip the bounded section on the first run and allow
+# it to remain absent on identical reruns; mismatched markers are corruption.
+setup_start_count="$(grep -cF '<!-- template-setup:start -->' README.md 2>/dev/null || true)"
+setup_end_count="$(grep -cF '<!-- template-setup:end -->' README.md 2>/dev/null || true)"
+if [ "$setup_start_count" = "1" ] && [ "$setup_end_count" = "1" ]; then
+	perl -0777 -i -pe 's/\n*<!-- template-setup:start -->.*?<!-- template-setup:end -->\n*/\n\n/s' README.md
+elif [ "$setup_start_count" != "0" ] || [ "$setup_end_count" != "0" ]; then
+	echo "error: README.md has invalid managed template-setup markers" >&2
+	exit 1
+fi
+rm -f "${FUTUREBASE_PRODUCT_EXCLUSIONS[@]}"
+
+# Structural assertions describe the required result; the runtime backstop
+# catches unanticipated Futurebase identity in files that ship as theme code.
+problems=()
+actual_theme_name="$(sed -n 's/^Theme Name:[[:space:]]*//p' style.css | head -1 | sed 's/[[:space:]]*$//')"
+[ "$actual_theme_name" = "$THEME_NAME" ] || problems+=("style.css Theme Name mismatch: expected '$THEME_NAME', found '$actual_theme_name'")
+grep -qE "^Text Domain:[[:space:]]*${NEW_SLUG}[[:space:]]*$" style.css || problems+=("style.css Text Domain mismatch")
+grep -qE "^Version:[[:space:]]*${THEME_VERSION}[[:space:]]*$" style.css || problems+=("style.css Version mismatch")
+[ "$(head -1 readme.txt)" = "=== $THEME_NAME ===" ] || problems+=("readme.txt title mismatch")
+grep -qE "^Stable tag:[[:space:]]*${THEME_VERSION}[[:space:]]*$" readme.txt || problems+=("readme.txt Stable tag mismatch")
+grep -q "${NEW_SNAKE}_" functions.php || problems+=("functions.php prefix missing")
+grep -q "${NEW_UPPER}_" inc/navigation-migration.php || problems+=("uppercase constant prefix missing")
+NEW_SNAKE="$NEW_SNAKE" perl -0777 -ne '
+	exit 1 unless /<property\s+name="prefixes".*?<element\s+value="\Q$ENV{NEW_SNAKE}\E"\s*\/>/s;
+' phpcs.xml.dist || problems+=("PHPCS prefix mismatch")
+grep -qF " * $THEME_NAME theme functions." functions.php || problems+=("functions.php display-name docblock mismatch")
 if [ -n "$CONTRIBUTORS" ]; then
-	printf "  %-30s %s\n" "Contributors header:" "$(grep '^Contributors:' style.css || echo '(missing)')"
+	grep -qF "Contributors: $CONTRIBUTORS" readme.txt || problems+=("readme.txt Contributors mismatch")
 fi
-if [ -n "$THEME_URI" ]; then
-	printf "  %-30s %s\n" "Theme URI header:" "$(grep '^Theme URI:' style.css || echo '(missing)')"
+if grep -q '^Contributors:' style.css; then
+	problems+=("style.css contains the non-standard Contributors header")
 fi
 
-# 5. Verify no stale references remain — but classify URL-style leftovers
-#    (template author's GitHub URLs) as expected, since the script cannot
-#    know the new project's repo URL unless --theme-uri was passed.
-echo
-leftover_roots=(functions.php style.css composer.json package.json phpcs.xml.dist)
-[ -f README.md ] && leftover_roots+=(README.md)
-[ -f CLAUDE.md ] && leftover_roots+=(CLAUDE.md)
-# Same allowlist as the scan above — tools/ is intentionally excluded so
-# tools/project-system/ template references are not flagged as leftovers.
-for d in patterns templates parts docs src inc bin; do
-	[ -d "$d" ] && leftover_roots+=("$d")
-done
-# test-rename.sh is excluded here for the same reason it is excluded from the
-# substitution pass: its OLD_SLUG sentinels are deliberately preserved, so
-# reporting them as leftovers would fail every rename with exit 2.
-#
-# ${OLD_UPPER}_ is a third alternative rather than a `grep -i` over the other
-# two: case-insensitivity would also start matching inside the origin-repo URLs
-# and the CLI-command references filtered below, which are spelled lowercase on
-# purpose. Without this alternative the check could not see the constants the
-# uppercase substitution rule now rewrites, so a gap there stayed silent.
-raw_leftover=$(grep -rn "${OLD_SLUG}\|${OLD_SNAKE}_\|${OLD_UPPER}_" \
-	--include='*.php' --include='*.html' --include='*.json' --include='*.css' --include='*.xml' --include='*.dist' --include='*.md' --include='*.sh' \
-	--exclude='rename-theme.sh' \
-	--exclude='test-rename.sh' \
-	"${leftover_roots[@]}" 2>/dev/null || true)
+readme_provenance_count="$(grep -o 'Futurebase' README.md 2>/dev/null | wc -l | tr -d ' ')"
+[ "$readme_provenance_count" = "1" ] || problems+=("README.md must contain exactly one Futurebase provenance occurrence; found $readme_provenance_count")
 
-# Documentation references to the template's origin (e.g. a README
-# `gh repo create ... --template <owner>/wp-starter` instruction) tell
-# future users how to fork a new project from this template. They must
-# survive rename — filter them out of the leftover check entirely so
-# they are not flagged as unexpected or listed as "update these by hand".
-raw_leftover=$(printf '%s\n' "$raw_leftover" \
-	| grep -vE -- "--template [^[:space:]]+/${OLD_SLUG}\b" \
-	|| true)
+runtime_leftovers="$(grep -rnE "${FUTUREBASE_BASE_SLUG}|${FUTUREBASE_DISPLAY_SENTINEL}|${FUTUREBASE_BASE_UPPER}" "${FUTUREBASE_RUNTIME_PATHS[@]}" 2>/dev/null \
+	| grep -vE '^style\.css:[0-9]+:Theme URI:[[:space:]]*https?://[^[:space:]]+/futurebase-wp([/.]|$)' || true)"
+if [ -n "$runtime_leftovers" ]; then
+	problems+=("Futurebase identity survived in client runtime paths:")
+	while IFS= read -r line; do [ -n "$line" ] && problems+=("    $line"); done <<< "$runtime_leftovers"
+fi
 
-# CLI-command references like `wp-starter lead init` name the project-system
-# CLI tool, whose command stays `wp-starter` in every project. They must
-# survive rename. Filter them out so docs and CLAUDE.md that document the
-# lifecycle commands are not flagged as gaps.
-#
-# The first group tracks the command groups in tools/project-system/cli/
-# dispatch.mjs; the rest are subcommands that appear bare in prose. A group
-# missing here is not a silent gap — the first doc to mention it fails the
-# rename smoke test, which is how `sync` was found.
-raw_leftover=$(printf '%s\n' "$raw_leftover" \
-	| grep -vE -- "${OLD_SLUG} (lead|project|baseline|metrics|final|compare|sync|init|inspect|promote|archive)" \
-	|| true)
-
-# The CLI entrypoint path (tools/project-system/bin/wp-starter.mjs) keeps its
-# filename in every project — tools/ is never renamed — so doc references to
-# the path must survive rename too.
-raw_leftover=$(printf '%s\n' "$raw_leftover" \
-	| grep -vF -- "${OLD_SLUG}.mjs" \
-	|| true)
-
-# Expected leftovers: URLs pointing at the template's origin repo.
-expected=$(printf '%s\n' "$raw_leftover" | grep -E 'https?://|Theme URI|git\+https' || true)
-unexpected=$(printf '%s\n' "$raw_leftover" | grep -vE 'https?://|Theme URI|git\+https' | grep -v '^$' || true)
-
-if [ -n "$unexpected" ]; then
-	echo "WARNING — unexpected leftovers (these should be zero):"
-	printf '%s\n' "$unexpected" | sed 's/^/    /'
-	echo
-	echo "Please open an issue — the rename script has a gap."
+if [ "${#problems[@]}" -gt 0 ]; then
+	echo "error: rename contract failed:" >&2
+	for problem in "${problems[@]}"; do echo "  - $problem" >&2; done
 	exit 2
 fi
 
-if [ -n "$expected" ]; then
-	echo "Expected leftovers (URLs — update these by hand for your project):"
-	printf '%s\n' "$expected" | sed 's/^/    /'
-	echo
-fi
-
+echo "Rename complete."
 echo "Next manual steps:"
-step=1
-echo "  ${step}. Edit style.css: update Theme Name, Description, Author, Author URI, Tags."
-step=$((step + 1))
-if [ -z "$CONTRIBUTORS" ]; then
-	echo "  ${step}. Edit style.css: add a Contributors: line (or re-run with --contributors \"name1, name2\")."
-	step=$((step + 1))
-fi
+echo "  1. Review Description, Tags, client README wording, and add a client screenshot."
+next_step=2
 if [ -z "$THEME_URI" ]; then
-	echo "  ${step}. Edit style.css: update Theme URI (or re-run with --theme-uri <url>)."
-	step=$((step + 1))
+	echo "  $next_step. Set Theme URI with --theme-uri or --repository."
+	next_step=$((next_step + 1))
 fi
-echo "  ${step}. Edit composer.json: update the vendor prefix of the 'name' field if needed."
-step=$((step + 1))
-echo "  ${step}. Edit package.json: update 'author', 'homepage', 'repository.url', and 'bugs.url'."
-step=$((step + 1))
-echo "  ${step}. Review docs/conventions.md — starter-history prose was rewritten by the rename; adjust or delete as you like."
-step=$((step + 1))
-echo "  ${step}. Rename the theme directory on disk to '${NEW_SLUG}'."
-step=$((step + 1))
-echo "  ${step}. Regenerate .pot/.mo files in languages/ if carried over."
-step=$((step + 1))
-echo "  ${step}. Run 'npm run verify' to confirm nothing drifted."
+echo "  $next_step. Run: composer update --lock --no-install --no-interaction"
+next_step=$((next_step + 1))
+echo "  $next_step. Run the full project verification suite."

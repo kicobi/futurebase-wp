@@ -6,7 +6,7 @@ What's different about deploying a site built from this template vs. any other W
 
 Checklist — all must be true before pushing to a production host:
 
-- [ ] `npm run rename -- <slug>` ran; theme slug is the project's, not `wp-starter`. Verify by grep: `grep -rn "wp-starter" --include="*.php" --include="*.json"` returns nothing unexpected.
+- [ ] `npm run rename -- <slug>` ran; theme slug is the project's, not `futurebase`. Verify by grep: `grep -rn "futurebase" --include="*.php" --include="*.json"` returns nothing unexpected.
 - [ ] `style.css` header is project-specific: `Theme Name`, `Description`, `Author`, `Author URI`, `Tags`. The rename script does *not* touch these.
 - [ ] `npm run verify` passes locally. CI should run the same script.
 - [ ] ACF Pro license is wired — either `ACF_PRO_LICENSE` env var on the host, or a `composer.json` with `auth.json` / `COMPOSER_AUTH`. See [acf-pro-setup.md](acf-pro-setup.md).
@@ -107,7 +107,7 @@ automated.
 5. **Activate the theme.** `wp theme activate <slug>` or via wp-admin.
 6. **Install and activate ACF Pro** (only if the project uses ACF). `ACF_PRO_LICENSE` handles activation. Verify with `wp plugin list --status=active`.
 7. **Flush rewrites.** `wp rewrite flush` — cheap insurance against 404s on custom post types / pattern-driven routes.
-8. **Smoke test.** Homepage renders, logged-in admin can edit a pattern, theme's scripts/styles load (`wp-starter-main` in the footer).
+8. **Smoke test.** Homepage renders, logged-in admin can edit a pattern, theme's scripts/styles load (`futurebase-main` in the footer).
 
 ## Post-deploy verification
 

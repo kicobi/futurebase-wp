@@ -1,6 +1,6 @@
 // commands/project/validate.mjs — validate the whole .project/ record.
 //
-// wp-starter project validate [--project-root <p>] [--json]
+// futurebase project validate [--project-root <p>] [--json]
 //
 // Schema-validates every structured doc, checks structural rules, and secret-
 // scans the committed record. Exit 6 on a secret hit, 2 on any other issue.

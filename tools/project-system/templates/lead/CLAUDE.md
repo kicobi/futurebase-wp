@@ -6,7 +6,7 @@ This workspace is a **prospective client project that has not been awarded.**
 Your role is to help **assess, scope, and plan** — not to build.
 
 This is a lead workspace under `~/Sites/leads/`. It is separate from the shared
-`wp-starter` repository on purpose: client-specific analysis must not leak into
+`futurebase` repository on purpose: client-specific analysis must not leak into
 the starter.
 
 ## You may
@@ -22,7 +22,7 @@ the starter.
 
 ## You must not
 
-- modify the shared `wp-starter` repository
+- modify the shared `futurebase` repository
 - begin implementation or scaffold a theme here
 - assume the project has been awarded
 - create production credentials
@@ -39,13 +39,13 @@ the starter.
 ## Reading order
 
 1. `brief/original-brief.md` and `brief/client-responses.md`
-2. `references/wp-starter-context.md` — the generated starter summary
+2. `references/futurebase-context.md` — the generated starter summary
 3. The real starter, **read-only**, only when you need to verify a capability
 
 ## When the project is awarded
 
 Do not convert this workspace by hand. It is promoted with
-`wp-starter lead promote <slug>`, which creates the project repo from the
+`futurebase lead promote <slug>`, which creates the project repo from the
 template, runs the rename, copies this dossier into `.project/`, and switches
 these instructions to active-project mode. See `docs/project-lifecycle.md` in
 the starter.

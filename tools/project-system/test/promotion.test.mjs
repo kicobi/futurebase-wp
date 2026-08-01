@@ -16,8 +16,12 @@ import {
 	CHECKPOINT_FILE,
 	recoveryReceiptMismatch,
 	recoveryReceiptPath,
+	templateNamesEquivalent,
 } from '../commands/lead/promote.mjs';
 
+// The default fixtures intentionally model checkpoints and receipts written
+// before the GitHub handle cutover. Current-name assertions override only the
+// comparison side that must resolve to kicobi/futurebase-wp.
 const target = { slug: 'acme', dest: '/Users/x/Sites/acme', remote: 'studiokicobi/acme' };
 
 const checkpointFor = (over = {}) => ({
@@ -27,7 +31,7 @@ const checkpointFor = (over = {}) => ({
 	lead_slug: 'acme',
 	dest: '/Users/x/Sites/acme',
 	remote: 'studiokicobi/acme',
-	template: 'studiokicobi/wp-starter',
+	template: 'studiokicobi/futurebase-wp',
 	template_commit: 'abc1234',
 	started_at: '2026-07-30T10:00:00.000Z',
 	...over,
@@ -71,14 +75,29 @@ test('a checkpoint from a different template is refused', () => {
 	// resume could switch templates and the stamped project.yml would claim a
 	// commit from a template the destination was never built from.
 	const why = checkpointMismatch(checkpointFor(), { ...target, template: 'someone-else/other-starter' });
-	assert.match(why, /records template studiokicobi\/wp-starter/);
+	assert.match(why, /records template studiokicobi\/futurebase/);
 });
 
 test('template is only compared when the caller supplies one', () => {
 	// Keeps the rule usable from tests and any caller that has no template in
 	// hand, without silently skipping the check for the real one.
 	assert.equal(checkpointMismatch(checkpointFor(), target), null);
-	assert.equal(checkpointMismatch(checkpointFor(), { ...target, template: 'studiokicobi/wp-starter' }), null);
+	assert.equal(checkpointMismatch(checkpointFor(), { ...target, template: 'studiokicobi/futurebase-wp' }), null);
+});
+
+test('a pre-cutover checkpoint accepts the renamed Futurebase WP template', () => {
+	assert.equal(
+		checkpointMismatch(checkpointFor({ template: 'studiokicobi/wp-starter' }), {
+			...target,
+			template: 'kicobi/futurebase-wp',
+		}),
+		null,
+	);
+});
+
+test('template compatibility remains a pair across the handle cutover', () => {
+	assert.equal(templateNamesEquivalent('studiokicobi/wp-starter', 'kicobi/futurebase-wp'), true);
+	assert.equal(templateNamesEquivalent('studiokicobi/futurebase-wp', 'kicobi/futurebase-wp'), false);
 });
 
 const liveIdentity = (over = {}) => ({
@@ -89,7 +108,7 @@ const liveIdentity = (over = {}) => ({
 	default_branch: 'main',
 	initial_commit_sha: 'def5678',
 	commit_count: 1,
-	template_repository: 'studiokicobi/wp-starter',
+	template_repository: 'studiokicobi/futurebase-wp',
 	...over,
 });
 
@@ -101,7 +120,7 @@ const receiptFor = (over = {}) => ({
 	lead_slug: 'acme',
 	dest: '/Users/x/Sites/acme',
 	remote: 'studiokicobi/acme',
-	template: 'studiokicobi/wp-starter',
+	template: 'studiokicobi/futurebase-wp',
 	template_commit: 'abc1234',
 	repository_id: 123456,
 	repository_node_id: 'R_kgDOExample',
@@ -110,14 +129,28 @@ const receiptFor = (over = {}) => ({
 	default_branch: 'main',
 	initial_commit_sha: 'def5678',
 	initial_commit_count: 1,
-	template_repository: 'studiokicobi/wp-starter',
+	template_repository: 'studiokicobi/futurebase-wp',
 	...over,
 });
 
-const recoveryTarget = { ...target, template: 'studiokicobi/wp-starter' };
+const recoveryTarget = { ...target, template: 'studiokicobi/futurebase-wp' };
 
 test('a complete receipt matching the untouched generated remote permits clone recovery', () => {
 	assert.equal(recoveryReceiptMismatch(receiptFor(), recoveryTarget, liveIdentity()), null);
+});
+
+test('pre-cutover receipt names accept the renamed live template only at compatibility comparisons', () => {
+	const legacy = receiptFor({
+		template: 'studiokicobi/wp-starter',
+		template_repository: 'studiokicobi/wp-starter',
+	});
+	const currentTarget = { ...recoveryTarget, template: 'kicobi/futurebase-wp' };
+	const currentLive = liveIdentity({ template_repository: 'kicobi/futurebase-wp' });
+	assert.equal(recoveryReceiptMismatch(legacy, currentTarget, currentLive), null);
+	assert.match(
+		recoveryReceiptMismatch(legacy, currentTarget, liveIdentity({ template_repository: 'studiokicobi/wp-starter' })),
+		/not generated from the requested template/,
+	);
 });
 
 test('clone recovery refuses an absent or incomplete receipt', () => {
@@ -153,5 +186,5 @@ test('recovery receipt filenames are stable and bind destination plus remote', (
 	assert.equal(a, recoveryReceiptPath('/Users/x/Sites/acme', 'studiokicobi/acme'));
 	assert.notEqual(a, recoveryReceiptPath('/Users/x/Sites/acme-2', 'studiokicobi/acme'));
 	assert.notEqual(a, recoveryReceiptPath('/Users/x/Sites/acme', 'studiokicobi/acme-2'));
-	assert.match(a, /\.wp-starter-promotion-[a-f0-9]{20}\.json$/);
+	assert.match(a, /\.futurebase-promotion-[a-f0-9]{20}\.json$/);
 });

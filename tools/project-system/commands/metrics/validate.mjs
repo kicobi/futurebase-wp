@@ -1,6 +1,6 @@
 // commands/metrics/validate.mjs — schema + semantic validation of the metrics doc.
 //
-// wp-starter metrics validate [--json] [--project-root <p>]
+// futurebase metrics validate [--json] [--project-root <p>]
 
 import { existsSync } from 'node:fs';
 import { EXIT, die, ok, info, emitJson } from '../../lib/output.mjs';
@@ -13,7 +13,7 @@ export function metricsValidate(_positional, flags) {
 	if (!root) die('not inside an active project (no .project/ found).', EXIT.ACCESS_FAILURE, { json });
 	const { projectDir } = projectPaths(root);
 
-	if (!existsSync(metricsPath(projectDir))) die('no metrics.yml — run: wp-starter metrics suggest', EXIT.INVALID_CONFIG, { json });
+	if (!existsSync(metricsPath(projectDir))) die('no metrics.yml — run: futurebase metrics suggest', EXIT.INVALID_CONFIG, { json });
 	const doc = loadMetrics(projectDir);
 	const { valid, errors } = checkMetrics(doc);
 

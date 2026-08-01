@@ -189,7 +189,7 @@ cat > "$TARGET" <<PHP
 /**
  * Register the "${SINGULAR_TITLE}" custom post type.
  *
- * Auto-loaded from functions.php (wp_starter_load_post_types). Edit the
+ * Auto-loaded from functions.php (futurebase_load_post_types). Edit the
  * \$args below to tune supports, capability_type, menu icon, and rewrite.
  *
  * TODO(copy): review labels — automated plural derivation is approximate.

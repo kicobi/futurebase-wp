@@ -1,11 +1,11 @@
 <?php
 /**
  * Title: Primary navigation
- * Slug: wp-starter/_nav-primary
+ * Slug: futurebase/_nav-primary
  * Inserter: no
  * Description: Header navigation. Resolves the region's own wp_navigation post when one exists, and seeds explicit links when it does not.
  *
- * @package wp-starter
+ * @package futurebase
  */
 
 /**
@@ -34,19 +34,19 @@
  * functions.php rather than labelled here.
  */
 
-$wp_starter_nav = get_page_by_path( 'primary-navigation', OBJECT, 'wp_navigation' );
+$futurebase_nav = get_page_by_path( 'primary-navigation', OBJECT, 'wp_navigation' );
 
-if ( $wp_starter_nav instanceof WP_Post ) :
+if ( $futurebase_nav instanceof WP_Post ) :
 	?>
-	<!-- wp:navigation {"ref":<?php echo (int) $wp_starter_nav->ID; ?>,"overlayMenu":"mobile","layout":{"type":"flex","justifyContent":"right","orientation":"horizontal","flexWrap":"wrap"}} /-->
+	<!-- wp:navigation {"ref":<?php echo (int) $futurebase_nav->ID; ?>,"overlayMenu":"mobile","layout":{"type":"flex","justifyContent":"right","orientation":"horizontal","flexWrap":"wrap"}} /-->
 	<?php
 else :
 	?>
 	<!-- wp:navigation {"overlayMenu":"mobile","layout":{"type":"flex","justifyContent":"right","orientation":"horizontal","flexWrap":"wrap"}} -->
 		<?php // home_url(), not a bare path: "/about/" is relative to the domain, so a subdirectory install linked outside itself. ?>
-		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'About', 'wp-starter' ); ?>","url":"<?php echo esc_url( home_url( '/about/' ) ); ?>"} /-->
-		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'Services', 'wp-starter' ); ?>","url":"<?php echo esc_url( home_url( '/services/' ) ); ?>"} /-->
-		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'Blog', 'wp-starter' ); ?>","url":"<?php echo esc_url( home_url( '/blog/' ) ); ?>"} /-->
+		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'About', 'futurebase' ); ?>","url":"<?php echo esc_url( home_url( '/about/' ) ); ?>"} /-->
+		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'Services', 'futurebase' ); ?>","url":"<?php echo esc_url( home_url( '/services/' ) ); ?>"} /-->
+		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'Blog', 'futurebase' ); ?>","url":"<?php echo esc_url( home_url( '/blog/' ) ); ?>"} /-->
 	<!-- /wp:navigation -->
 	<?php
 endif;

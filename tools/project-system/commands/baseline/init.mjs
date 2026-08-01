@@ -1,6 +1,6 @@
 // commands/baseline/init.mjs — write .project/baseline.config.yml.
 //
-// wp-starter baseline init [--type new|redesign] [--url <base>] [--page name=url]... [--force]
+// futurebase baseline init [--type new|redesign] [--url <base>] [--page name=url]... [--force]
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -70,6 +70,6 @@ export function baselineInit(_positional, flags) {
 	if (json) emitJson({ status: 'created', path: paths.configPath, mode: type, modules: config.modules });
 	ok(`baseline config written: ${paths.configPath}`);
 	info(`mode: ${type}  ·  modules: ${config.modules.join(', ')}`);
-	if (type !== 'new' && !flags.url) info('set base_url and pages in the config, then run: wp-starter baseline run');
+	if (type !== 'new' && !flags.url) info('set base_url and pages in the config, then run: futurebase baseline run');
 	process.exit(EXIT.OK);
 }

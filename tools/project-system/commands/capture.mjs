@@ -3,7 +3,7 @@
 // Both capture the same modules into a dated, immutable run; they differ only in
 // which directory they write to (baseline/ vs final/) and the run `kind`. Keeping
 // one engine guarantees baseline and final are captured identically, which is
-// what makes the comparison in `wp-starter compare` valid.
+// what makes the comparison in `futurebase compare` valid.
 
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -55,7 +55,7 @@ export async function runCapture(kind, flags) {
 	const paths = projectPaths(root);
 	const dir = kind === 'final' ? paths.finalDir : paths.baselineDir;
 
-	if (!existsSync(paths.configPath)) die(`no baseline config — run 'wp-starter baseline init' first (${paths.configPath})`, EXIT.INVALID_CONFIG, { json });
+	if (!existsSync(paths.configPath)) die(`no baseline config — run 'futurebase baseline init' first (${paths.configPath})`, EXIT.INVALID_CONFIG, { json });
 	const config = loadConfig(paths.configPath);
 	if (flags.url) config.base_url = flags.url;
 	const { valid, errors } = validateBaselineConfig(config);
@@ -150,6 +150,6 @@ export async function runCapture(kind, flags) {
 	(status === 'completed' ? ok : status === 'failed' ? fail : warn)(`${kind} ${status} — ${runId}`);
 	info(`evidence: ${runDir}`);
 	info(`report:   ${reportPath}`);
-	if (kind === 'final') info('compare with the baseline:  wp-starter compare');
+	if (kind === 'final') info('compare with the baseline:  futurebase compare');
 	process.exit(exit);
 }
