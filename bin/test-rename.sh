@@ -36,8 +36,11 @@ fi
 base_theme_name="$(sed -n 's/^Theme Name:[[:space:]]*//p' style.css | head -1 | sed 's/[[:space:]]*$//')"
 if [ "$base_theme_name" != "$FUTUREBASE_BASE_DISPLAY" ] \
 	|| [ "$(head -1 readme.txt 2>/dev/null)" != "=== $FUTUREBASE_BASE_DISPLAY ===" ] \
-	|| ! grep -qF " * $FUTUREBASE_BASE_DISPLAY theme functions." functions.php 2>/dev/null; then
-	echo "rename non-regression: FAIL (Futurebase WP base display surfaces disagree)"
+	|| ! grep -qF " * $FUTUREBASE_BASE_DISPLAY theme functions." functions.php 2>/dev/null \
+	|| ! grep -qE '^Author:[[:space:]]*Kicobi$' style.css 2>/dev/null \
+	|| ! grep -qE '^Author URI:[[:space:]]*https://kicobi\.com$' style.css 2>/dev/null \
+	|| ! grep -qE '^Contributors:[[:space:]]*kicobi$' readme.txt 2>/dev/null; then
+	echo "rename non-regression: FAIL (Futurebase WP base identity surfaces disagree)"
 	exit 1
 fi
 if [ "$(grep -cF '<!-- template-setup:start -->' README.md 2>/dev/null || true)" != "1" ] \
@@ -85,20 +88,21 @@ else
 fi
 
 # Exercise the complete real interface in a cold detached worktree.
-REAL_SLUG="acme-client-probe"
-REAL_SNAKE="acme_client_probe"
-REAL_UPPER="ACME_CLIENT_PROBE"
-REAL_NAME="Acme Client Probe"
+REAL_SLUG="acme-client"
+REAL_SNAKE="acme_client"
+REAL_UPPER="ACME_CLIENT"
+REAL_NAME="Acme Client"
 REAL_VERSION="1.0.0"
-REAL_REPOSITORY="acme/acme-client-probe"
+REAL_REPOSITORY="kicobi/acme-client"
+REAL_CONTRIBUTORS="kicobi, jsmith"
 make_worktree
 WT2="$NEW_WT"
 
 if bash "$WT2/bin/rename-theme.sh" "$REAL_SLUG" \
 	--theme-name "$REAL_NAME" \
 	--theme-version "$REAL_VERSION" \
-	--theme-uri "https://github.com/$REAL_REPOSITORY" \
-	--repository "$REAL_REPOSITORY" >"$LOG" 2>&1; then
+	--repository "$REAL_REPOSITORY" \
+	--contributors "$REAL_CONTRIBUTORS" >"$LOG" 2>&1; then
 	RC=0
 else
 	RC=$?
@@ -110,8 +114,8 @@ if [ "$RC" -eq 0 ]; then
 	if ! bash "$WT2/bin/rename-theme.sh" "$REAL_SLUG" \
 		--theme-name "$REAL_NAME" \
 		--theme-version "$REAL_VERSION" \
-		--theme-uri "https://github.com/$REAL_REPOSITORY" \
-		--repository "$REAL_REPOSITORY" >"$LOG" 2>&1; then
+		--repository "$REAL_REPOSITORY" \
+		--contributors "$REAL_CONTRIBUTORS" >"$LOG" 2>&1; then
 		problems+=("second identical rename was not idempotent")
 	fi
 fi
@@ -121,8 +125,15 @@ actual_client_theme_name="$(sed -n 's/^Theme Name:[[:space:]]*//p' "$WT2/style.c
 [ "$actual_client_theme_name" = "$REAL_NAME" ] || problems+=("Theme Name mismatch: expected '$REAL_NAME', found '$actual_client_theme_name'")
 grep -qE "^Text Domain:[[:space:]]*$REAL_SLUG$" "$WT2/style.css" 2>/dev/null || problems+=("Text Domain mismatch")
 grep -qE "^Version:[[:space:]]*$REAL_VERSION$" "$WT2/style.css" 2>/dev/null || problems+=("theme version mismatch")
+grep -qE '^Theme URI:[[:space:]]*https://kicobi\.com$' "$WT2/style.css" 2>/dev/null || problems+=("public Theme URI fallback mismatch")
+grep -qE '^Author:[[:space:]]*Kicobi$' "$WT2/style.css" 2>/dev/null || problems+=("Kicobi author did not carry into client theme")
+grep -qE '^Author URI:[[:space:]]*https://kicobi\.com$' "$WT2/style.css" 2>/dev/null || problems+=("Kicobi author URI did not carry into client theme")
 [ "$(head -1 "$WT2/readme.txt" 2>/dev/null)" = "=== $REAL_NAME ===" ] || problems+=("readme title mismatch")
 grep -qE "^Stable tag:[[:space:]]*$REAL_VERSION$" "$WT2/readme.txt" 2>/dev/null || problems+=("readme stable tag mismatch")
+grep -qF "Contributors: $REAL_CONTRIBUTORS" "$WT2/readme.txt" 2>/dev/null || problems+=("readme contributors mismatch")
+if grep -q '^Contributors:' "$WT2/style.css" 2>/dev/null; then
+	problems+=("Contributors header was written to style.css instead of readme.txt")
+fi
 grep -qF '* Initial client theme release.' "$WT2/readme.txt" 2>/dev/null || problems+=("client changelog was not reset")
 grep -qF " * $REAL_NAME theme functions." "$WT2/functions.php" 2>/dev/null || problems+=("functions.php display-name docblock mismatch")
 if grep -qF "$REAL_NAME WP" "$WT2/style.css" "$WT2/readme.txt" "$WT2/functions.php" 2>/dev/null; then
@@ -151,14 +162,16 @@ if grep -qF "$REAL_NAME provenance sentence" "$WT2/README.md" 2>/dev/null \
 	problems+=("client README contains display-name-substituted Futurebase product prose")
 fi
 
-node - "$WT2/package.json" "$WT2/package-lock.json" <<'NODE' || problems+=("npm manifest/lock root identities disagree")
+node - "$WT2/package.json" "$WT2/package-lock.json" "$WT2/composer.json" <<'NODE' || problems+=("client npm or Composer identity mismatch")
 const fs = require('node:fs');
 const manifest = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const lock = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
+const composer = JSON.parse(fs.readFileSync(process.argv[4], 'utf8'));
 const root = lock.packages?.[''];
-if (manifest.name !== 'acme-client-probe' || manifest.version !== '1.0.0') process.exit(1);
+if (manifest.name !== 'acme-client' || manifest.version !== '1.0.0') process.exit(1);
 if (lock.name !== manifest.name || lock.version !== manifest.version) process.exit(1);
 if (root?.name !== manifest.name || root?.version !== manifest.version) process.exit(1);
+if (composer.name !== 'kicobi/acme-client') process.exit(1);
 NODE
 
 # No uppercase base names may remain outside base-owned tooling and the
@@ -223,8 +236,8 @@ if ! bash "$WT3/bin/rename-theme.sh" "$STANDALONE_SLUG" >"$LOG" 2>&1; then
 fi
 grep -qF "Theme Name: $STANDALONE_NAME" "$WT3/style.css" 2>/dev/null || standalone_problems+=("standalone display-name default mismatch")
 grep -qE "^Text Domain:[[:space:]]*$STANDALONE_SLUG$" "$WT3/style.css" 2>/dev/null || standalone_problems+=("standalone text domain mismatch")
-grep -qE '^Theme URI:[[:space:]]*https://github\.com/studiokicobi/futurebase-wp$' "$WT3/style.css" 2>/dev/null || standalone_problems+=("standalone Theme URI compatibility exception missing")
-grep -qF 'studiokicobi/futurebase-wp' "$WT3/package.json" 2>/dev/null || standalone_problems+=("standalone npm repository identity was rewritten")
+grep -qE '^Theme URI:[[:space:]]*https://github\.com/kicobi/futurebase-wp$' "$WT3/style.css" 2>/dev/null || standalone_problems+=("standalone Theme URI compatibility exception missing")
+grep -qF 'kicobi/futurebase-wp' "$WT3/package.json" 2>/dev/null || standalone_problems+=("standalone npm repository identity was rewritten")
 grep -qF 'references/futurebase-context.md' "$WT3/docs/project-lifecycle.md" 2>/dev/null || standalone_problems+=("family lifecycle context name was rewritten")
 grep -qF -- '--futurebase-path' "$WT3/docs/project-lifecycle.md" 2>/dev/null || standalone_problems+=("family lifecycle path flag was rewritten")
 grep -qF 'Futurebase 2.x' "$WT3/docs/project-lifecycle.md" 2>/dev/null || standalone_problems+=("family lifecycle display name was rewritten")

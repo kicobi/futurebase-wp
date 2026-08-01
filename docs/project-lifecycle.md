@@ -75,7 +75,7 @@ duplicating rename/scaffold logic.
 
 ### Parameters & pre-flight
 - **slug** — validated against `^[a-z][a-z0-9]*(-[a-z0-9]+)*$` (the rename rule).
-- **remote** — `studiokicobi/<name>` by default; `--org` / `--name` override.
+- **remote** — `kicobi/<name>` by default; `--org` / `--name` override.
 - **dest** — `~/Sites/<name>` by default; `--dest` overrides.
 - **Collision checks** — abort if the remote already exists, the local dest
   exists and is non-empty, or the slug is invalid.

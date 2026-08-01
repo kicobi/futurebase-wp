@@ -16,8 +16,12 @@ import {
 	CHECKPOINT_FILE,
 	recoveryReceiptMismatch,
 	recoveryReceiptPath,
+	templateNamesEquivalent,
 } from '../commands/lead/promote.mjs';
 
+// The default fixtures intentionally model checkpoints and receipts written
+// before the GitHub handle cutover. Current-name assertions override only the
+// comparison side that must resolve to kicobi/futurebase-wp.
 const target = { slug: 'acme', dest: '/Users/x/Sites/acme', remote: 'studiokicobi/acme' };
 
 const checkpointFor = (over = {}) => ({
@@ -85,10 +89,15 @@ test('a pre-cutover checkpoint accepts the renamed Futurebase WP template', () =
 	assert.equal(
 		checkpointMismatch(checkpointFor({ template: 'studiokicobi/wp-starter' }), {
 			...target,
-			template: 'studiokicobi/futurebase-wp',
+			template: 'kicobi/futurebase-wp',
 		}),
 		null,
 	);
+});
+
+test('template compatibility remains a pair across the handle cutover', () => {
+	assert.equal(templateNamesEquivalent('studiokicobi/wp-starter', 'kicobi/futurebase-wp'), true);
+	assert.equal(templateNamesEquivalent('studiokicobi/futurebase-wp', 'kicobi/futurebase-wp'), false);
 });
 
 const liveIdentity = (over = {}) => ({
@@ -135,9 +144,11 @@ test('pre-cutover receipt names accept the renamed live template only at compati
 		template: 'studiokicobi/wp-starter',
 		template_repository: 'studiokicobi/wp-starter',
 	});
-	assert.equal(recoveryReceiptMismatch(legacy, recoveryTarget, liveIdentity()), null);
+	const currentTarget = { ...recoveryTarget, template: 'kicobi/futurebase-wp' };
+	const currentLive = liveIdentity({ template_repository: 'kicobi/futurebase-wp' });
+	assert.equal(recoveryReceiptMismatch(legacy, currentTarget, currentLive), null);
 	assert.match(
-		recoveryReceiptMismatch(legacy, recoveryTarget, liveIdentity({ template_repository: 'studiokicobi/wp-starter' })),
+		recoveryReceiptMismatch(legacy, currentTarget, liveIdentity({ template_repository: 'studiokicobi/wp-starter' })),
 		/not generated from the requested template/,
 	);
 });

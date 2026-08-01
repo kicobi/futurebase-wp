@@ -125,7 +125,7 @@ if [ -z "$THEME_NAME" ]; then
 	THEME_NAME="$(printf '%s\n' "$NEW_SLUG" | awk -F- '{ for (i = 1; i <= NF; i++) { printf "%s%s", (i > 1 ? " " : ""), toupper(substr($i, 1, 1)) substr($i, 2) } }')"
 fi
 if [ -z "$THEME_URI" ] && [ -n "$REPOSITORY" ]; then
-	THEME_URI="https://github.com/$REPOSITORY"
+	THEME_URI="https://kicobi.com"
 fi
 
 NEW_SNAKE="$(printf '%s' "$NEW_SLUG" | tr '-' '_')"
@@ -232,10 +232,10 @@ elif [ -n "$ORIGINAL_THEME_URI" ]; then
 	URI="$ORIGINAL_THEME_URI" perl -i -pe 's|^(Theme URI:\s*).*$|$1$ENV{URI}|' style.css
 fi
 if [ -n "$CONTRIBUTORS" ]; then
-	if grep -q '^Contributors:' style.css; then
-		CONTRIB="$CONTRIBUTORS" perl -i -pe 's/^Contributors:.*$/"Contributors: $ENV{CONTRIB}"/e' style.css
+	if grep -q '^Contributors:' readme.txt; then
+		CONTRIB="$CONTRIBUTORS" perl -i -pe 's/^Contributors:.*$/"Contributors: $ENV{CONTRIB}"/e' readme.txt
 	else
-		CONTRIB="$CONTRIBUTORS" perl -i -pe 'if (/^Theme URI:/ && !$done) { $_ .= "Contributors: $ENV{CONTRIB}\n"; $done = 1 }' style.css
+		CONTRIB="$CONTRIBUTORS" perl -i -pe 'if ($. == 1) { $_ .= "Contributors: $ENV{CONTRIB}\n" }' readme.txt
 	fi
 fi
 
@@ -278,6 +278,12 @@ NEW_SNAKE="$NEW_SNAKE" perl -0777 -ne '
 	exit 1 unless /<property\s+name="prefixes".*?<element\s+value="\Q$ENV{NEW_SNAKE}\E"\s*\/>/s;
 ' phpcs.xml.dist || problems+=("PHPCS prefix mismatch")
 grep -qF " * $THEME_NAME theme functions." functions.php || problems+=("functions.php display-name docblock mismatch")
+if [ -n "$CONTRIBUTORS" ]; then
+	grep -qF "Contributors: $CONTRIBUTORS" readme.txt || problems+=("readme.txt Contributors mismatch")
+fi
+if grep -q '^Contributors:' style.css; then
+	problems+=("style.css contains the non-standard Contributors header")
+fi
 
 readme_provenance_count="$(grep -o 'Futurebase' README.md 2>/dev/null | wc -l | tr -d ' ')"
 [ "$readme_provenance_count" = "1" ] || problems+=("README.md must contain exactly one Futurebase provenance occurrence; found $readme_provenance_count")
@@ -297,7 +303,7 @@ fi
 
 echo "Rename complete."
 echo "Next manual steps:"
-echo "  1. Review Author, Author URI, Contributors, Tags, client README wording, and add a client screenshot."
+echo "  1. Review Description, Tags, client README wording, and add a client screenshot."
 next_step=2
 if [ -z "$THEME_URI" ]; then
 	echo "  $next_step. Set Theme URI with --theme-uri or --repository."

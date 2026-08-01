@@ -22,9 +22,10 @@ import { validateProject } from '../../lib/validate.mjs';
 import { run, have, gitHead, isGitRepo, ghRepoExists } from '../../lib/proc.mjs';
 import { scanFiles } from '../../lib/secret-scan.mjs';
 
-const DEFAULT_ORG = 'studiokicobi';
-const DEFAULT_TEMPLATE = 'studiokicobi/futurebase-wp';
+const DEFAULT_ORG = 'kicobi';
+const DEFAULT_TEMPLATE = 'kicobi/futurebase-wp';
 const LEGACY_TEMPLATE = 'studiokicobi/wp-starter';
+const DEFAULT_THEME_URI = 'https://kicobi.com';
 const PROJECT_DIRS = ['brief', 'analysis', 'proposal', 'decisions', 'metrics', 'baseline', 'final', 'reports', 'follow-up'];
 // The checkpoint survives until AFTER the promotion commit, so that a commit
 // failure is still resumable — which makes the ignore line load-bearing rather
@@ -710,7 +711,7 @@ export async function leadPromote(positional, flags) {
 				'--theme-version',
 				'1.0.0',
 				'--theme-uri',
-				`https://github.com/${remote}`,
+				DEFAULT_THEME_URI,
 				'--repository',
 				remote,
 			],

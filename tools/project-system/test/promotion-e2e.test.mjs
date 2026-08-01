@@ -59,7 +59,9 @@ function makeTemplate(root, variant = 'ordinary') {
 			'const slug = process.argv[2];',
 			"const repositoryIndex = process.argv.indexOf('--repository');",
 			"const repository = repositoryIndex >= 0 ? process.argv[repositoryIndex + 1] : `local/${slug}`;",
-			"const style = readFileSync('style.css', 'utf8').replace(/^Text Domain:.*$/m, `Text Domain: ${slug}`);",
+			"const themeUriIndex = process.argv.indexOf('--theme-uri');",
+			"const themeUri = themeUriIndex >= 0 ? process.argv[themeUriIndex + 1] : '';",
+			"const style = readFileSync('style.css', 'utf8').replace(/^Text Domain:.*$/m, `Text Domain: ${slug}`).replace(/^Theme URI:.*$/m, `Theme URI: ${themeUri}`);",
 			"writeFileSync('style.css', style);",
 			"const composer = JSON.parse(readFileSync('composer.json', 'utf8'));",
 			'composer.name = repository;',
@@ -67,8 +69,8 @@ function makeTemplate(root, variant = 'ordinary') {
 			'',
 		].join('\n'),
 	);
-	writeFileSync(join(template, 'style.css'), '/*\nTheme Name: Futurebase WP\nText Domain: futurebase\n*/\n');
-	writeFileSync(join(template, 'composer.json'), JSON.stringify({ name: 'colinlewis/futurebase', require: { php: '^8.3' } }, null, 2) + '\n');
+	writeFileSync(join(template, 'style.css'), '/*\nTheme Name: Futurebase WP\nTheme URI: https://github.com/kicobi/futurebase-wp\nText Domain: futurebase\n*/\n');
+	writeFileSync(join(template, 'composer.json'), JSON.stringify({ name: 'kicobi/futurebase', require: { php: '^8.3' } }, null, 2) + '\n');
 	writeFileSync(join(template, 'composer.lock'), JSON.stringify({ 'content-hash': 'template-stale', packages: [] }, null, 2) + '\n');
 	writeFileSync(join(template, 'CLAUDE.md'), '# Template instructions\n');
 	writeFileSync(join(template, 'AGENTS.md'), '# Template instructions\n');
@@ -341,6 +343,7 @@ test('offline promotion completes, commits, and removes its checkpoint', () => {
 
 		assert.equal(result.status, 0, result.output);
 		assert.match(readFileSync(join(result.dest, 'style.css'), 'utf8'), /Text Domain: acme/);
+		assert.match(readFileSync(join(result.dest, 'style.css'), 'utf8'), /Theme URI: https:\/\/kicobi\.com/);
 		assert.equal(readFileSync(join(result.dest, '.project', 'brief', 'discovery.md'), 'utf8'), '# Client discovery\n');
 		assert.equal(existsSync(join(result.dest, '.futurebase-promotion.json')), false);
 		assert.match(readFileSync(join(workspace, 'acme', 'project.yml'), 'utf8'), /status: promoted/);

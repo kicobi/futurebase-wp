@@ -52,7 +52,7 @@
 		},
 		"promoted_to": {
 			"type": "string",
-			"description": "For a promoted lead: the remote repo the lead became (e.g. studiokicobi/acme-client)."
+			"description": "For a promoted lead: the remote repo the lead became (e.g. kicobi/acme-client)."
 		},
 		"urls": {
 			"type": "object",

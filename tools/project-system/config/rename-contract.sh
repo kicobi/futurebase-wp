@@ -68,6 +68,7 @@ FUTUREBASE_LEGACY_ALLOWLIST=(
 	$'tools/project-system/test/compatibility.test.mjs\tbin.*wp-starter\\.mjs\tlegacy CLI compatibility fixture\tFuturebase 3.0'
 	$'tools/project-system/test/compatibility.test.mjs\twp-starter is deprecated; use futurebase\tlegacy CLI warning assertion\tFuturebase 3.0'
 	$'tools/project-system/test/promotion.test.mjs\tcheckpointFor.*studiokicobi/wp-starter\tlegacy checkpoint equivalence fixture\tFuturebase 3.0'
+	$'tools/project-system/test/promotion.test.mjs\ttemplateNamesEquivalent.*studiokicobi/wp-starter\thandle-cutover equivalence-pair assertion\tFuturebase 3.0'
 	$'tools/project-system/test/promotion.test.mjs\ttemplate: \\x27studiokicobi/wp-starter\\x27\tlegacy receipt template fixture\tFuturebase 3.0'
 	$'tools/project-system/test/promotion.test.mjs\ttemplate_repository: \\x27studiokicobi/wp-starter\\x27\tlegacy receipt repository fixture\tFuturebase 3.0'
 	$'tools/project-system/test/promotion.test.mjs\tliveIdentity.*template_repository: \\x27studiokicobi/wp-starter\\x27\tstrict live-template comparison fixture\tFuturebase 3.0'

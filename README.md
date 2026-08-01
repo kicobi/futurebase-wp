@@ -48,13 +48,13 @@ and CI.
 Requires [`gh`](https://cli.github.com) authenticated (`gh auth login`). The template repo must have the **Template repository** setting enabled on GitHub.
 
 ```bash
-gh repo create studiokicobi/<new-project-name> --template studiokicobi/futurebase-wp --private --clone
+gh repo create kicobi/<new-project-name> --template kicobi/futurebase-wp --private --clone
 cd <new-project-name>
 npm run rename -- <theme-slug> \
   --theme-name "<Theme Name>" \
   --theme-version 1.0.0 \
-  --theme-uri https://github.com/studiokicobi/<new-project-name> \
-  --repository studiokicobi/<new-project-name>
+  --theme-uri https://kicobi.com \
+  --repository kicobi/<new-project-name>
 composer update --lock --no-install --no-interaction
 npm install && composer install
 npm run env:start
@@ -84,7 +84,7 @@ npm run rename -- acme-client \
 	--theme-version 1.0.0 \
 	--repository acme/acme-client \
   --contributors "acme, jsmith" \
-  --theme-uri    https://github.com/acme/acme-client
+  --theme-uri    https://example.com
 ```
 
 The positional `<slug>` is mandatory. Theme name defaults to the title-cased slug and version defaults to `1.0.0`; promotion supplies every identity field explicitly.
@@ -108,7 +108,7 @@ Re-running the script with the same arguments is a no-op — the `Contributors:`
 After running, manually review:
 
 - **Directory on disk** — the theme folder name must equal the slug.
-- **`style.css`** — `Description`, `Author`, `Author URI`, and `Tags` remain project-specific review fields. If you skipped `--theme-uri` or `--contributors`, update those lines by hand too.
+- **Theme metadata** — review `Description` and `Tags` in `style.css`, plus `Contributors` in `readme.txt`. The Kicobi author fields intentionally carry into client themes. If you skipped `--theme-uri` or `--contributors`, review those values too.
 - **`package.json`** — review the author after repository identity is set.
 - **`screenshot.png`** — add a client-branded theme screenshot; the Futurebase WP product screenshot is removed automatically.
 - **`docs/conventions.md`** — starter-history prose was rewritten along with everything else; the text describing "the starter ships with the slug `futurebase`" will now name your slug. Adjust or delete as you like.

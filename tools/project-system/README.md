@@ -234,5 +234,5 @@ commands are the cross-project meta layer. Lead **data** always lives outside
 the starter, under `~/Sites/leads/<slug>/`.
 
 `bin/rename-theme.sh` deliberately does **not** scan `tools/` — the templates
-here carry literal `futurebase` / `studiokicobi/futurebase-wp` references that are
+here carry literal `futurebase` / `kicobi/futurebase-wp` references that are
 the starter's identity, not client slugs to rewrite.

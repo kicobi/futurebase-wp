@@ -1,5 +1,5 @@
 === Futurebase WP ===
-Contributors: colinlewis
+Contributors: kicobi
 Tags: full-site-editing, block-patterns, block-styles, style-variations, wide-blocks, template-editing, one-column, accessibility-ready, custom-colors, custom-logo, featured-images, rtl-language-support, sticky-post, threaded-comments, translation-ready
 Requires at least: 6.9
 Tested up to: 6.9
