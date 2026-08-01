@@ -1,6 +1,6 @@
 // commands/baseline/report.mjs — (re)generate the report for a run.
 //
-// wp-starter baseline report [--run-id <id>] [--project-root <p>] [--json]
+// futurebase baseline report [--run-id <id>] [--project-root <p>] [--json]
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';

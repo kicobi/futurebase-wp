@@ -20,7 +20,7 @@ Content readiness is gated the same way: the client's launch content is prepared
 
 ```bash
 cd ~/Sites
-gh repo create studiokicobi/<slug> --template studiokicobi/wp-starter --private --clone
+gh repo create studiokicobi/<slug> --template studiokicobi/futurebase --private --clone
 cd <slug>
 npm run rename -- <slug>
 npm install && composer install

@@ -1,6 +1,6 @@
 {
-	"name": "colinlewis/wp-starter",
-	"description": "FSE starter theme (modern-hosting baseline: PHP 8.3+, WordPress 6.9+).",
+	"name": "colinlewis/futurebase",
+	"description": "Full Site Editing foundation for modern WordPress hosting (PHP 8.3+, WordPress 6.9+).",
 	"type": "wordpress-theme",
 	"license": "GPL-2.0-or-later",
 	"require": {

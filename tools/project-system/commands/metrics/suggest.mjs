@@ -1,6 +1,6 @@
 // commands/metrics/suggest.mjs — propose metrics from the project's preset.
 //
-// wp-starter metrics suggest [--dry-run] [--json] [--project-root <p>]
+// futurebase metrics suggest [--dry-run] [--json] [--project-root <p>]
 // Merges preset-derived metric drafts into .project/metrics/metrics.yml without
 // clobbering existing items (matched by id).
 
@@ -51,7 +51,7 @@ export function metricsSuggest(_positional, flags) {
 	ok(`added ${added.length} metric(s) from preset '${presetName}' → ${doc.items.length} total`);
 	for (const m of added) info(`${m.id} — ${m.title}`);
 	console.log('');
-	info('review + edit them:  wp-starter metrics review');
-	info('record a measured baseline:  wp-starter metrics baseline --id <id> --value <v> --unit <u>');
+	info('review + edit them:  futurebase metrics review');
+	info('record a measured baseline:  futurebase metrics baseline --id <id> --value <v> --unit <u>');
 	process.exit(EXIT.OK);
 }

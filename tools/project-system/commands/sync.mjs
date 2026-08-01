@@ -1,8 +1,8 @@
 // commands/sync.mjs — bring an active project back in line with the starter.
 //
-// wp-starter sync [--ref <ref>] [--starter-path <p>] [--project-root <p>]
+// futurebase sync [--ref <ref>] [--futurebase-path <p>] [--project-root <p>]
 //     [--only safe|deps|review] [--fetch] [--apply] [--confirm]
-//     [--repair-provenance] [--json]
+//     [--repair-provenance] [--repair-source-path] [--json]
 //
 // Read-only by default: it prints what has drifted and stops. Writing requires
 // --apply, and --apply requires confirmation, matching `lead promote`.
@@ -13,7 +13,7 @@
 
 import { existsSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { EXIT, die, ok, warn, info, fail, emitJson, c } from '../lib/output.mjs';
 import { findProjectRoot } from '../lib/baseline.mjs';
 import { readYaml, writeYaml } from '../lib/yaml.mjs';
@@ -62,12 +62,45 @@ export async function sync(_positional, flags) {
 		die(`.project/project.yml failed to parse: ${err.message}`, EXIT.INVALID_CONFIG, { json });
 	}
 
-	// 2. Locate the starter. The recorded source_path is a hint, not a promise.
-	const starter = flags['starter-path'] || record.starter?.source_path;
-	if (!starter) die('no starter checkout known — pass --starter-path <path>', EXIT.INVALID_CONFIG, { json });
-	if (!existsSync(starter)) die(`starter path does not exist: ${starter}`, EXIT.ACCESS_FAILURE, { json });
+	// 2. Locate Futurebase. The recorded source_path is a hint, not a promise.
+	// Source-path repair intentionally happens before ref resolution and file
+	// planning: it is metadata recovery, not permission to write theme files.
+	const recordedSourcePath = record.starter?.source_path || null;
+	const explicitSourcePath = flags['starter-path'] || null;
+	const starter = explicitSourcePath ? resolve(explicitSourcePath) : recordedSourcePath;
+	if (!starter) die('no Futurebase checkout known — pass --futurebase-path <path>', EXIT.INVALID_CONFIG, { json });
+	if (!existsSync(starter)) {
+		die(`Futurebase path does not exist: ${starter} — pass --futurebase-path <path> with --repair-source-path`, EXIT.ACCESS_FAILURE, { json });
+	}
 	if (!have('git')) die('git is required', EXIT.MISSING_DEP, { json });
 	if (!isGitRepo(starter)) die(`not a git repository: ${starter}`, EXIT.ACCESS_FAILURE, { json });
+
+	const sourcePathDrift = recordedSourcePath !== starter;
+	let sourcePathRepaired = false;
+	if (flags['repair-source-path']) {
+		if (!explicitSourcePath && !recordedSourcePath) {
+			die('--repair-source-path needs --futurebase-path when no source path is recorded', EXIT.INVALID_CONFIG, { json });
+		}
+		if (sourcePathDrift) {
+			record.starter = { ...(record.starter || {}), source_path: starter };
+			writeYaml(recordPath, record);
+			sourcePathRepaired = true;
+			if (!json) ok(`Futurebase source path repaired: ${recordedSourcePath ?? 'none'} → ${starter}`);
+		} else {
+			if (!json) ok(`Futurebase source path already correct: ${starter}`);
+		}
+
+		const repairOnly = !flags.apply && !flags.fetch && !flags.only && !flags.ref && !flags['repair-provenance'];
+		if (repairOnly) {
+			if (json) {
+				emitJson({
+					status: sourcePathRepaired ? 'repaired' : 'ok',
+					source_path: { recorded: recordedSourcePath, resolved: starter, drifted: sourcePathDrift, repaired: sourcePathRepaired },
+				});
+			}
+			process.exit(EXIT.OK);
+		}
+	}
 
 	if (flags.fetch) {
 		info('fetching starter …');
@@ -110,6 +143,7 @@ export async function sync(_positional, flags) {
 			ref,
 			ref_sha: refSha,
 			starter,
+			source_path: { recorded: recordedSourcePath, resolved: starter, drifted: sourcePathDrift, repaired: sourcePathRepaired },
 			provenance: { recorded, verified: provenanceOk },
 			counts: {
 				writable: writable.length,
@@ -188,10 +222,6 @@ export async function sync(_positional, flags) {
 	}
 
 	// 7. Apply.
-	if (!writable.length) {
-		ok('nothing to apply');
-		process.exit(EXIT.OK);
-	}
 	if (!flags.confirm) {
 		const interactive = process.stdin.isTTY && !flags['non-interactive'];
 		if (!interactive) die('--apply writes into the project — pass --confirm to proceed non-interactively', EXIT.INVALID_CONFIG, { json });
@@ -213,6 +243,7 @@ export async function sync(_positional, flags) {
 	// regardless of what promotion recorded.
 	record.starter = {
 		...(record.starter || {}),
+		source_path: starter,
 		synced_commit: refSha,
 		synced_at: new Date().toISOString(),
 	};
@@ -220,6 +251,11 @@ export async function sync(_positional, flags) {
 		writeYaml(recordPath, record);
 	} catch (err) {
 		warn(`files written, but stamping .project/project.yml failed: ${err.message}`);
+	}
+	if (!writable.length) {
+		if (json) emitJson({ status: 'applied', ref, ref_sha: refSha, written, failed, skipped_conflicts: [] });
+		ok('nothing to apply; project record stamped');
+		process.exit(EXIT.OK);
 	}
 
 	if (json) {

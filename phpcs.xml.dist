@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
-<ruleset name="wp-starter">
-	<description>Coding standards for the wp-starter theme.</description>
+<ruleset name="futurebase">
+	<description>Coding standards for the futurebase theme.</description>
 
 	<file>.</file>
 	<exclude-pattern>*/build/*</exclude-pattern>
@@ -22,7 +22,7 @@
 	<rule ref="WordPress.WP.I18n">
 		<properties>
 			<property name="text_domain" type="array">
-				<element value="wp-starter"/>
+				<element value="futurebase"/>
 			</property>
 		</properties>
 	</rule>
@@ -30,7 +30,7 @@
 	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
 		<properties>
 			<property name="prefixes" type="array">
-				<element value="wp_starter"/>
+				<element value="futurebase"/>
 			</property>
 		</properties>
 	</rule>

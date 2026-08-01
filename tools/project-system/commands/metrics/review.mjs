@@ -1,6 +1,6 @@
 // commands/metrics/review.mjs — show the current metrics for eyeballing/editing.
 //
-// wp-starter metrics review [--json] [--project-root <p>]
+// futurebase metrics review [--json] [--project-root <p>]
 
 import { EXIT, die, warn, info, emitJson, c } from '../../lib/output.mjs';
 import { findProjectRoot, projectPaths } from '../../lib/baseline.mjs';
@@ -30,7 +30,7 @@ export function metricsReview(_positional, flags) {
 	if (json) emitJson({ status: 'ok', count: items.length, items });
 
 	if (!items.length) {
-		warn('no metrics yet — run: wp-starter metrics suggest');
+		warn('no metrics yet — run: futurebase metrics suggest');
 		process.exit(EXIT.OK);
 	}
 	const { launch, post } = splitTiming(items);

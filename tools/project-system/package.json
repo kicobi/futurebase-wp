@@ -1,7 +1,7 @@
 {
-	"name": "wp-starter-project-system",
-	"version": "0.8.0",
-	"description": "Project lifecycle system for wp-starter: isolated lead workspaces, promotion, baselines, and success metrics. Phase 1 ships `lead init` / `lead inspect`; later phases add promotion, baselines, and metrics.",
+	"name": "futurebase-project-system",
+	"version": "2.0.0",
+	"description": "Project lifecycle system for futurebase: isolated lead workspaces, promotion, baselines, and success metrics. Phase 1 ships `lead init` / `lead inspect`; later phases add promotion, baselines, and metrics.",
 	"author": "Colin Lewis",
 	"license": "GPL-2.0-or-later",
 	"keywords": [
@@ -9,14 +9,14 @@
 		"project-lifecycle",
 		"baseline"
 	],
-	"homepage": "https://github.com/studiokicobi/wp-starter#readme",
+	"homepage": "https://github.com/studiokicobi/futurebase#readme",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/studiokicobi/wp-starter.git",
+		"url": "git+https://github.com/studiokicobi/futurebase.git",
 		"directory": "tools/project-system"
 	},
 	"bugs": {
-		"url": "https://github.com/studiokicobi/wp-starter/issues"
+		"url": "https://github.com/studiokicobi/futurebase/issues"
 	},
 	"private": true,
 	"engines": {
@@ -24,6 +24,7 @@
 	},
 	"type": "module",
 	"bin": {
+		"futurebase": "./bin/futurebase.mjs",
 		"wp-starter": "./bin/wp-starter.mjs"
 	},
 	"dependencies": {

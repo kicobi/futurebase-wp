@@ -23,7 +23,7 @@ templates/front-page.html         ← wiring (header part, main, one pattern, fo
 
 ### Why the `_` prefix
 
-Section patterns start with an underscore so they sort together in the file listing, and so they're visually distinct from page-level patterns (`home.php`, `cta.php`) and utility patterns (`page-not-found.php`). The underscore has no functional meaning in the pattern slug — the registered slug is still `wp-starter/section-hero`.
+Section patterns start with an underscore so they sort together in the file listing, and so they're visually distinct from page-level patterns (`home.php`, `cta.php`) and utility patterns (`page-not-found.php`). The underscore has no functional meaning in the pattern slug — the registered slug is still `futurebase/section-hero`.
 
 ## Worked example
 
@@ -34,7 +34,7 @@ Section patterns start with an underscore so they sort together in the file list
 
 <!-- wp:group {"tagName":"main"} -->
 <main class="wp-block-group">
-    <!-- wp:pattern {"slug":"wp-starter/home"} /-->
+    <!-- wp:pattern {"slug":"futurebase/home"} /-->
 </main>
 <!-- /wp:group -->
 
@@ -49,17 +49,17 @@ That's the whole template. It never grows.
 <?php
 /**
  * Title: Home
- * Slug: wp-starter/home
+ * Slug: futurebase/home
  * Inserter: no
  * Description: Composite homepage — references the section patterns in order.
  *
- * @package wp-starter
+ * @package futurebase
  */
 ?>
-<!-- wp:pattern {"slug":"wp-starter/section-hero"} /-->
-<!-- wp:pattern {"slug":"wp-starter/section-cards"} /-->
-<!-- wp:pattern {"slug":"wp-starter/section-writing"} /-->
-<!-- wp:pattern {"slug":"wp-starter/section-cta"} /-->
+<!-- wp:pattern {"slug":"futurebase/section-hero"} /-->
+<!-- wp:pattern {"slug":"futurebase/section-cards"} /-->
+<!-- wp:pattern {"slug":"futurebase/section-writing"} /-->
+<!-- wp:pattern {"slug":"futurebase/section-cta"} /-->
 ```
 
 `Inserter: no` hides it from the block inserter — it's not meant to be dropped into a post; it's the homepage's wiring.
@@ -70,11 +70,11 @@ That's the whole template. It never grows.
 <?php
 /**
  * Title: Section — Hero
- * Slug: wp-starter/section-hero
+ * Slug: futurebase/section-hero
  * Categories: featured, banner
  * Description: Homepage hero section.
  *
- * @package wp-starter
+ * @package futurebase
  */
 ?>
 <!-- wp:cover {"isUserOverlayColor":true,"customOverlayColor":"var:preset|color|primary","align":"full"} -->

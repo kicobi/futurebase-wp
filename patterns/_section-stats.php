@@ -1,7 +1,7 @@
 <?php
 /**
  * Title: Section — Stats
- * Slug: wp-starter/section-stats
+ * Slug: futurebase/section-stats
  * Categories: featured, columns
  * Description: Row of headline numbers with labels — proof points at a glance.
  * Keywords: stats, numbers, metrics, proof
@@ -9,7 +9,7 @@
  *
  * TODO(copy): replace starter numbers and labels with real, defensible figures.
  *
- * @package wp-starter
+ * @package futurebase
  */
 
 ?>
@@ -20,10 +20,10 @@
 		<!-- wp:column -->
 		<div class="wp-block-column">
 			<!-- wp:paragraph {"align":"center","fontSize":"gigantic"} -->
-			<p class="has-text-align-center has-gigantic-font-size"><?php echo esc_html__( '12', 'wp-starter' ); ?></p>
+			<p class="has-text-align-center has-gigantic-font-size"><?php echo esc_html__( '12', 'futurebase' ); ?></p>
 			<!-- /wp:paragraph -->
 			<!-- wp:paragraph {"align":"center"} -->
-			<p class="has-text-align-center"><?php echo esc_html__( 'Years doing this work', 'wp-starter' ); ?></p>
+			<p class="has-text-align-center"><?php echo esc_html__( 'Years doing this work', 'futurebase' ); ?></p>
 			<!-- /wp:paragraph -->
 		</div>
 		<!-- /wp:column -->
@@ -31,10 +31,10 @@
 		<!-- wp:column -->
 		<div class="wp-block-column">
 			<!-- wp:paragraph {"align":"center","fontSize":"gigantic"} -->
-			<p class="has-text-align-center has-gigantic-font-size"><?php echo esc_html__( '90+', 'wp-starter' ); ?></p>
+			<p class="has-text-align-center has-gigantic-font-size"><?php echo esc_html__( '90+', 'futurebase' ); ?></p>
 			<!-- /wp:paragraph -->
 			<!-- wp:paragraph {"align":"center"} -->
-			<p class="has-text-align-center"><?php echo esc_html__( 'Projects shipped', 'wp-starter' ); ?></p>
+			<p class="has-text-align-center"><?php echo esc_html__( 'Projects shipped', 'futurebase' ); ?></p>
 			<!-- /wp:paragraph -->
 		</div>
 		<!-- /wp:column -->
@@ -42,10 +42,10 @@
 		<!-- wp:column -->
 		<div class="wp-block-column">
 			<!-- wp:paragraph {"align":"center","fontSize":"gigantic"} -->
-			<p class="has-text-align-center has-gigantic-font-size"><?php echo esc_html__( '100%', 'wp-starter' ); ?></p>
+			<p class="has-text-align-center has-gigantic-font-size"><?php echo esc_html__( '100%', 'futurebase' ); ?></p>
 			<!-- /wp:paragraph -->
 			<!-- wp:paragraph {"align":"center"} -->
-			<p class="has-text-align-center"><?php echo esc_html__( 'A metric worth bragging about', 'wp-starter' ); ?></p>
+			<p class="has-text-align-center"><?php echo esc_html__( 'A metric worth bragging about', 'futurebase' ); ?></p>
 			<!-- /wp:paragraph -->
 		</div>
 		<!-- /wp:column -->

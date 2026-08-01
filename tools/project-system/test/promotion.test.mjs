@@ -27,7 +27,7 @@ const checkpointFor = (over = {}) => ({
 	lead_slug: 'acme',
 	dest: '/Users/x/Sites/acme',
 	remote: 'studiokicobi/acme',
-	template: 'studiokicobi/wp-starter',
+	template: 'studiokicobi/futurebase',
 	template_commit: 'abc1234',
 	started_at: '2026-07-30T10:00:00.000Z',
 	...over,
@@ -71,14 +71,24 @@ test('a checkpoint from a different template is refused', () => {
 	// resume could switch templates and the stamped project.yml would claim a
 	// commit from a template the destination was never built from.
 	const why = checkpointMismatch(checkpointFor(), { ...target, template: 'someone-else/other-starter' });
-	assert.match(why, /records template studiokicobi\/wp-starter/);
+	assert.match(why, /records template studiokicobi\/futurebase/);
 });
 
 test('template is only compared when the caller supplies one', () => {
 	// Keeps the rule usable from tests and any caller that has no template in
 	// hand, without silently skipping the check for the real one.
 	assert.equal(checkpointMismatch(checkpointFor(), target), null);
-	assert.equal(checkpointMismatch(checkpointFor(), { ...target, template: 'studiokicobi/wp-starter' }), null);
+	assert.equal(checkpointMismatch(checkpointFor(), { ...target, template: 'studiokicobi/futurebase' }), null);
+});
+
+test('a pre-cutover checkpoint accepts the renamed Futurebase template', () => {
+	assert.equal(
+		checkpointMismatch(checkpointFor({ template: 'studiokicobi/wp-starter' }), {
+			...target,
+			template: 'studiokicobi/futurebase',
+		}),
+		null,
+	);
 });
 
 const liveIdentity = (over = {}) => ({
@@ -89,7 +99,7 @@ const liveIdentity = (over = {}) => ({
 	default_branch: 'main',
 	initial_commit_sha: 'def5678',
 	commit_count: 1,
-	template_repository: 'studiokicobi/wp-starter',
+	template_repository: 'studiokicobi/futurebase',
 	...over,
 });
 
@@ -101,7 +111,7 @@ const receiptFor = (over = {}) => ({
 	lead_slug: 'acme',
 	dest: '/Users/x/Sites/acme',
 	remote: 'studiokicobi/acme',
-	template: 'studiokicobi/wp-starter',
+	template: 'studiokicobi/futurebase',
 	template_commit: 'abc1234',
 	repository_id: 123456,
 	repository_node_id: 'R_kgDOExample',
@@ -110,14 +120,26 @@ const receiptFor = (over = {}) => ({
 	default_branch: 'main',
 	initial_commit_sha: 'def5678',
 	initial_commit_count: 1,
-	template_repository: 'studiokicobi/wp-starter',
+	template_repository: 'studiokicobi/futurebase',
 	...over,
 });
 
-const recoveryTarget = { ...target, template: 'studiokicobi/wp-starter' };
+const recoveryTarget = { ...target, template: 'studiokicobi/futurebase' };
 
 test('a complete receipt matching the untouched generated remote permits clone recovery', () => {
 	assert.equal(recoveryReceiptMismatch(receiptFor(), recoveryTarget, liveIdentity()), null);
+});
+
+test('pre-cutover receipt names accept the renamed live template only at compatibility comparisons', () => {
+	const legacy = receiptFor({
+		template: 'studiokicobi/wp-starter',
+		template_repository: 'studiokicobi/wp-starter',
+	});
+	assert.equal(recoveryReceiptMismatch(legacy, recoveryTarget, liveIdentity()), null);
+	assert.match(
+		recoveryReceiptMismatch(legacy, recoveryTarget, liveIdentity({ template_repository: 'studiokicobi/wp-starter' })),
+		/not generated from the requested template/,
+	);
 });
 
 test('clone recovery refuses an absent or incomplete receipt', () => {
@@ -153,5 +175,5 @@ test('recovery receipt filenames are stable and bind destination plus remote', (
 	assert.equal(a, recoveryReceiptPath('/Users/x/Sites/acme', 'studiokicobi/acme'));
 	assert.notEqual(a, recoveryReceiptPath('/Users/x/Sites/acme-2', 'studiokicobi/acme'));
 	assert.notEqual(a, recoveryReceiptPath('/Users/x/Sites/acme', 'studiokicobi/acme-2'));
-	assert.match(a, /\.wp-starter-promotion-[a-f0-9]{20}\.json$/);
+	assert.match(a, /\.futurebase-promotion-[a-f0-9]{20}\.json$/);
 });

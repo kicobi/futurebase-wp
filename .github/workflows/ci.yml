@@ -108,6 +108,9 @@ jobs:
                   npm run build
                   npm run verify
 
+            - name: Require Futurebase rename template smoke test
+              run: bash bin/test-rename.sh --require-template
+
     package:
         name: Package smoke test
         runs-on: ubuntu-latest

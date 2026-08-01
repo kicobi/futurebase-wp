@@ -1,12 +1,14 @@
+<!-- project-intro:start -->
 # Futurebase
 
 **A futureproof base for accessible, maintainable WordPress websites.**
 
-A modern Full Site Editing WordPress starter theme with AI agent guardrails baked in. Futurebase is the product name; the template's technical slug stays `wp-starter` until a client project renames it (`npm run rename`). See [docs/futurebase.md](docs/futurebase.md) for the product one-pager and [docs/scorecard.md](docs/scorecard.md) for how it proves its numbers.
+Futurebase is a modern Full Site Editing foundation with AI agent guardrails baked in. See [docs/futurebase.md](docs/futurebase.md) for the canonical product narrative and [docs/scorecard.md](docs/scorecard.md) for the evidence model behind it.
+<!-- project-intro:end -->
 
 ## What this is
 
-A personal WordPress starter intended to be used as a [GitHub template repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-template-repository) for spinning up WordPress client sites. Built on top of [them.es/starter-fse](https://github.com/them-es/starter-fse), with:
+A private WordPress foundation intended to be used as a [GitHub template repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-template-repository) for spinning up WordPress client sites. Built on top of [them.es/starter-fse](https://github.com/them-es/starter-fse), with:
 
 - **PHP 8.3+ / WordPress 6.9+ floor** — see "Hosting baseline" below
 - `@wordpress/scripts` + SCSS build pipeline
@@ -45,9 +47,14 @@ and CI.
 Requires [`gh`](https://cli.github.com) authenticated (`gh auth login`). The template repo must have the **Template repository** setting enabled on GitHub.
 
 ```bash
-gh repo create studiokicobi/<new-project-name> --template studiokicobi/wp-starter --private --clone
+gh repo create studiokicobi/<new-project-name> --template studiokicobi/futurebase --private --clone
 cd <new-project-name>
-npm run rename -- <theme-slug>
+npm run rename -- <theme-slug> \
+  --theme-name "<Theme Name>" \
+  --theme-version 1.0.0 \
+  --theme-uri https://github.com/studiokicobi/<new-project-name> \
+  --repository studiokicobi/<new-project-name>
+composer update --lock --no-install --no-interaction
 npm install && composer install
 npm run env:start
 ```
@@ -68,38 +75,45 @@ Enabling and verifying GitHub's **Template repository** flag is a manual reposit
 
 ## Rename checklist (mandatory on every new project)
 
-The template ships with the slug `wp-starter` everywhere. **Use the rename script** — doing this by hand is error-prone because the rename spans PHP, JSON, HTML, XML, shell scripts, and Markdown.
+The template ships with the slug `futurebase` everywhere. **Use the rename script** — doing this by hand is error-prone because the rename spans PHP, JSON, HTML, XML, shell scripts, and Markdown.
 
 ```bash
 npm run rename -- acme-client \
+	--theme-name "Acme Client" \
+	--theme-version 1.0.0 \
+	--repository acme/acme-client \
   --contributors "acme, jsmith" \
   --theme-uri    https://github.com/acme/acme-client
 ```
 
-The positional `<slug>` is mandatory. Both flags are optional — pass them if you know the values now; skip them and the script prints a manual-steps reminder.
+The positional `<slug>` is mandatory. Theme name defaults to the title-cased slug and version defaults to `1.0.0`; promotion supplies every identity field explicitly.
 
 The script performs the following edits in one pass:
 
 1. **Theme slug** — lowercase, dashes only, no underscores (e.g. `acme-client`, not `acme_client` or `AcmeClient`).
-2. **Text domain** = theme slug. Replaces `'wp-starter'` → `'<slug>'` in every PHP i18n call.
-3. **Function prefix** — slug converted to `snake_case`. Replaces `wp_starter_` → `<slug_snake>_`.
-4. **Constant prefix** — the same prefix in caps. Replaces `WP_STARTER_` → `<SLUG_SNAKE>_`, covering PHP global constants and the one env var (`WP_STARTER_DIST_DIR`) spelled that way. They share the global namespace `phpcs` checks against the renamed `prefixes` property, so a constant left behind fails lint.
-5. **Pattern slugs** — every `wp-starter/…` pattern slug becomes `<slug>/…` in both pattern headers and template `wp:pattern` references.
-6. **`style.css` header** — updates `Text Domain`; when `--theme-uri` is passed, also `Theme URI`; when `--contributors` is passed, writes or replaces a `Contributors:` line.
-7. **`composer.json`** — updates `name` field (`vendor/<slug>`).
-8. **`phpcs.xml.dist`** — updates the `text_domain` and `prefixes` properties.
-9. **`package.json`** — updates `name` field.
-10. **`docs/`, `src/`, `inc/`** — PHP snippets, text domains, pattern slugs, and backtick-wrapped `` `wp-starter` `` prose references rewrite too, so a scaffolded project doesn't ship with half the old slug still visible.
+2. **Text domain** = theme slug. Replaces `'futurebase'` → `'<slug>'` in every PHP i18n call.
+3. **Function prefix** — slug converted to `snake_case`. Replaces `futurebase_` → `<slug_snake>_`.
+4. **Constant prefix** — the same prefix in caps. Replaces `FUTUREBASE_` → `<SLUG_SNAKE>_`, covering PHP global constants and the one env var (`FUTUREBASE_DIST_DIR`) spelled that way. They share the global namespace `phpcs` checks against the renamed `prefixes` property, so a constant left behind fails lint.
+5. **Pattern slugs** — every `futurebase/…` pattern slug becomes `<slug>/…` in both pattern headers and template `wp:pattern` references.
+6. **Display identity** — updates the theme name, WordPress readme title, PHP docblocks, and the managed client README introduction.
+7. **Client version** — updates `style.css`, `readme.txt`, `package.json`, and both root-package version fields in `package-lock.json`.
+8. **Repository identity** — updates Theme URI, npm repository/homepage/bugs fields, and the Composer vendor/package when `--repository` is supplied.
+9. **`phpcs.xml.dist`** — updates the dashed text domain and snake-case prefix independently.
+10. **Client readme history** — resets `readme.txt` to one initial client release and leaves exactly one Futurebase provenance sentence in `README.md`.
+11. **Base-only product material** — removes the Futurebase narrative, company-site brief, social image, and branded theme screenshot from the client checkout while rewriting client-owned identity in `docs/`, `src/`, and `inc/`.
 
 Re-running the script with the same arguments is a no-op — the `Contributors:` line isn't duplicated, and already-renamed references don't match the search pattern.
 
 After running, manually review:
 
 - **Directory on disk** — the theme folder name must equal the slug.
-- **`style.css`** — `Theme Name`, `Description`, `Author`, `Author URI`, `Tags` are project-specific and not auto-edited. If you skipped `--theme-uri` or `--contributors`, update those lines by hand too.
-- **`package.json`** — `author`, `homepage`, `repository.url`, `bugs.url` point at the template's origin repo; update them to the project's.
-- **`docs/conventions.md`** — starter-history prose was rewritten along with everything else; the text describing "the starter ships with the slug `wp-starter`" will now name your slug. Adjust or delete as you like.
+- **`style.css`** — `Description`, `Author`, `Author URI`, and `Tags` remain project-specific review fields. If you skipped `--theme-uri` or `--contributors`, update those lines by hand too.
+- **`package.json`** — review the author after repository identity is set.
+- **`screenshot.png`** — add a client-branded theme screenshot; the Futurebase product screenshot is removed automatically.
+- **`docs/conventions.md`** — starter-history prose was rewritten along with everything else; the text describing "the starter ships with the slug `futurebase`" will now name your slug. Adjust or delete as you like.
 - **Translation files** — regenerate `.pot` / `.mo` in `languages/` if you carry them over.
+
+The rename is offline and reconciles npm lockfile identity without package resolution. Because Composer derives its lock hash from the renamed package, finish with `composer update --lock --no-install --no-interaction` before committing.
 
 Run `npm run verify` afterwards to confirm nothing drifted.
 
@@ -126,8 +140,9 @@ npm run format         # format source/docs (honours .prettierignore)
 npm run verify         # block theme standards + lint + phpcs + phpstan + pa11y
 npm run a11y           # pa11y-ci against the local wp-env (expects :8888 — verify probes the real port)
 npm run test:navigation # destructive navigation-migration scenarios against disposable wp-env
-npm run rename -- <slug> [--contributors "foo, bar"] [--theme-uri <url>]
-                       # rename the theme slug across every file that references it; flags fill style.css
+npm run rename -- <slug> --theme-name "<name>" --theme-version <semver> \
+  --theme-uri <url> --repository <owner/repository> [--contributors "foo, bar"]
+                       # rename client identity and reconcile root npm-lock metadata offline
 npm run env:start      # boot wp-env (latest stable WordPress, theme mounted)
 npm run env:stop       # stop wp-env containers (data preserved)
 npm run env:destroy    # stop and delete wp-env containers + volumes
@@ -142,7 +157,7 @@ composer phpstan       # PHPStan level 6 with WordPress stubs
 Build scope: `npm run build` runs `build:theme` (compiles `assets/main.{js,scss}`
 into `build/`) and then `build:blocks` (compiles `src/blocks/*/block.json` into
 `build/blocks/` via `@wordpress/scripts`' standard block discovery). Blocks
-auto-register through `wp_starter_register_blocks()` in
+auto-register through `futurebase_register_blocks()` in
 [functions.php](functions.php) on `init`. A fresh repo with no blocks is fine
 — `build:blocks` exits 0 when `src/blocks/` is empty.
 
@@ -205,7 +220,7 @@ npm run block:new -- author-card
 npm run build
 ```
 
-The scaffold generates `src/blocks/author-card/` with `block.json`, `index.js`, `edit.js`, and `render.php` (dynamic server render). `npm run build` compiles it to `build/blocks/author-card/`, and `wp_starter_register_blocks()` in [functions.php](functions.php) auto-registers every compiled block on `init` — no per-block PHP wiring.
+The scaffold generates `src/blocks/author-card/` with `block.json`, `index.js`, `edit.js`, and `render.php` (dynamic server render). `npm run build` compiles it to `build/blocks/author-card/`, and `futurebase_register_blocks()` in [functions.php](functions.php) auto-registers every compiled block on `init` — no per-block PHP wiring.
 
 Reusable blocks that should outlive the theme belong in a **companion plugin**, not here. See [docs/block-authoring.md](docs/block-authoring.md#theme-bound-vs-plugin-block) for the rule.
 
@@ -217,12 +232,12 @@ For the middle ground — a pattern with fixed shape but dynamic data (author ca
 npm run cpt:new -- case-study
 ```
 
-Generates `inc/post-types/case-study.php` with a full i18n-ready `register_post_type()` call; the file auto-loads via `wp_starter_load_post_types()` in [functions.php](functions.php). Theme-coupled by default — move to a must-use plugin when the site needs CPTs to survive theme swaps. [docs/post-types.md](docs/post-types.md) walks through the ACF UI vs. code decision, taxonomies, post meta + block bindings, and common rewrite gotchas.
+Generates `inc/post-types/case-study.php` with a full i18n-ready `register_post_type()` call; the file auto-loads via `futurebase_load_post_types()` in [functions.php](functions.php). Theme-coupled by default — move to a must-use plugin when the site needs CPTs to survive theme swaps. [docs/post-types.md](docs/post-types.md) walks through the ACF UI vs. code decision, taxonomies, post meta + block bindings, and common rewrite gotchas.
 
 ## Project shape
 
 ```
-wp-starter/
+futurebase/
 ├── AGENTS.md / CLAUDE.md     # agent instructions
 ├── .claude/
 │   ├── settings.json         # PostToolUse lint hook
@@ -263,7 +278,7 @@ Reusable blocks and non-theme-specific features belong in a **separate companion
 
 ## Editor curation
 
-The inserter is pre-trimmed to match a design-system-first workflow. [functions.php](functions.php) (`wp_starter_curate_editor`) removes:
+The inserter is pre-trimmed to match a design-system-first workflow. [functions.php](functions.php) (`futurebase_curate_editor`) removes:
 
 - **Block directory** — the "search a plugin block" UI. Admins still install plugins through `wp-admin` normally.
 - **Core block patterns** — WordPress's built-in patterns.

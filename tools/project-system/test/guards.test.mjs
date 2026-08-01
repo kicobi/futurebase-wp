@@ -20,7 +20,7 @@ import { applyEntry } from '../lib/sync.mjs';
 import { classify } from '../commands/lead/promote.mjs';
 
 function sandbox() {
-	const dir = mkdtempSync(join(tmpdir(), 'wp-starter-guards-'));
+	const dir = mkdtempSync(join(tmpdir(), 'futurebase-guards-'));
 	return { dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 

@@ -1,6 +1,6 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
-	"$id": "https://wp-starter.local/schemas/metrics.schema.json",
+	"$id": "https://futurebase.local/schemas/metrics.schema.json",
 	"title": "Success metrics document",
 	"description": "A versioned document object (not a bare array) holding the agreed success metrics for a project.",
 	"type": "object",

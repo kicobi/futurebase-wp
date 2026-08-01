@@ -1,5 +1,5 @@
 /**
- * ESLint config override for wp-starter.
+ * ESLint config override for futurebase.
  *
  * Extends @wordpress/scripts' default flat config and adds a single
  * settings key: `import/core-modules` for every `@wordpress/*` package

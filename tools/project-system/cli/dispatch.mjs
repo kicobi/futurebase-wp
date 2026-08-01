@@ -1,6 +1,6 @@
 // cli/dispatch.mjs — top-level command router.
 //
-// Usage: wp-starter <group> <command> [args] [flags]
+// Usage: futurebase <group> <command> [args] [flags]
 // Phase 1 implements: lead init, lead inspect (and bare `lead` = list).
 // Other groups/commands are designed (see README) but not yet implemented.
 
@@ -40,6 +40,7 @@ const OPTIONS = {
 	platform: { type: 'string' },
 	slug: { type: 'string' },
 	'workspace-root': { type: 'string' },
+	'futurebase-path': { type: 'string' },
 	'starter-path': { type: 'string' },
 	// promote / archive
 	org: { type: 'string' },
@@ -67,6 +68,7 @@ const OPTIONS = {
 	fetch: { type: 'boolean', default: false },
 	apply: { type: 'boolean', default: false },
 	'repair-provenance': { type: 'boolean', default: false },
+	'repair-source-path': { type: 'boolean', default: false },
 	// compare / survey / tasks
 	'baseline-run': { type: 'string' },
 	'final-run': { type: 'string' },
@@ -88,46 +90,47 @@ const OPTIONS = {
 	version: { type: 'boolean', default: false },
 };
 
-const HELP = `wp-starter — project lifecycle CLI
+const HELP = `futurebase — project lifecycle CLI
 
 Usage:
-  wp-starter lead init "<Client Name>" --type new|redesign [flags]
-  wp-starter lead inspect [<slug>]
-  wp-starter lead                       # list lead workspaces
-  wp-starter lead promote <slug> [--dry-run] [--confirm]
-  wp-starter lead archive <slug> [--reason lost|abandoned]
+  futurebase lead init "<Client Name>" --type new|redesign [flags]
+  futurebase lead inspect [<slug>]
+  futurebase lead                       # list lead workspaces
+  futurebase lead promote <slug> [--dry-run] [--confirm]
+  futurebase lead archive <slug> [--reason lost|abandoned]
 
-  wp-starter baseline init [--type new|redesign] [--url <base>] [--page name=url]
-  wp-starter baseline run [--module crawl|screenshots|lighthouse|axe|manual]
-  wp-starter baseline inspect
-  wp-starter baseline report [--run-id <id>]
+  futurebase baseline init [--type new|redesign] [--url <base>] [--page name=url]
+  futurebase baseline run [--module crawl|screenshots|lighthouse|axe|manual]
+  futurebase baseline inspect
+  futurebase baseline report [--run-id <id>]
 
-  wp-starter metrics suggest [--preset <name>] [--dry-run]
-  wp-starter metrics review
-  wp-starter metrics validate
-  wp-starter metrics baseline --id <id> --value <v> [--unit <u>] [--at <when>]
-  wp-starter metrics client-message [--write]
-  wp-starter metrics survey --period baseline|30-days|90-days [--write]
-  wp-starter metrics follow-up               # combine survey periods + metric checklist
+  futurebase metrics suggest [--preset <name>] [--dry-run]
+  futurebase metrics review
+  futurebase metrics validate
+  futurebase metrics baseline --id <id> --value <v> [--unit <u>] [--at <when>]
+  futurebase metrics client-message [--write]
+  futurebase metrics survey --period baseline|30-days|90-days [--write]
+  futurebase metrics follow-up               # combine survey periods + metric checklist
 
-  wp-starter final run [--module <m>]        # capture the launch/pre-launch state
-  wp-starter final report [--run-id <id>]
-  wp-starter compare [--baseline-run <id>] [--final-run <id>]
+  futurebase final run [--module <m>]        # capture the launch/pre-launch state
+  futurebase final report [--run-id <id>]
+  futurebase compare [--baseline-run <id>] [--final-run <id>]
 
-  wp-starter sync [--ref <ref>] [--fetch] [--only safe|deps|review]
-                  [--apply --confirm] [--repair-provenance]
+  futurebase sync [--ref <ref>] [--fetch] [--only safe|deps|review]
+                  [--apply --confirm] [--repair-provenance] [--repair-source-path]
 
-  wp-starter project init [--name <n>] [--slug <s>] [--type new|redesign]
-  wp-starter project inspect | status | validate
-  wp-starter project tasks [--format markdown|json|github] [--launch-date <date>]
-  wp-starter project case-study
+  futurebase project init [--name <n>] [--slug <s>] [--type new|redesign]
+  futurebase project inspect | status | validate
+  futurebase project tasks [--format markdown|json|github] [--launch-date <date>]
+  futurebase project case-study
 
 Flags:
   --type new|redesign            project type (required for init)
   --platform codeable|direct|other   default: codeable
   --slug <slug>                  override the slug derived from the name
   --workspace-root <path>        leads root (default: ~/Sites/leads)
-  --starter-path <path>          wp-starter checkout (default: auto-detected)
+  --futurebase-path <path>       Futurebase checkout (default: auto-detected)
+  --starter-path <path>          deprecated alias for --futurebase-path (2.x)
   --git / --no-git               initialize git in the lead (default: no-git)
   --json                         machine-readable output
   --non-interactive              never prompt; fail if a required value is missing
@@ -139,8 +142,9 @@ Flags:
             --run-id <id> --dry-run
   metrics:  --preset <name> --id <id> --value <v> --unit <u> --at <when>
             --status <s> --write --dry-run
-  sync:     --ref <ref> (default origin/main) --starter-path <p> --fetch
+  sync:     --ref <ref> (default origin/main) --futurebase-path <p> --fetch
             --only safe|deps|review --apply --confirm --repair-provenance
+            --repair-source-path
   compare:  --baseline-run <id> --final-run <id>
   survey:   --period baseline|30-days|90-days --write
   project:  --name <n> --slug <s> --type new|redesign --force
@@ -161,6 +165,11 @@ export async function main(argv) {
 
 	const flags = parsed.values;
 	const positionals = parsed.positionals;
+	if (flags['futurebase-path'] && flags['starter-path'] && flags['futurebase-path'] !== flags['starter-path']) {
+		die('--futurebase-path and --starter-path disagree', EXIT.INVALID_CONFIG);
+	}
+	if (flags['starter-path']) console.error('warning: --starter-path is deprecated; use --futurebase-path (supported through Futurebase 2.x)');
+	flags['starter-path'] = flags['futurebase-path'] || flags['starter-path'];
 	// git is opt-in; --no-git wins over --git.
 	flags.git = flags.git && !flags['no-git'];
 

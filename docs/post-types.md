@@ -27,7 +27,7 @@ npm run cpt:new -- person --plural people   # irregular plurals
 
 Generates `inc/post-types/case-study.php` with a full `register_post_type()` call: i18n-ready labels, `show_in_rest: true`, default supports (title, editor, thumbnail, excerpt, revisions, author), dashicon menu icon, and an `init` hook.
 
-The file auto-loads via `wp_starter_load_post_types()` in [functions.php](../functions.php) — no manual `require` needed.
+The file auto-loads via `futurebase_load_post_types()` in [functions.php](../functions.php) — no manual `require` needed.
 
 Slug rules: lowercase, dashes only, starts with a letter. The scaffold converts dashes to underscores for the post type key (`case-study` → `case_study`) so the key matches WordPress conventions.
 
@@ -66,14 +66,14 @@ Stay theme-coupled when:
 Custom post types usually want custom taxonomies (categories / tags specific to the CPT). There's no scaffold for taxonomies — the scaffold would be trivial and the registration is short. Put the taxonomy registration in the same `inc/post-types/<slug>.php` file as the post type it belongs to:
 
 ```php
-function wp_starter_register_case_study_taxonomies() {
+function futurebase_register_case_study_taxonomies() {
 	register_taxonomy(
 		'industry',
 		'case_study',
 		array(
 			'labels'       => array(
-				'name'          => __( 'Industries', 'wp-starter' ),
-				'singular_name' => __( 'Industry', 'wp-starter' ),
+				'name'          => __( 'Industries', 'futurebase' ),
+				'singular_name' => __( 'Industry', 'futurebase' ),
 			),
 			'public'       => true,
 			'show_in_rest' => true,
@@ -81,7 +81,7 @@ function wp_starter_register_case_study_taxonomies() {
 		)
 	);
 }
-add_action( 'init', 'wp_starter_register_case_study_taxonomies' );
+add_action( 'init', 'futurebase_register_case_study_taxonomies' );
 ```
 
 `show_in_rest: true` is required if you want the taxonomy to appear in the block editor's sidebar.

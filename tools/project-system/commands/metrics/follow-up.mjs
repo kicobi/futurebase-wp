@@ -1,6 +1,6 @@
 // commands/metrics/follow-up.mjs — combine survey periods into a follow-up report.
 //
-// wp-starter metrics follow-up [--json] [--project-root <p>]
+// futurebase metrics follow-up [--json] [--project-root <p>]
 //
 // Reads .project/follow-up/survey-*.yml, computes satisfaction deltas
 // (baseline → 30/90 days), lists the agreed success metrics as a status
@@ -39,7 +39,7 @@ export function metricsFollowUp(_positional, flags) {
 	}
 
 	if (!Object.keys(surveys).length) {
-		const msg = invalid.length ? `no usable survey results (${invalid.join('; ')})` : 'no filled survey results — run: wp-starter metrics survey --period 30-days --write, fill the .yml, then re-run';
+		const msg = invalid.length ? `no usable survey results (${invalid.join('; ')})` : 'no filled survey results — run: futurebase metrics survey --period 30-days --write, fill the .yml, then re-run';
 		die(msg, EXIT.ACCESS_FAILURE, { json });
 	}
 

@@ -1,68 +1,55 @@
 #!/usr/bin/env bash
-#
-# bin/test-rename.sh — non-regression smoke test for bin/rename-theme.sh.
-#
-# Two phases, each in its own throwaway git worktree:
-#
-#   1. Collision safety (Issue #4): rename to a slug that embeds the old slug
-#      as a substring must NOT produce double-suffix output.
-#   2. Real rename: rename to a normal slug must succeed CLEANLY (exit 0 — i.e.
-#      no "unexpected leftovers"), apply the snake_case prefix and text domain,
-#      and leave the tools/project-system templates untouched (they carry the
-#      starter's own identity, not client slugs).
-#
-# Phase 2 exists because phase 1 aborts early on the collision guard and never
-# exercises the main substitution/scan path — which is exactly how a shell
-# parse bug in that path (macOS bash 3.2 mishandling of quotes/backticks/parens
-# inside the process substitution) once shipped undetected.
-#
-# Worktrees are torn down regardless of pass/fail, so this is safe to run from
-# verify-theme.sh or locally against a dirty working tree.
-#
-# Usage:       bash bin/test-rename.sh
-# Wired into:  bin/verify-theme.sh
-# Issue:       https://github.com/studiokicobi/wp-starter/issues/4
+# Non-regression smoke test for the Futurebase-to-client rename contract.
 
 set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-# Precondition: only meaningful on the starter itself, whose Text Domain is
-# still the slug rename-theme.sh renames *from* (OLD_SLUG). A promoted project
-# has rewritten it, so a dry rename would find nothing to exercise — skip.
-#
-# Anchor on the Text Domain line specifically. style.css keeps a Theme URI
-# pointing at the template's origin repo (…/wp-starter) in every promoted
-# project, so a substring match against the whole file would always succeed
-# and no fork could ever skip. rename-theme.sh excludes this file so the
-# sentinel below survives promotion; both halves are required.
-if ! grep -qiE '^Text Domain:[[:space:]]*wp-starter[[:space:]]*$' style.css 2>/dev/null; then
+CONTRACT="$ROOT/tools/project-system/config/rename-contract.sh"
+if [ ! -f "$CONTRACT" ]; then
+	echo "rename non-regression: FAIL (shared contract missing)"
+	exit 1
+fi
+# shellcheck source=../tools/project-system/config/rename-contract.sh
+source "$CONTRACT"
+
+REQUIRE_TEMPLATE=0
+if [ "${1:-}" = "--require-template" ]; then
+	REQUIRE_TEMPLATE=1
+	shift
+fi
+if [ "$#" -ne 0 ]; then
+	echo "usage: bash bin/test-rename.sh [--require-template]" >&2
+	exit 1
+fi
+
+if ! grep -qE "$FUTUREBASE_TEMPLATE_TEXT_DOMAIN_RE" style.css 2>/dev/null; then
+	if [ "$REQUIRE_TEMPLATE" -eq 1 ]; then
+		echo "rename non-regression: FAIL (Futurebase template sentinel missing)"
+		exit 1
+	fi
 	echo "rename non-regression: skipped (repo is no longer in template state)"
 	exit 0
 fi
 
 WORKTREES=()
-LOG="$(mktemp -t wp-starter-rename-test-log.XXXXXX)"
+LOG="$(mktemp -t rename-contract-test-log.XXXXXX)"
 
 cleanup() {
 	local code=$?
-	if [ "${#WORKTREES[@]}" -gt 0 ]; then
-		for wt in "${WORKTREES[@]}"; do
-			[ -n "$wt" ] && [ -d "$wt" ] && git worktree remove --force "$wt" > /dev/null 2>&1 || true
-		done
-	fi
+	for worktree in "${WORKTREES[@]-}"; do
+		[ -n "$worktree" ] && [ -d "$worktree" ] && git worktree remove --force "$worktree" >/dev/null 2>&1 || true
+	done
 	[ -n "$LOG" ] && rm -f "$LOG" 2>/dev/null || true
-	exit $code
+	exit "$code"
 }
 trap cleanup EXIT
 
-# Create a detached worktree at HEAD and record it for cleanup. Sets NEW_WT.
-# NOTE: must run in the CURRENT shell (not $(...)) so WORKTREES accumulates.
 NEW_WT=""
 make_worktree() {
-	NEW_WT="$(mktemp -d -t wp-starter-rename-test.XXXXXX)"
-	if ! git worktree add --quiet --detach "$NEW_WT" HEAD > /dev/null 2>&1; then
+	NEW_WT="$(mktemp -d -t rename-contract-test.XXXXXX)"
+	if ! git worktree add --quiet --detach "$NEW_WT" HEAD >/dev/null 2>&1; then
 		echo "rename non-regression: FAIL (could not create worktree)"
 		exit 1
 	fi
@@ -71,139 +58,153 @@ make_worktree() {
 
 FAILED=0
 
-# --- Phase 1: collision safety (Issue #4) -----------------------------------
-TEST_SLUG="wp-starter-collision-probe"
-DOUBLED="${TEST_SLUG}-${TEST_SLUG#wp-starter-}"
-DOUBLED_SNAKE="$(echo "$DOUBLED" | tr '-' '_')"
-
+# A slug containing the base token must abort before writing anything.
+TEST_SLUG="${FUTUREBASE_BASE_SLUG}-collision-probe"
+DOUBLED="${TEST_SLUG}-${TEST_SLUG#${FUTUREBASE_BASE_SLUG}-}"
 make_worktree
 WT1="$NEW_WT"
-
-# Non-zero exit is acceptable here — the safety check is expected to abort on a
-# substring-collision slug. The assertion is that no double-suffix appears.
-bash "$WT1/bin/rename-theme.sh" "$TEST_SLUG" > "$LOG" 2>&1 || true
-
-doubled=$(grep -rn --exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=.git --exclude-dir=build -- "$DOUBLED" "$WT1" 2>/dev/null | head -20 || true)
-doubled_snake=$(grep -rn --exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=.git --exclude-dir=build -- "$DOUBLED_SNAKE" "$WT1" 2>/dev/null | head -20 || true)
-
-if [ -n "$doubled" ] || [ -n "$doubled_snake" ]; then
+bash "$WT1/bin/rename-theme.sh" "$TEST_SLUG" >"$LOG" 2>&1 || true
+if grep -rIn --exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=.git --exclude-dir=build -- "$DOUBLED" "$WT1" >/dev/null 2>&1; then
 	FAILED=1
-	echo "rename non-regression: FAIL — double-suffix patterns found after rename:"
-	[ -n "$doubled" ]       && printf '%s\n' "$doubled"       | sed 's/^/    /'
-	[ -n "$doubled_snake" ] && printf '%s\n' "$doubled_snake" | sed 's/^/    /'
+	echo "rename non-regression: FAIL — collision rename produced double-suffix output"
 else
-	echo "  collision-safety: OK ($TEST_SLUG produced no double-suffix output)"
+	echo "  collision-safety: OK"
 fi
 
-# --- Phase 2: a real rename succeeds cleanly --------------------------------
+# Exercise the complete real interface in a cold detached worktree.
 REAL_SLUG="acme-client-probe"
 REAL_SNAKE="acme_client_probe"
 REAL_UPPER="ACME_CLIENT_PROBE"
-
+REAL_NAME="Acme Client Probe"
+REAL_VERSION="1.0.0"
+REAL_REPOSITORY="acme/acme-client-probe"
 make_worktree
 WT2="$NEW_WT"
 
-if bash "$WT2/bin/rename-theme.sh" "$REAL_SLUG" > "$LOG" 2>&1; then
+if bash "$WT2/bin/rename-theme.sh" "$REAL_SLUG" \
+	--theme-name "$REAL_NAME" \
+	--theme-version "$REAL_VERSION" \
+	--theme-uri "https://github.com/$REAL_REPOSITORY" \
+	--repository "$REAL_REPOSITORY" >"$LOG" 2>&1; then
 	RC=0
 else
 	RC=$?
 fi
 
 problems=()
-[ "$RC" -eq 0 ] || problems+=("rename exited $RC (expected 0 — 'unexpected leftovers' or a shell parse error)")
-grep -q "${REAL_SNAKE}_" "$WT2/functions.php" 2>/dev/null || problems+=("functions.php missing the ${REAL_SNAKE}_ prefix")
-grep -qi "text domain:[[:space:]]*${REAL_SLUG}" "$WT2/style.css" 2>/dev/null || problems+=("style.css Text Domain was not renamed to ${REAL_SLUG}")
-tmpl="$WT2/tools/project-system/templates/lead/CLAUDE.md"
-if [ -f "$tmpl" ]; then
-	grep -q 'wp-starter' "$tmpl" 2>/dev/null || problems+=("tools/project-system template literal 'wp-starter' was rewritten (exclusion broken)")
+[ "$RC" -eq 0 ] || problems+=("rename exited $RC")
+if [ "$RC" -eq 0 ]; then
+	if ! bash "$WT2/bin/rename-theme.sh" "$REAL_SLUG" \
+		--theme-name "$REAL_NAME" \
+		--theme-version "$REAL_VERSION" \
+		--theme-uri "https://github.com/$REAL_REPOSITORY" \
+		--repository "$REAL_REPOSITORY" >"$LOG" 2>&1; then
+		problems+=("second identical rename was not idempotent")
+	fi
+fi
+grep -q "${REAL_SNAKE}_" "$WT2/functions.php" 2>/dev/null || problems+=("functions.php missing client prefix")
+grep -q "${REAL_UPPER}_" "$WT2/inc/navigation-migration.php" 2>/dev/null || problems+=("navigation migration missing client constant")
+grep -qE "^Theme Name:[[:space:]]*$REAL_NAME$" "$WT2/style.css" 2>/dev/null || problems+=("Theme Name mismatch")
+grep -qE "^Text Domain:[[:space:]]*$REAL_SLUG$" "$WT2/style.css" 2>/dev/null || problems+=("Text Domain mismatch")
+grep -qE "^Version:[[:space:]]*$REAL_VERSION$" "$WT2/style.css" 2>/dev/null || problems+=("theme version mismatch")
+grep -qF "=== $REAL_NAME ===" "$WT2/readme.txt" 2>/dev/null || problems+=("readme title mismatch")
+grep -qE "^Stable tag:[[:space:]]*$REAL_VERSION$" "$WT2/readme.txt" 2>/dev/null || problems+=("readme stable tag mismatch")
+grep -qF '* Initial client theme release.' "$WT2/readme.txt" 2>/dev/null || problems+=("client changelog was not reset")
+[ ! -e "$WT2/docs/futurebase.md" ] || problems+=("Futurebase product narrative survived in client docs")
+[ ! -e "$WT2/docs/futurebase-company-site.md" ] || problems+=("Futurebase company-site brief survived in client docs")
+[ ! -e "$WT2/docs/assets/futurebase-social.png" ] || problems+=("Futurebase social asset survived in client docs")
+[ ! -e "$WT2/screenshot.png" ] || problems+=("Futurebase screenshot survived in the client theme")
+
+template_file="$WT2/tools/project-system/templates/lead/CLAUDE.md"
+if [ -f "$template_file" ]; then
+	grep -qF "$FUTUREBASE_TOOL_TEMPLATE_SENTINEL" "$template_file" 2>/dev/null || problems+=("tools contract was rewritten instead of copied verbatim")
 fi
 
-# Uppercase global names — PHP constants and the packaging script's env var —
-# belong to the same namespace phpcs PrefixAllGlobals checks against the
-# renamed `prefixes` element, so one left behind fails lint in the promoted
-# project. It went unnoticed for exactly as long as it did because the
-# substitution pass matched only the lowercase snake prefix AND the leftover
-# grep was case-sensitive: the rename exited 0 with the constant still there.
-#
-# Assert over the whole scanned surface rather than naming the one constant
-# that exposed it, so the next one is covered without editing this file.
-# tools/ is excluded for the reason it is excluded from the rename itself —
-# its WP_STARTER_* env vars are the starter tooling's own identity, and its
-# files are never rewritten in a promoted project.
-upper_left=$(
-	grep -rn \
-		--exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=.git \
-		--exclude-dir=build --exclude-dir=tools \
-		--exclude='rename-theme.sh' --exclude='test-rename.sh' \
-		-- 'WP_STARTER_' "$WT2" 2>/dev/null | head -20 || true
-)
+readme_count="$(grep -o "$FUTUREBASE_DISPLAY_SENTINEL" "$WT2/README.md" 2>/dev/null | wc -l | tr -d ' ')"
+[ "$readme_count" = "1" ] || problems+=("client README has $readme_count Futurebase occurrences; expected one")
+
+node - "$WT2/package.json" "$WT2/package-lock.json" <<'NODE' || problems+=("npm manifest/lock root identities disagree")
+const fs = require('node:fs');
+const manifest = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const lock = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
+const root = lock.packages?.[''];
+if (manifest.name !== 'acme-client-probe' || manifest.version !== '1.0.0') process.exit(1);
+if (lock.name !== manifest.name || lock.version !== manifest.version) process.exit(1);
+if (root?.name !== manifest.name || root?.version !== manifest.version) process.exit(1);
+NODE
+
+# No uppercase base names may remain outside base-owned tooling and the
+# contract-aware verification scripts that must keep their Futurebase names.
+upper_left="$(find "$WT2" -type f \
+	-not -path "$WT2/.git/*" \
+	-not -path "$WT2/node_modules/*" \
+	-not -path "$WT2/vendor/*" \
+	-not -path "$WT2/build/*" \
+	-not -path "$WT2/tools/*" \
+	-not -name 'rename-theme.sh' \
+	-not -name 'test-rename.sh' \
+	-not -name 'audit-identity.sh' \
+	-exec grep -IHn -- "$FUTUREBASE_UPPER_SENTINEL" {} + 2>/dev/null | head -20 || true)"
 if [ -n "$upper_left" ]; then
-	problems+=("uppercase WP_STARTER_ names survived the rename (phpcs PrefixAllGlobals will fail):")
-	while IFS= read -r line; do
-		[ -n "$line" ] && problems+=("    ${line#"$WT2"/}")
-	done <<< "$upper_left"
+	problems+=("uppercase Futurebase names survived outside tools: $upper_left")
 fi
 
-nav="$WT2/inc/navigation-migration.php"
-if [ -f "$nav" ]; then
-	grep -q "${REAL_UPPER}_" "$nav" 2>/dev/null || problems+=("inc/navigation-migration.php has no ${REAL_UPPER}_ constant — the uppercase prefix was dropped, not renamed")
-fi
-
-# Demo fixture + scorecard tooling must never hardcode the theme slug —
-# they derive it at runtime (pattern registry / style.css), so no 'wp-starter'
-# literal may survive a rename in these paths. rename-theme.sh does not scan
-# them; this asserts they never need it to.
-#
-# The bin/ half of that list is DERIVED from PORTABLE_BIN in the sync
-# classifier, never restated here. Those files are copied verbatim into client
-# projects because they are held to be slug-free, and this loop is the only
-# thing that makes that hold. A file added to PORTABLE_BIN without the property
-# actually being true would otherwise be synced into a project and undo its
-# rename — so a list we failed to keep in step is the exact failure to prevent.
-# Read the list from the WORKTREE being probed, not from the checkout this
-# script was launched in. They are the same file — rename never touches tools/ —
-# but only when the working tree is clean. Reading from the launch directory
-# meant an uncommitted PORTABLE_BIN edit probed files at HEAD that did not yet
-# have the property being added, and the guard failed on its own staleness
-# rather than on anything real.
-SYNC_LIB="tools/project-system/lib/sync.mjs"
-portable_bin=$(node -e "
+# PORTABLE_BIN is copied verbatim, so every listed file must derive identity at
+# runtime and contain no base slug after a client rename.
+SYNC_LIB="$WT2/tools/project-system/lib/sync.mjs"
+portable_bin="$(node -e "
 	const { pathToFileURL } = require('node:url');
-	import(pathToFileURL(process.argv[1]).href).then((m) => {
-		if (!Array.isArray(m.PORTABLE_BIN) || m.PORTABLE_BIN.length === 0) process.exit(2);
-		console.log(m.PORTABLE_BIN.join('\n'));
+	import(pathToFileURL(process.argv[1]).href).then((module) => {
+		if (!Array.isArray(module.PORTABLE_BIN) || module.PORTABLE_BIN.length === 0) process.exit(2);
+		console.log(module.PORTABLE_BIN.join('\\n'));
 	}).catch(() => process.exit(2));
-" "$WT2/$SYNC_LIB" 2>>"$LOG")
+" "$SYNC_LIB" 2>>"$LOG")"
 if [ -z "$portable_bin" ]; then
-	problems+=("could not read PORTABLE_BIN from $SYNC_LIB — the slug-free contract for bin/ is unverified")
+	problems+=("could not read PORTABLE_BIN")
 fi
-
 for probe in fixtures $portable_bin; do
 	target="$WT2/$probe"
 	if [ ! -e "$target" ]; then
-		# fixtures/ is probed opportunistically; a PORTABLE_BIN entry that does
-		# not exist means sync would offer a path the starter no longer ships.
-		[ "$probe" = "fixtures" ] || problems+=("$probe is listed in PORTABLE_BIN but does not exist")
+		[ "$probe" = fixtures ] || problems+=("$probe is listed in PORTABLE_BIN but missing")
 		continue
 	fi
-	leftovers=$(grep -rInl -- 'wp-starter' "$target" 2>/dev/null || true)
-	if [ -n "$leftovers" ]; then
-		problems+=("$probe still contains a 'wp-starter' literal after rename (derive the slug at runtime instead)")
+	if grep -rInl -- "$FUTUREBASE_BASE_SLUG" "$target" >/dev/null 2>&1; then
+		problems+=("$probe contains the base slug but is copied verbatim")
 	fi
 done
 
 if [ "${#problems[@]}" -gt 0 ]; then
 	FAILED=1
 	echo "rename non-regression: FAIL — real rename ($REAL_SLUG):"
-	for p in "${problems[@]}"; do echo "    - $p"; done
+	for problem in "${problems[@]}"; do echo "    - $problem"; done
 	echo "  rename output (tail):"
-	tail -20 "$LOG" | sed 's/^/    /'
+	tail -25 "$LOG" | sed 's/^/    /'
 else
-	echo "  real-rename: OK ($REAL_SLUG applied cleanly; tools/ preserved)"
+	echo "  real-rename: OK ($REAL_SLUG applied cleanly; tools preserved)"
 fi
 
-if [ "$FAILED" -ne 0 ]; then
-	exit 1
+# Standalone use keeps the Futurebase repository as Theme URI when no client
+# URI is supplied. That is the runtime backstop's sole intentional exception.
+STANDALONE_SLUG="standalone-client-probe"
+STANDALONE_NAME="Standalone Client Probe"
+make_worktree
+WT3="$NEW_WT"
+standalone_problems=()
+if ! bash "$WT3/bin/rename-theme.sh" "$STANDALONE_SLUG" >"$LOG" 2>&1; then
+	standalone_problems+=("standalone rename failed")
+fi
+grep -qF "Theme Name: $STANDALONE_NAME" "$WT3/style.css" 2>/dev/null || standalone_problems+=("standalone display-name default mismatch")
+grep -qE "^Text Domain:[[:space:]]*$STANDALONE_SLUG$" "$WT3/style.css" 2>/dev/null || standalone_problems+=("standalone text domain mismatch")
+grep -qE '^Theme URI:[[:space:]]*https://github\.com/studiokicobi/futurebase$' "$WT3/style.css" 2>/dev/null || standalone_problems+=("standalone Theme URI compatibility exception missing")
+if [ "${#standalone_problems[@]}" -gt 0 ]; then
+	FAILED=1
+	echo "rename non-regression: FAIL — standalone rename ($STANDALONE_SLUG):"
+	for problem in "${standalone_problems[@]}"; do echo "    - $problem"; done
+	echo "  rename output (tail):"
+	tail -25 "$LOG" | sed 's/^/    /'
+else
+	echo "  standalone-rename: OK (default identity and Theme URI exception)"
 fi
 
+[ "$FAILED" -eq 0 ] || exit 1
 echo "rename non-regression: OK"

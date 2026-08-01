@@ -22,10 +22,10 @@ Start with classification, then use the matching skill:
 
 This repo also carries the **project lifecycle system** in [tools/project-system/](tools/project-system/) — isolated lead workspaces, promotion into active projects, baselines, and success metrics. See [docs/project-lifecycle.md](docs/project-lifecycle.md) and [docs/baseline-system.md](docs/baseline-system.md).
 
-- **Prospective client work does not happen in this repo.** New client planning (briefs, discovery, scope, estimates) lives in a local, isolated lead workspace under `~/Sites/leads/<slug>/`, created by `wp-starter lead init`. Keep client-specific analysis there — never mix it into the shared starter.
+- **Prospective client work does not happen in this repo.** New client planning (briefs, discovery, scope, estimates) lives in a local, isolated lead workspace under `~/Sites/leads/<slug>/`, created by `futurebase lead init`. Keep client-specific analysis there — never mix it into the shared starter.
 - **`/planning/` (gitignored) is for starter-development scratch only**, not client planning.
-- When a lead is awarded, it is **promoted** (`wp-starter lead promote <slug>`), which wraps the existing template + `npm run rename` flow, copies the lead dossier into `.project/`, and switches agent instructions to active-project mode. Do not convert a lead by hand.
-- **Phrase → command routing.** The CLI is not on PATH — run `node tools/project-system/bin/wp-starter.mjs …` from the repo root. When a request matches one of these, use the CLI instead of hand-rolling:
+- When a lead is awarded, it is **promoted** (`futurebase lead promote <slug>`), which wraps the existing template + `npm run rename` flow, copies the lead dossier into `.project/`, and switches agent instructions to active-project mode. Do not convert a lead by hand.
+- **Phrase → command routing.** The CLI is not on PATH — run `node tools/project-system/bin/futurebase.mjs …` from the repo root. When a request matches one of these, use the CLI instead of hand-rolling:
   - "create a lead for `<client>`" → `lead init "<Client>" --type new|redesign --platform codeable`
   - "list leads" / "inspect the `<slug>` lead" → `lead` / `lead inspect <slug>`
   - "we won `<client>`" / "promote the lead" → `lead promote <slug> --confirm` (creates a real GitHub repo — needs that explicit ask; on a failed run, fix the cause and `--resume --confirm`; an empty clone means the `gh` template race — `git pull origin main` first)
@@ -48,6 +48,26 @@ Unless the task says otherwise:
 - use `theme.json` as the primary configuration layer for block themes
 - prefer patterns / template parts / supports / style variations over bespoke duplicate code
 - prefer the Interactivity API for block-level frontend interactions
+
+## Frontend house style: Every Layout & Inclusive Components
+
+Two skills cover how we build UI here:
+
+- **`every-layout`** — intrinsic, media-query-free CSS layout primitives: Stack, Box, Center, Cluster, Sidebar, Switcher, Cover, Grid, Frame, plus the underlying rudiments (units, modular scale, axioms, global vs. local styling).
+- **`inclusive-components`** — accessible component patterns: linked cards, toggle buttons, menus & menu buttons, tooltips & toggletips, theme switchers, tabbed interfaces, collapsible sections, content sliders, notifications & live regions, data tables, add/remove lists, and modal dialogs.
+
+Both are distilled from the Heydon Pickering books of the same names. Each reference file carries the recommended pattern *and* the approaches the books reject, with the reasoning — which is the part that matters, because the rejected version is usually the one you'd write by default.
+
+**Use them.** When a task involves arranging anything on a page, or building/modifying any interactive component, consult the relevant skill and read the specific reference file before writing code. Prefer these patterns over ad-hoc flexbox/grid one-offs, breakpoint-driven layout CSS, and hand-rolled ARIA. If you deviate, say why.
+
+A couple of standing preferences that follow from them:
+
+- Clickable cards use a heading-wrapped anchor as the only link, with the whole card made clickable via the pseudo-content trick or a redundant click handler — never an `<a>` wrapping the entire card.
+- Layout adapts to its container, not the viewport. Reach for Sidebar, Switcher, or Grid before writing a `@media` breakpoint.
+
+**Precedence against the Technical Contract.** Inside the homepage/front-page workflow, contract item 2 still wins: express spacing, alignment, and flex/grid behavior with block supports and `theme.json` before reaching for a layout primitive. Every Layout applies where custom CSS is already the right answer — `src/` block styles, site chrome, and anything outside that scope — and its values still resolve to `theme.json` tokens (contract item 1). The two agree on the substance; they disagree only on which layer expresses it, and in pattern markup the block layer goes first.
+
+**Availability.** These two are installed at *user* level (`~/.claude/skills/`, symlinked from `~/Sites/inclusive-skill` — private, derived from purchased books, not for redistribution). Unlike the vendored WordPress skills in `.claude/skills/`, they do **not** travel with a clone of this repo, and must not be committed into one. If they aren't loadable in the current session, the rules stated above are still in force: follow them from this file, and say the expanded reference wasn't available.
 
 ## Behavioral rules
 
@@ -72,7 +92,7 @@ When creating a theme-bound block:
 - scaffold with `npm run block:new -- <slug>` — do not hand-create the four files
 - slug is lowercase, dashes only (`author-card`, not `AuthorCard` or `author_card`)
 - never hand-edit files under `build/blocks/` — they're compiled output; edit `src/blocks/<slug>/` and run `npm run build`
-- no manual `register_block_type()` call is needed — `wp_starter_register_blocks()` in [functions.php](functions.php) auto-registers every `build/blocks/*/block.json` on `init`
+- no manual `register_block_type()` call is needed — `futurebase_register_blocks()` in [functions.php](functions.php) auto-registers every `build/blocks/*/block.json` on `init`
 - the scaffold generates a dynamic block (`render.php`, no `save.js`) — only add `save.js` if the block genuinely outputs static HTML, and accept the deprecation-maintenance burden that comes with it
 
 ## Theme-specific rules
@@ -89,7 +109,7 @@ When a project needs a custom post type:
 - consider the ACF Pro UI path first (see [docs/post-types.md](docs/post-types.md)) — code scaffolding is for structural/non-editorial CPTs or projects that value everything-in-git
 - scaffold code-registered CPTs with `npm run cpt:new -- <slug>` — do not hand-write the registration
 - slug is the singular form, lowercase, dashes only (`case-study`, not `CaseStudy` or `case_study`)
-- scaffolded files land in `inc/post-types/<slug>.php` and auto-load via `wp_starter_load_post_types()` in [functions.php](functions.php) — no manual require
+- scaffolded files land in `inc/post-types/<slug>.php` and auto-load via `futurebase_load_post_types()` in [functions.php](functions.php) — no manual require
 - always set `show_in_rest: true` so the block editor and block bindings can see the post type
 - after adding or changing a rewrite slug, flush permalinks (`wp rewrite flush` or re-save Settings → Permalinks) — stale rewrites surface as 404s on archive pages
 - if a project needs CPTs to survive theme switches, move the generated file to a must-use plugin — the registration code is portable unchanged

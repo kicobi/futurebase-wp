@@ -1,18 +1,18 @@
 <?php
 /**
  * Title: Home
- * Slug: wp-starter/home
+ * Slug: futurebase/home
  * Inserter: no
  * Description: Composite homepage — references the section patterns in order. Referenced by templates/front-page.html.
  *
- * @package wp-starter
+ * @package futurebase
  */
 
 ?>
-<!-- wp:pattern {"slug":"wp-starter/section-hero"} /-->
+<!-- wp:pattern {"slug":"futurebase/section-hero"} /-->
 
-<!-- wp:pattern {"slug":"wp-starter/section-cards"} /-->
+<!-- wp:pattern {"slug":"futurebase/section-cards"} /-->
 
-<!-- wp:pattern {"slug":"wp-starter/section-writing"} /-->
+<!-- wp:pattern {"slug":"futurebase/section-writing"} /-->
 
-<!-- wp:pattern {"slug":"wp-starter/section-cta"} /-->
+<!-- wp:pattern {"slug":"futurebase/section-cta"} /-->

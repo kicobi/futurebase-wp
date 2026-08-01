@@ -1,6 +1,6 @@
 // commands/project/case-study.mjs — export an editable case-study Markdown draft.
 //
-// wp-starter project case-study [--json] [--project-root <p>]
+// futurebase project case-study [--json] [--project-root <p>]
 //
 // Pulls the story together from the project record: situation, agreed goals,
 // before/after (if a comparison exists), and caveats. An editable starting
@@ -56,7 +56,7 @@ export function caseStudy(_positional, flags) {
 	md.push('## Agreed goals & how we measured success');
 	md.push('');
 	if (metrics?.items?.length) for (const m of metrics.items) md.push(`- **${m.title}** — ${m.category}, measured by ${m.evidence_type} (owner: ${m.owner})`);
-	else md.push('- _(no success metrics recorded — run `wp-starter metrics suggest`)_');
+	else md.push('- _(no success metrics recorded — run `futurebase metrics suggest`)_');
 	md.push('');
 	md.push('## What was built');
 	md.push('');
@@ -81,7 +81,7 @@ export function caseStudy(_positional, flags) {
 		for (const r of comparison.rows.filter((x) => x.change === 'better')) md.push(`| ${r.label} | ${fmt(r.before, r.unit)} | ${fmt(r.after, r.unit)} |`);
 		md.push('');
 	} else {
-		md.push('_(run `wp-starter baseline run`, `wp-starter final run`, then `wp-starter compare` to populate before/after.)_');
+		md.push('_(run `futurebase baseline run`, `futurebase final run`, then `futurebase compare` to populate before/after.)_');
 		md.push('');
 	}
 	md.push('## What still needs to be learned');

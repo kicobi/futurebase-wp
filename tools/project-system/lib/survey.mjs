@@ -101,7 +101,7 @@ export function surveyMarkdown(period, projectName, metrics) {
 		for (const m of metrics.items.filter((x) => x.category !== 'delivery')) lines.push(`- ${m.title}`);
 		lines.push('');
 	}
-	lines.push(`_Record answers in survey-${period}.yml, then run: wp-starter metrics follow-up_`);
+	lines.push(`_Record answers in survey-${period}.yml, then run: futurebase metrics follow-up_`);
 	return lines.join('\n');
 }
 

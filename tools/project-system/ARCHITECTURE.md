@@ -72,7 +72,7 @@ failure · `6` privacy/safety violation.
 
 - **M0 (done):** schemas + templates + presets + example + validator + rename
   exclusion. No lifecycle CLI.
-- **Phase 1 (done):** `lead init`, templates, `wp-starter-context.md` generator,
+- **Phase 1 (done):** `lead init`, templates, `futurebase-context.md` generator,
   `lead inspect` — the CLI (`bin/`, `cli/`, `commands/lead/`, `lib/`).
 - **Phase 2 (done):** `lead promote` (wrap gh + rename, confirmation gate,
   receipt-backed clone recovery via `--reuse-remote`, destination checkpoints

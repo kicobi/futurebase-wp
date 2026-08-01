@@ -43,3 +43,9 @@ auth.json
 
 # Private planning docs — pricing, internal notes, scope drafts, client history. Never commit.
 /planning/
+
+# Promotion recovery state (current + 2.x compatibility reader).
+.futurebase-promotion.json
+.futurebase-promotion-*.json
+.wp-starter-promotion.json
+.wp-starter-promotion-*.json

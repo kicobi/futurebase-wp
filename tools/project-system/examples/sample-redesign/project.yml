@@ -12,7 +12,7 @@ project:
   created_at: "2026-07-03"
 
 starter:
-  source_path: /Users/example/Sites/wp-starter
+  source_path: /Users/example/Sites/futurebase
   template_commit: "0000000000000000000000000000000000000000"
   promoted_at: "2026-07-03T10:00:00Z"
 

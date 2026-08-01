@@ -1,6 +1,6 @@
 // commands/metrics/baseline.mjs — record a measured baseline value for a metric.
 //
-// wp-starter metrics baseline --id <id> --value <v> [--unit <u>] [--at <when>]
+// futurebase metrics baseline --id <id> --value <v> [--unit <u>] [--at <when>]
 //     [--status measured|estimated_by_client|inferred|unavailable|not_applicable|establish_after_launch]
 
 import { EXIT, die, ok, info, emitJson } from '../../lib/output.mjs';
@@ -23,7 +23,7 @@ export function metricsBaseline(_positional, flags) {
 
 	const doc = loadMetrics(projectDir);
 	const metric = (doc.items || []).find((m) => m.id === id);
-	if (!metric) die(`no metric with id '${id}' (run: wp-starter metrics review)`, EXIT.ACCESS_FAILURE, { json });
+	if (!metric) die(`no metric with id '${id}' (run: futurebase metrics review)`, EXIT.ACCESS_FAILURE, { json });
 
 	const baseline = { status };
 	if (flags.value != null) {

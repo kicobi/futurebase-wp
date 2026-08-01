@@ -11,16 +11,17 @@ const HERE = dirname(fileURLToPath(import.meta.url)); // tools/project-system/li
 // The tool's own root: tools/project-system/
 export const TOOL_ROOT = resolve(HERE, '..');
 
-// The wp-starter checkout that hosts this tool: three levels up from lib/.
+// The futurebase checkout that hosts this tool: three levels up from lib/.
 // Overridable with --starter-path for unusual layouts.
 export function starterRoot(override) {
 	return override ? resolve(override) : resolve(HERE, '..', '..', '..');
 }
 
 // Where lead workspaces live. Default ~/Sites/leads, overridable with
-// --workspace-root or the WP_STARTER_LEADS_ROOT env var (for tests).
+// --workspace-root or the FUTUREBASE_LEADS_ROOT env var (for tests).
 export function leadsRoot(override) {
 	if (override) return resolve(override);
+	if (process.env.FUTUREBASE_LEADS_ROOT) return resolve(process.env.FUTUREBASE_LEADS_ROOT);
 	if (process.env.WP_STARTER_LEADS_ROOT) return resolve(process.env.WP_STARTER_LEADS_ROOT);
 	return join(homedir(), 'Sites', 'leads');
 }

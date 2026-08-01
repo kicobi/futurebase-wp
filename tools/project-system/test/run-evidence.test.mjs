@@ -30,7 +30,7 @@ import { EXIT } from '../lib/output.mjs';
 import { captureExitCode } from '../commands/capture.mjs';
 
 function sandbox() {
-	const dir = mkdtempSync(join(tmpdir(), 'wp-starter-runs-'));
+	const dir = mkdtempSync(join(tmpdir(), 'futurebase-runs-'));
 	return { dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 

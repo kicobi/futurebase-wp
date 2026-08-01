@@ -1,6 +1,6 @@
 // commands/lead/inspect.mjs — report on a lead workspace (or list them all).
 //
-// wp-starter lead inspect [<slug>] [--workspace-root <path>] [--json]
+// futurebase lead inspect [<slug>] [--workspace-root <path>] [--json]
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -21,8 +21,14 @@ const CHECKS = [
 	['brief', 'brief/original-brief.md', '_Paste the client'],
 	['scope', 'proposal/scope.md', '_What is in scope'],
 	['metrics', 'metrics/proposed-success-metrics.md', '_Draft the measures'],
-	['starter-context', 'references/wp-starter-context.md', null],
+	['starter-context', ['references/futurebase-context.md', 'references/wp-starter-context.md'], null],
 ];
+
+function dossierState(dir, rel, marker) {
+	const candidates = Array.isArray(rel) ? rel : [rel];
+	const existing = candidates.find((candidate) => existsSync(join(dir, candidate)));
+	return existing ? fileState(join(dir, existing), marker) : 'missing';
+}
 
 function listLeads(root, json) {
 	let entries = [];
@@ -41,7 +47,7 @@ function listLeads(root, json) {
 	if (json) emitJson({ status: 'ok', leads_root: root, leads: entries });
 	if (!entries.length) {
 		warn(`no lead workspaces found under ${root}`);
-		info('create one with:  wp-starter lead init "Client Name" --type redesign');
+		info('create one with:  futurebase lead init "Client Name" --type redesign');
 		process.exit(EXIT.OK);
 	}
 	console.log(c.bold(`Lead workspaces (${root}):`));
@@ -81,7 +87,7 @@ export function leadInspect(positional, flags) {
 	}
 
 	const { valid, errors } = validateProject(config);
-	const dossier = Object.fromEntries(CHECKS.map(([key, rel, marker]) => [key, fileState(join(dir, rel), marker)]));
+	const dossier = Object.fromEntries(CHECKS.map(([key, rel, marker]) => [key, dossierState(dir, rel, marker)]));
 
 	if (json) {
 		emitJson(

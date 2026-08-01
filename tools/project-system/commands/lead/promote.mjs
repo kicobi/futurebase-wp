@@ -5,7 +5,7 @@
 // lead workspace is left byte-for-byte unchanged until the promotion commit
 // succeeds; only then is its status metadata updated (never deleted or moved).
 //
-// wp-starter lead promote <slug> [--org <o>] [--name <n>] [--dest <path>]
+// futurebase lead promote <slug> [--org <o>] [--name <n>] [--dest <path>]
 //     [--template <owner/repo>] [--dry-run] [--confirm] [--resume] [--reuse-remote]
 //     [--skip-secret-scan] [--json] [--non-interactive] [--starter-path <p>]
 
@@ -23,13 +23,21 @@ import { run, have, gitHead, isGitRepo, ghRepoExists } from '../../lib/proc.mjs'
 import { scanFiles } from '../../lib/secret-scan.mjs';
 
 const DEFAULT_ORG = 'studiokicobi';
-const DEFAULT_TEMPLATE = 'studiokicobi/wp-starter';
+const DEFAULT_TEMPLATE = 'studiokicobi/futurebase';
+const LEGACY_TEMPLATE = 'studiokicobi/wp-starter';
 const PROJECT_DIRS = ['brief', 'analysis', 'proposal', 'decisions', 'metrics', 'baseline', 'final', 'reports', 'follow-up'];
 // The checkpoint survives until AFTER the promotion commit, so that a commit
 // failure is still resumable — which makes the ignore line load-bearing rather
 // than belt-and-braces: it is what keeps `git add -A` from committing the
 // checkpoint into the project's first commit.
-const GITIGNORE_LINES = ['.project/private/', '.project/credentials/', '.project/auth/', '.project/**/raw-private/', '.wp-starter-promotion.json'];
+const GITIGNORE_LINES = [
+	'.project/private/',
+	'.project/credentials/',
+	'.project/auth/',
+	'.project/**/raw-private/',
+	'.futurebase-promotion.json',
+	'.wp-starter-promotion.json',
+];
 
 // --- dossier manifest -------------------------------------------------------
 //
@@ -92,7 +100,16 @@ export function classify(rel) {
 // refuses anything that does not match it. This is identity, not progress —
 // the steps are already individually idempotent; what was missing was any
 // assurance that the thing being resumed into is the thing we created.
-export const CHECKPOINT_FILE = '.wp-starter-promotion.json';
+export const CHECKPOINT_FILE = '.futurebase-promotion.json';
+export const LEGACY_CHECKPOINT_FILE = '.wp-starter-promotion.json';
+
+export function templateNamesEquivalent(left, right) {
+	if (typeof left !== 'string' || typeof right !== 'string') return false;
+	const a = left.toLowerCase();
+	const b = right.toLowerCase();
+	if (a === b) return true;
+	return new Set([a, b]).size === 2 && [a, b].every((value) => value === DEFAULT_TEMPLATE || value === LEGACY_TEMPLATE);
+}
 
 function writeCheckpoint(dest, data) {
 	const path = symlinkFreePath(dest, CHECKPOINT_FILE);
@@ -101,12 +118,15 @@ function writeCheckpoint(dest, data) {
 }
 
 function readCheckpoint(dest) {
-	try {
-		const path = symlinkFreePath(dest, CHECKPOINT_FILE);
-		return path ? JSON.parse(readFileSync(path, 'utf8')) : null;
-	} catch {
-		return null;
+	for (const filename of [CHECKPOINT_FILE, LEGACY_CHECKPOINT_FILE]) {
+		try {
+			const path = symlinkFreePath(dest, filename);
+			if (path && existsSync(path)) return JSON.parse(readFileSync(path, 'utf8'));
+		} catch {
+			return null;
+		}
 	}
+	return null;
 }
 
 // Why this destination may not be resumed, or null when it may. Exported so the
@@ -120,7 +140,7 @@ export function checkpointMismatch(cp, { slug, dest, remote, template }) {
 	// Provenance was recorded and then not checked, so a resume could switch
 	// templates mid-flight and the stamped project.yml would claim a commit
 	// from a template this destination was never built from.
-	if (template !== undefined && cp.template !== template) return `checkpoint records template ${cp.template}, not ${template}`;
+	if (template !== undefined && !templateNamesEquivalent(cp.template, template)) return `checkpoint records template ${cp.template}, not ${template}`;
 	return null;
 }
 
@@ -136,14 +156,32 @@ export function recoveryReceiptPath(dest, remote) {
 	const canonicalRemote = String(remote).toLowerCase();
 	const hash = createHash('sha256').update(`${canonicalDest}\0${canonicalRemote}`).digest('hex').slice(0, 20);
 	const parent = dirname(canonicalDest);
-	const path = symlinkFreePath(parent, `.wp-starter-promotion-${hash}.json`);
+	const path = symlinkFreePath(parent, `.futurebase-promotion-${hash}.json`);
 	if (!path) throw new Error(`recovery receipt path contains a symlink beside ${canonicalDest}`);
 	return path;
 }
 
+function legacyRecoveryReceiptPath(dest, remote) {
+	const canonicalDest = resolve(dest);
+	const canonicalRemote = String(remote).toLowerCase();
+	const hash = createHash('sha256').update(`${canonicalDest}\0${canonicalRemote}`).digest('hex').slice(0, 20);
+	const parent = dirname(canonicalDest);
+	const path = symlinkFreePath(parent, `.wp-starter-promotion-${hash}.json`);
+	if (!path) throw new Error(`legacy recovery receipt path contains a symlink beside ${canonicalDest}`);
+	return path;
+}
+
+function existingRecoveryReceiptPath(dest, remote) {
+	for (const path of [recoveryReceiptPath(dest, remote), legacyRecoveryReceiptPath(dest, remote)]) {
+		if (existsSync(path)) return path;
+	}
+	return null;
+}
+
 function readRecoveryReceipt(dest, remote) {
 	try {
-		return JSON.parse(readFileSync(recoveryReceiptPath(dest, remote), 'utf8'));
+		const path = existingRecoveryReceiptPath(dest, remote);
+		return path ? JSON.parse(readFileSync(path, 'utf8')) : null;
 	} catch {
 		return null;
 	}
@@ -253,7 +291,7 @@ export function recoveryReceiptMismatch(receipt, { slug, dest, remote, template 
 	if (receipt.lead_slug !== slug) return `recovery receipt belongs to lead "${receipt.lead_slug}", not "${slug}"`;
 	if (receipt.dest !== dest) return `recovery receipt records destination ${receipt.dest}, not ${dest}`;
 	if (receipt.remote.toLowerCase() !== remote.toLowerCase()) return `recovery receipt records remote ${receipt.remote}, not ${remote}`;
-	if (receipt.template.toLowerCase() !== template.toLowerCase()) return `recovery receipt records template ${receipt.template}, not ${template}`;
+	if (!templateNamesEquivalent(receipt.template, template)) return `recovery receipt records template ${receipt.template}, not ${template}`;
 	if (!live) return 'live GitHub repository identity could not be verified';
 	const liveStrings = ['repository_node_id', 'repository_full_name', 'repository_created_at', 'default_branch', 'initial_commit_sha', 'template_repository'];
 	const malformedLive = liveStrings.filter((key) => typeof live[key] !== 'string' || !live[key]);
@@ -268,7 +306,7 @@ export function recoveryReceiptMismatch(receipt, { slug, dest, remote, template 
 	if (live.repository_created_at !== receipt.repository_created_at) return 'the GitHub repository creation time changed';
 	if (live.default_branch !== receipt.default_branch) return 'the GitHub default branch changed';
 	if (live.initial_commit_sha !== receipt.initial_commit_sha) return 'the generated initial commit changed';
-	if (live.template_repository?.toLowerCase() !== receipt.template_repository.toLowerCase()) return 'the GitHub template identity changed';
+	if (!templateNamesEquivalent(live.template_repository, receipt.template_repository)) return 'the GitHub template identity changed';
 	if (live.template_repository?.toLowerCase() !== template.toLowerCase()) return 'the remote was not generated from the requested template';
 	return null;
 }
@@ -299,7 +337,7 @@ async function confirm(question) {
 // not whatever the local checkout happens to be on. Recording the local HEAD
 // therefore produces provenance that is silently wrong whenever the operator
 // is on a feature branch or is simply behind — which then misleads every later
-// `wp-starter sync`. Ask GitHub what it will copy. Live promotion refuses to
+// `futurebase sync`. Ask GitHub what it will copy. Live promotion refuses to
 // create a remote when that identity cannot be established; only the explicit
 // offline clone seam takes provenance from the local source checkout.
 function templatedCommit({ template, starter, usingSeam }) {
@@ -365,7 +403,8 @@ export async function leadPromote(positional, flags) {
 	const dest = flags.dest ? resolve(flags.dest) : join(homedir(), 'Sites', name);
 	const template = flags.template || DEFAULT_TEMPLATE;
 	const starter = starterRoot(flags['starter-path']);
-	const usingSeam = !!process.env.WP_STARTER_PROMOTE_CLONE_FROM;
+	const cloneFrom = process.env.FUTUREBASE_PROMOTE_CLONE_FROM || process.env.WP_STARTER_PROMOTE_CLONE_FROM || null;
+	const usingSeam = !!cloneFrom;
 	let templateCommit = templatedCommit({ template, starter, usingSeam });
 
 	// Collision checks.
@@ -413,7 +452,7 @@ export async function leadPromote(positional, flags) {
 	let recoveryReceiptFile = null;
 	if (flags['reuse-remote']) {
 		if (!have('gh')) die('gh (GitHub CLI) is required to verify and reuse the remote', EXIT.MISSING_DEP, { json });
-		recoveryReceiptFile = recoveryReceiptPath(dest, remote);
+		recoveryReceiptFile = existingRecoveryReceiptPath(dest, remote);
 		recoveryReceipt = readRecoveryReceipt(dest, remote);
 		const identityResult = repositoryIdentity(remote);
 		const mismatch = recoveryReceiptMismatch(recoveryReceipt, { slug, dest, remote, template }, identityResult.ok ? identityResult.identity : null);
@@ -498,6 +537,9 @@ export async function leadPromote(positional, flags) {
 
 	if (!have('git')) die('git is required for promotion', EXIT.MISSING_DEP, { json });
 	if (!usingSeam && !have('gh')) die('gh (GitHub CLI) is required for promotion', EXIT.MISSING_DEP, { json });
+	// Composer reconciliation runs after rename regardless of how the clone was
+	// created. Unlike the gh preflight, this must never be gated by usingSeam.
+	if (!have('composer')) die('composer is required for promotion', EXIT.MISSING_DEP, { json });
 	if (!usingSeam && !flags['reuse-remote'] && !templateCommit) {
 		die(`could not resolve the default-branch commit for template ${template}; no remote was created`, EXIT.ACCESS_FAILURE, { json });
 	}
@@ -519,7 +561,7 @@ export async function leadPromote(positional, flags) {
 
 		if (usingSeam) {
 			info(`Cloning local template into ${dest} …`);
-			const cloned = run('git', ['clone', '--quiet', process.env.WP_STARTER_PROMOTE_CLONE_FROM, dest]);
+			const cloned = run('git', ['clone', '--quiet', cloneFrom, dest]);
 			if (!cloned.ok) recover('clone', cloned.stderr || cloned.error?.message || 'local clone failed', EXIT.ACCESS_FAILURE, { showResume: false });
 		} else {
 			if (!flags['reuse-remote']) {
@@ -600,10 +642,8 @@ export async function leadPromote(positional, flags) {
 			});
 		}
 		if (recoveryReceiptFile) {
-			const safeReceipt = recoveryReceiptPath(dest, remote);
-			if (safeReceipt !== recoveryReceiptFile) recover('checkpoint', 'recovery receipt path changed unexpectedly', EXIT.ACCESS_FAILURE, { showResume: false });
 			try {
-				rmSync(safeReceipt);
+				rmSync(recoveryReceiptFile);
 			} catch (err) {
 				recover(
 					'checkpoint',
@@ -617,17 +657,23 @@ export async function leadPromote(positional, flags) {
 		// A process may stop after writing the destination checkpoint but before
 		// deleting the pre-clone receipt. The verified checkpoint is now the
 		// authority; remove only a receipt carrying the same identity nonce.
-		const staleReceiptFile = recoveryReceiptPath(dest, remote);
-		if (existsSync(staleReceiptFile)) {
-			const staleReceipt = readRecoveryReceipt(dest, remote);
-			if (staleReceipt?.nonce === checkpoint.nonce) {
+		for (const staleReceiptFile of [recoveryReceiptPath(dest, remote), legacyRecoveryReceiptPath(dest, remote)]) {
+			if (existsSync(staleReceiptFile)) {
+				let staleReceipt = null;
 				try {
-					rmSync(staleReceiptFile);
-				} catch (err) {
-					warn(`could not remove the superseded recovery receipt: ${err.message}`);
+					staleReceipt = JSON.parse(readFileSync(staleReceiptFile, 'utf8'));
+				} catch {
+					/* malformed receipts are left for manual inspection */
 				}
-			} else {
-				warn(`a recovery-receipt file exists beside the destination but does not match this checkpoint; it was left untouched: ${staleReceiptFile}`);
+				if (staleReceipt?.nonce === checkpoint.nonce) {
+					try {
+						rmSync(staleReceiptFile);
+					} catch (err) {
+						warn(`could not remove the superseded recovery receipt: ${err.message}`);
+					}
+				} else {
+					warn(`a recovery-receipt file exists beside the destination but does not match this checkpoint; it was left untouched: ${staleReceiptFile}`);
+				}
 			}
 		}
 	}
@@ -648,14 +694,45 @@ export async function leadPromote(positional, flags) {
 	if (before === slug) {
 		info('--resume: rename already applied, skipping');
 	} else {
-		if (before !== null && before !== 'wp-starter') {
+		if (before !== null && before !== 'futurebase') {
 			recover('rename', `style.css declares Text Domain "${before}" — neither the starter's nor "${slug}". This is not a fresh template checkout; refusing to rename over it.`, EXIT.INVALID_CONFIG);
 		}
 		info(`Renaming theme → ${slug} …`);
-		const renamed = run('npm', ['run', 'rename', '--', slug], { cwd: dest });
+		const renamed = run(
+			'npm',
+			[
+				'run',
+				'rename',
+				'--',
+				slug,
+				'--theme-name',
+				leadCfg.project.name,
+				'--theme-version',
+				'1.0.0',
+				'--theme-uri',
+				`https://github.com/${remote}`,
+				'--repository',
+				remote,
+			],
+			{ cwd: dest },
+		);
 		if (!renamed.ok) recover('rename', `npm run rename failed:\n${renamed.stderr || renamed.stdout}`, EXIT.MODULE_FAILURE);
 		const after = textDomain();
 		if (after !== slug) recover('rename', `rename reported success but style.css declares Text Domain "${after ?? '<none>'}" instead of "${slug}"`, EXIT.MODULE_FAILURE);
+	}
+
+	// Rename changes composer.json package identity, so the lock hash must be
+	// reconciled before the first client commit. update is quiet (and therefore
+	// suppresses Composer's untagged-root notice); validate is intentionally
+	// non-quiet and may print that harmless notice twice.
+	info('Reconciling Composer lock metadata …');
+	const composerUpdate = run('composer', ['update', '--lock', '--no-install', '--no-interaction', '--quiet'], { cwd: dest });
+	if (!composerUpdate.ok) {
+		recover('composer-lock', `composer update --lock failed:\n${composerUpdate.stderr || composerUpdate.stdout}`, EXIT.MODULE_FAILURE);
+	}
+	const composerValidate = run('composer', ['validate', '--no-check-publish'], { cwd: dest });
+	if (!composerValidate.ok) {
+		recover('composer-lock', `composer validate failed:\n${composerValidate.stderr || composerValidate.stdout}`, EXIT.MODULE_FAILURE);
 	}
 
 	// Step 4: scaffold .project/ and copy the dossier per the manifest.
@@ -769,9 +846,11 @@ export async function leadPromote(positional, flags) {
 	}
 
 	// Only now is there nothing left to resume.
-	const checkpointPath = symlinkFreePath(dest, CHECKPOINT_FILE);
-	if (!checkpointPath) recover('checkpoint-cleanup', 'checkpoint path became a symlink', EXIT.ACCESS_FAILURE);
-	rmSync(checkpointPath, { force: true });
+	for (const filename of [CHECKPOINT_FILE, LEGACY_CHECKPOINT_FILE]) {
+		const checkpointPath = symlinkFreePath(dest, filename);
+		if (!checkpointPath) recover('checkpoint-cleanup', 'checkpoint path became a symlink', EXIT.ACCESS_FAILURE);
+		rmSync(checkpointPath, { force: true });
+	}
 
 	// Step 8: SUCCESS — update lead metadata only now (never delete/move it).
 	try {

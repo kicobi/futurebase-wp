@@ -1,6 +1,6 @@
 // commands/baseline/inspect.mjs — show baseline config + latest run status.
 //
-// wp-starter baseline inspect [--project-root <p>] [--json]
+// futurebase baseline inspect [--project-root <p>] [--json]
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -29,12 +29,12 @@ export function baselineInspect(_positional, flags) {
 
 	console.log(c.bold(`Baseline — ${root}`));
 	if (!hasConfig) {
-		warn('no baseline config yet — run: wp-starter baseline init');
+		warn('no baseline config yet — run: futurebase baseline init');
 	} else {
 		info(`config: mode ${config.mode} · modules ${(config.modules || []).join(', ')} · ${(config.pages || []).length} pages · base_url ${config.base_url || '(none)'}`);
 	}
 	if (!runId) {
-		warn('no runs yet — run: wp-starter baseline run');
+		warn('no runs yet — run: futurebase baseline run');
 	} else {
 		console.log('');
 		console.log(c.bold(`Latest run: ${runId}  (${summary?.status ?? '?'})`));

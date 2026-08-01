@@ -1,6 +1,6 @@
 // commands/project/tasks.mjs — generate the lifecycle task tree (spec §24).
 //
-// wp-starter project tasks [--format markdown|json|github] [--launch-date YYYY-MM-DD]
+// futurebase project tasks [--format markdown|json|github] [--launch-date YYYY-MM-DD]
 //     [--write] [--json] [--project-root <p>]
 //
 // State-aware: reads the project record and marks done tasks. Does NOT create

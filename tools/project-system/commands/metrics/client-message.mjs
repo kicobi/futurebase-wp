@@ -1,7 +1,7 @@
 // commands/metrics/client-message.mjs — generate the client-facing "how will we
 // know this succeeded?" message from the approved metrics (spec §11.1).
 //
-// wp-starter metrics client-message [--write] [--json] [--project-root <p>]
+// futurebase metrics client-message [--write] [--json] [--project-root <p>]
 
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -16,7 +16,7 @@ export function metricsClientMessage(_positional, flags) {
 	const { projectDir } = projectPaths(root);
 	const doc = loadMetrics(projectDir);
 	const items = doc.items || [];
-	if (!items.length) die('no metrics yet — run: wp-starter metrics suggest', EXIT.INVALID_CONFIG, { json });
+	if (!items.length) die('no metrics yet — run: futurebase metrics suggest', EXIT.INVALID_CONFIG, { json });
 
 	// Client message features outcome + satisfaction measures (what improved),
 	// not internal delivery checks.

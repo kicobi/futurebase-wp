@@ -72,4 +72,4 @@ premium SEO plugin when a project scopes one. See [seo.md](seo.md).
 ---
 
 *Futurebase is developed by Colin Lewis. The template repository's technical
-slug is `wp-starter`; client projects carry their own identity from day one.*
+slug is `futurebase`; client projects carry their own identity from day one.*

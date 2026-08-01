@@ -225,7 +225,7 @@ fi
 
 # ---------------------------------------------------------------------------
 # Theme-bound blocks — every src/blocks/<slug>/block.json must have a matching
-# build/blocks/<slug>/block.json. wp_starter_register_blocks() in
+# build/blocks/<slug>/block.json. futurebase_register_blocks() in
 # functions.php only sees the compiled tree, so a source block without a
 # build is silently unregistered until someone runs `npm run build`. Catch
 # drift here instead of in the editor.
@@ -322,6 +322,18 @@ fi
 # ---------------------------------------------------------------------------
 section "Rename collision safety (Issue #4)"
 
+if bash "$ROOT/bin/audit-identity.sh"; then
+	pass "legacy identity allowlist"
+else
+	fail "legacy identity allowlist — see output above"
+fi
+
+if node "$ROOT/bin/verify-version-surfaces.mjs"; then
+	pass "Futurebase version surfaces"
+else
+	fail "Futurebase version surfaces — see output above"
+fi
+
 if bash "$ROOT/bin/test-rename.sh"; then
 	pass "rename non-regression smoke test"
 else
@@ -335,13 +347,15 @@ section "Build / lint / phpcs / phpstan"
 
 run() {
 	local label="$1"; shift
-	if "$@" > /tmp/wp-starter-verify-$$.log 2>&1; then
+	local log
+	log="$(mktemp -t theme-verify.XXXXXX)"
+	if "$@" > "$log" 2>&1; then
 		pass "$label"
 	else
 		fail "$label"
-		sed 's/^/    /' /tmp/wp-starter-verify-$$.log
+		sed 's/^/    /' "$log"
 	fi
-	rm -f /tmp/wp-starter-verify-$$.log
+	rm -f "$log"
 }
 
 if command -v npm > /dev/null; then

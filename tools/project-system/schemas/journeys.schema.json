@@ -1,6 +1,6 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
-	"$id": "https://wp-starter.local/schemas/journeys.schema.json",
+	"$id": "https://futurebase.local/schemas/journeys.schema.json",
 	"title": "Critical user journeys document",
 	"description": "A versioned document object of rerunnable critical user journeys that feed baseline/final reports.",
 	"type": "object",

@@ -6,7 +6,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
 	chmodSync,
 	lstatSync,
@@ -18,7 +18,8 @@ import {
 	writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
 	CLASS,
@@ -31,8 +32,11 @@ import {
 	safeFiles,
 } from '../lib/sync.mjs';
 
+const TOOL_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const CLI = join(TOOL_ROOT, 'bin', 'futurebase.mjs');
+
 function sandbox() {
-	const dir = mkdtempSync(join(tmpdir(), 'wp-starter-sync-'));
+	const dir = mkdtempSync(join(tmpdir(), 'futurebase-sync-'));
 	return { dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
@@ -64,6 +68,10 @@ test('the navigation migration guide is surfaced for manual porting', () => {
 	assert.equal(classifyPath('docs/navigation-migration-v2.md'), CLASS.REVIEW);
 });
 
+test('client-owned WordPress readme metadata is never surfaced by sync', () => {
+	assert.equal(classifyPath('readme.txt'), CLASS.NEVER);
+});
+
 test('dependency planning preserves project identity and blocks an unsafe lock replacement', () => {
 	const { dir, cleanup } = sandbox();
 	try {
@@ -75,17 +83,17 @@ test('dependency planning preserves project identity and blocks an unsafe lock r
 		write(
 			starter,
 			'package.json',
-			JSON.stringify({ name: 'wp-starter', dependencies: { shared: '2.0.0', upstream: '1.0.0' } }, null, '\t') + '\n',
+			JSON.stringify({ name: 'futurebase', version: '2.0.0', dependencies: { shared: '2.0.0', upstream: '1.0.0' } }, null, '\t') + '\n',
 		);
 		write(
 			starter,
 			'package-lock.json',
-			JSON.stringify({ name: 'wp-starter', lockfileVersion: 3, packages: { '': { name: 'wp-starter' } } }, null, '\t') + '\n',
+			JSON.stringify({ name: 'futurebase', version: '2.0.0', lockfileVersion: 3, packages: { '': { name: 'futurebase', version: '2.0.0' } } }, null, '\t') + '\n',
 		);
 		write(
 			starter,
 			'composer.json',
-			JSON.stringify({ name: 'colinlewis/wp-starter', require: { shared: '2.0.0' } }, null, '\t') + '\n',
+			JSON.stringify({ name: 'colinlewis/futurebase', require: { shared: '2.0.0' } }, null, '\t') + '\n',
 		);
 		write(starter, 'composer.lock', JSON.stringify({ 'content-hash': 'upstream', packages: [] }, null, '\t') + '\n');
 		const ref = commitAll(starter, 'starter dependencies');
@@ -93,12 +101,12 @@ test('dependency planning preserves project identity and blocks an unsafe lock r
 		write(
 			projectRoot,
 			'package.json',
-			JSON.stringify({ name: 'client/theme', dependencies: { shared: '1.0.0', 'client-only': '1.0.0' } }, null, '\t') + '\n',
+			JSON.stringify({ name: 'client/theme', version: '1.0.0', dependencies: { shared: '1.0.0', 'client-only': '1.0.0' } }, null, '\t') + '\n',
 		);
 		write(
 			projectRoot,
 			'package-lock.json',
-			JSON.stringify({ name: 'client/theme', lockfileVersion: 3, packages: { '': { name: 'client/theme' } } }, null, '\t') + '\n',
+			JSON.stringify({ name: 'client/theme', version: '1.0.0', lockfileVersion: 3, packages: { '': { name: 'client/theme', version: '1.0.0' } } }, null, '\t') + '\n',
 		);
 		write(
 			projectRoot,
@@ -124,6 +132,96 @@ test('dependency planning preserves project identity and blocks an unsafe lock r
 		});
 		assert.equal(plan.find((entry) => entry.rel === 'package-lock.json').state, 'blocked');
 		assert.equal(plan.find((entry) => entry.rel === 'composer.lock').state, 'blocked');
+	} finally {
+		cleanup();
+	}
+});
+
+test('dependency sync preserves all four client npm lock identity fields across repeated applies', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const starter = join(dir, 'starter');
+		const projectRoot = join(dir, 'project');
+		initRepo(starter);
+		mkdirSync(projectRoot);
+		write(starter, 'package.json', JSON.stringify({ name: 'futurebase', version: '2.0.0', dependencies: { shared: '2.0.0' } }, null, '\t') + '\n');
+		write(
+			starter,
+			'package-lock.json',
+			JSON.stringify({ name: 'futurebase', version: '2.0.0', lockfileVersion: 3, packages: { '': { name: 'futurebase', version: '2.0.0' } } }, null, '\t') + '\n',
+		);
+		const ref = commitAll(starter, 'Futurebase dependency layer');
+		write(projectRoot, 'package.json', JSON.stringify({ name: 'client-theme', version: '1.0.0', dependencies: { shared: '1.0.0' } }, null, '\t') + '\n');
+		write(
+			projectRoot,
+			'package-lock.json',
+			JSON.stringify({ name: 'client-theme', version: '1.0.0', lockfileVersion: 3, packages: { '': { name: 'client-theme', version: '1.0.0' } } }, null, '\t') + '\n',
+		);
+
+		for (let pass = 0; pass < 2; pass += 1) {
+			const plan = planDeps({ projectRoot, starter, ref });
+			for (const entry of plan.filter((candidate) => candidate.state === 'add' || candidate.state === 'update')) {
+				assert.equal(applyEntry(entry, { projectRoot, starter }), true);
+			}
+			const manifest = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8'));
+			const lock = JSON.parse(readFileSync(join(projectRoot, 'package-lock.json'), 'utf8'));
+			assert.equal(manifest.name, 'client-theme');
+			assert.equal(manifest.version, '1.0.0');
+			assert.equal(lock.name, manifest.name);
+			assert.equal(lock.version, manifest.version);
+			assert.equal(lock.packages[''].name, manifest.name);
+			assert.equal(lock.packages[''].version, manifest.version);
+		}
+	} finally {
+		cleanup();
+	}
+});
+
+test('source-path repair succeeds before ref resolution and reports separate JSON metadata', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const starter = join(dir, 'futurebase');
+		const projectRoot = join(dir, 'project');
+		initRepo(starter);
+		write(starter, 'tools/project-system/VERSION', '2.0.0\n');
+		commitAll(starter, 'Futurebase');
+		write(projectRoot, '.project/project.yml', 'project:\n  name: Client\nstarter:\n  source_path: /missing/wp-starter\n');
+
+		const result = spawnSync(
+			process.execPath,
+			[CLI, 'sync', '--project-root', projectRoot, '--futurebase-path', starter, '--repair-source-path', '--json'],
+			{ encoding: 'utf8' },
+		);
+		assert.equal(result.status, 0, result.stderr || result.stdout);
+		const output = JSON.parse(result.stdout);
+		assert.equal(output.source_path.drifted, true);
+		assert.equal(output.source_path.repaired, true);
+		assert.match(readFileSync(join(projectRoot, '.project/project.yml'), 'utf8'), new RegExp(`source_path: ${starter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+	} finally {
+		cleanup();
+	}
+});
+
+test('a no-drift apply still stamps the resolved Futurebase source path', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const starter = join(dir, 'futurebase');
+		const projectRoot = join(dir, 'project');
+		initRepo(starter);
+		write(starter, 'tools/project-system/VERSION', '2.0.0\n');
+		const ref = commitAll(starter, 'Futurebase');
+		write(projectRoot, 'tools/project-system/VERSION', '2.0.0\n');
+		write(projectRoot, '.project/project.yml', 'project:\n  name: Client\nstarter:\n  source_path: /old/location\n');
+
+		const result = spawnSync(
+			process.execPath,
+			[CLI, 'sync', '--project-root', projectRoot, '--futurebase-path', starter, '--ref', ref, '--only', 'safe', '--apply', '--confirm'],
+			{ encoding: 'utf8' },
+		);
+		assert.equal(result.status, 0, result.stderr || result.stdout);
+		const record = readFileSync(join(projectRoot, '.project/project.yml'), 'utf8');
+		assert.match(record, new RegExp(`source_path: ${starter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+		assert.match(record, new RegExp(`synced_commit: ${ref}`));
 	} finally {
 		cleanup();
 	}

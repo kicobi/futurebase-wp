@@ -1,11 +1,11 @@
 <?php
 /**
- * WP Starter theme functions.
+ * Futurebase theme functions.
  *
- * @package wp-starter
+ * @package futurebase
  */
 
-if ( ! function_exists( 'wp_starter_theme_support' ) ) {
+if ( ! function_exists( 'futurebase_theme_support' ) ) {
 	/**
 	 * General Theme Settings.
 	 *
@@ -13,9 +13,9 @@ if ( ! function_exists( 'wp_starter_theme_support' ) ) {
 	 *
 	 * @return void
 	 */
-	function wp_starter_theme_support() {
+	function futurebase_theme_support() {
 		// Make theme available for translation: Translations can be filed in the /languages/ directory.
-		load_theme_textdomain( 'wp-starter', __DIR__ . '/languages' );
+		load_theme_textdomain( 'futurebase', __DIR__ . '/languages' );
 
 		// Add support for Post thumbnails.
 		add_theme_support( 'post-thumbnails' );
@@ -29,10 +29,10 @@ if ( ! function_exists( 'wp_starter_theme_support' ) ) {
 			array( 'search-form', 'comment-form', 'comment-list', 'gallery', 'caption', 'style', 'script' )
 		);
 	}
-	add_action( 'after_setup_theme', 'wp_starter_theme_support' );
+	add_action( 'after_setup_theme', 'futurebase_theme_support' );
 }
 
-if ( ! function_exists( 'wp_starter_curate_editor' ) ) {
+if ( ! function_exists( 'futurebase_curate_editor' ) ) {
 	/**
 	 * Curate the block editor to match the theme's design system.
 	 *
@@ -45,7 +45,7 @@ if ( ! function_exists( 'wp_starter_curate_editor' ) ) {
 	 *
 	 * @return void
 	 */
-	function wp_starter_curate_editor() {
+	function futurebase_curate_editor() {
 		// Block directory — the "search for a plugin block" UI in the inserter.
 		remove_action( 'enqueue_block_editor_assets', 'wp_enqueue_editor_block_directory_assets' );
 		remove_action( 'enqueue_block_editor_assets', 'gutenberg_enqueue_block_editor_assets_block_directory' );
@@ -58,10 +58,10 @@ if ( ! function_exists( 'wp_starter_curate_editor' ) ) {
 		// above; both gates must be closed to hide every remote pattern surface.
 		add_filter( 'should_load_remote_block_patterns', '__return_false' );
 	}
-	add_action( 'after_setup_theme', 'wp_starter_curate_editor' );
+	add_action( 'after_setup_theme', 'futurebase_curate_editor' );
 }
 
-if ( ! function_exists( 'wp_starter_disable_openverse' ) ) {
+if ( ! function_exists( 'futurebase_disable_openverse' ) ) {
 	/**
 	 * Remove the Openverse media category from the block inserter.
 	 *
@@ -70,14 +70,14 @@ if ( ! function_exists( 'wp_starter_disable_openverse' ) ) {
 	 * @param array<string, mixed> $settings Block editor settings passed to the editor.
 	 * @return array<string, mixed>
 	 */
-	function wp_starter_disable_openverse( $settings ) {
+	function futurebase_disable_openverse( $settings ) {
 		$settings['enableOpenverseMediaCategory'] = false;
 		return $settings;
 	}
-	add_filter( 'block_editor_settings_all', 'wp_starter_disable_openverse' );
+	add_filter( 'block_editor_settings_all', 'futurebase_disable_openverse' );
 }
 
-if ( ! function_exists( 'wp_starter_register_blocks' ) ) {
+if ( ! function_exists( 'futurebase_register_blocks' ) ) {
 	/**
 	 * Auto-register theme-bound blocks compiled to build/blocks/.
 	 *
@@ -89,7 +89,7 @@ if ( ! function_exists( 'wp_starter_register_blocks' ) ) {
 	 *
 	 * @return void
 	 */
-	function wp_starter_register_blocks() {
+	function futurebase_register_blocks() {
 		$blocks_dir = __DIR__ . '/build/blocks';
 		if ( ! is_dir( $blocks_dir ) ) {
 			return;
@@ -104,10 +104,10 @@ if ( ! function_exists( 'wp_starter_register_blocks' ) ) {
 			}
 		}
 	}
-	add_action( 'init', 'wp_starter_register_blocks' );
+	add_action( 'init', 'futurebase_register_blocks' );
 }
 
-if ( ! function_exists( 'wp_starter_register_block_styles' ) ) {
+if ( ! function_exists( 'futurebase_register_block_styles' ) ) {
 	/**
 	 * Register block style variations.
 	 *
@@ -118,21 +118,21 @@ if ( ! function_exists( 'wp_starter_register_block_styles' ) ) {
 	 *
 	 * @return void
 	 */
-	function wp_starter_register_block_styles() {
+	function futurebase_register_block_styles() {
 		register_block_style(
 			'core/group',
 			array(
 				'name'  => 'section',
-				'label' => __( 'Section', 'wp-starter' ),
+				'label' => __( 'Section', 'futurebase' ),
 			)
 		);
 	}
-	add_action( 'init', 'wp_starter_register_block_styles' );
+	add_action( 'init', 'futurebase_register_block_styles' );
 }
 
 require_once __DIR__ . '/inc/navigation-migration.php';
 
-if ( ! function_exists( 'wp_starter_load_post_types' ) ) {
+if ( ! function_exists( 'futurebase_load_post_types' ) ) {
 	/**
 	 * Auto-load custom post type registrations from inc/post-types/.
 	 *
@@ -146,7 +146,7 @@ if ( ! function_exists( 'wp_starter_load_post_types' ) ) {
 	 *
 	 * @return void
 	 */
-	function wp_starter_load_post_types() {
+	function futurebase_load_post_types() {
 		$dir = __DIR__ . '/inc/post-types';
 		if ( ! is_dir( $dir ) ) {
 			return;
@@ -159,16 +159,16 @@ if ( ! function_exists( 'wp_starter_load_post_types' ) ) {
 			require_once $file;
 		}
 	}
-	wp_starter_load_post_types();
+	futurebase_load_post_types();
 }
 
-if ( ! function_exists( 'wp_starter_get_main_asset_data' ) ) {
+if ( ! function_exists( 'futurebase_get_main_asset_data' ) ) {
 	/**
 	 * Get the dependency and version metadata for the compiled main bundle.
 	 *
 	 * @return array{dependencies: array<int, string>, version: string}
 	 */
-	function wp_starter_get_main_asset_data() {
+	function futurebase_get_main_asset_data() {
 		$theme_version = wp_get_theme()->get( 'Version' );
 		$asset_file    = get_theme_file_path( 'build/main.asset.php' );
 
@@ -195,18 +195,18 @@ if ( ! function_exists( 'wp_starter_get_main_asset_data' ) ) {
 	}
 }
 
-if ( ! function_exists( 'wp_starter_load_scripts' ) ) {
+if ( ! function_exists( 'futurebase_load_scripts' ) ) {
 	/**
 	 * Enqueue CSS Stylesheets and Javascript files.
 	 *
 	 * @return void
 	 */
-	function wp_starter_load_scripts() {
+	function futurebase_load_scripts() {
 		$theme_version = wp_get_theme()->get( 'Version' );
-		$asset_data    = wp_starter_get_main_asset_data();
-		$style_handle  = 'wp-starter-style';
-		$main_handle   = 'wp-starter-main';
-		$script_handle = 'wp-starter-script';
+		$asset_data    = futurebase_get_main_asset_data();
+		$style_handle  = 'futurebase-style';
+		$main_handle   = 'futurebase-main';
+		$script_handle = 'futurebase-script';
 
 		// 1. Styles.
 		wp_enqueue_style( $style_handle, get_stylesheet_uri(), array(), $theme_version );
@@ -225,5 +225,5 @@ if ( ! function_exists( 'wp_starter_load_scripts' ) ) {
 			)
 		);
 	}
-	add_action( 'wp_enqueue_scripts', 'wp_starter_load_scripts' );
+	add_action( 'wp_enqueue_scripts', 'futurebase_load_scripts' );
 }

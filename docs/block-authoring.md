@@ -55,7 +55,7 @@ Slug rules (enforced by the script): lowercase, dashes only, starts with a lette
 ### After scaffolding
 
 1. `npm run build` — compiles `src/blocks/` → `build/blocks/`.
-2. `wp_starter_register_blocks()` in [functions.php](../functions.php) auto-registers every `build/blocks/*/block.json` on `init`. No per-block PHP wiring required.
+2. `futurebase_register_blocks()` in [functions.php](../functions.php) auto-registers every `build/blocks/*/block.json` on `init`. No per-block PHP wiring required.
 3. Edit the block in the inserter (category: Theme).
 
 Iterating:
@@ -87,12 +87,12 @@ register_block_style(
     'core/button',
     array(
         'name'  => 'ghost',
-        'label' => __( 'Ghost', 'wp-starter' ),
+        'label' => __( 'Ghost', 'futurebase' ),
     )
 );
 ```
 
-Pair it with a `styles.blocks.core/button.variations.ghost` block in [theme.json](../theme.json) and editors can pick "Ghost" from the Styles panel. Zero JS, zero PHP render, zero deprecations. The shipped `section` variation on `core/group` (see `wp_starter_register_block_styles` in [functions.php](../functions.php)) is the reference implementation.
+Pair it with a `styles.blocks.core/button.variations.ghost` block in [theme.json](../theme.json) and editors can pick "Ghost" from the Styles panel. Zero JS, zero PHP render, zero deprecations. The shipped `section` variation on `core/group` (see `futurebase_register_block_styles` in [functions.php](../functions.php)) is the reference implementation.
 
 ## Block bindings — ACF fields in patterns
 
@@ -144,4 +144,4 @@ build/blocks/                 # compiled — committed, matches upstream starter
     └── render.php            # copied through unchanged
 ```
 
-Theme-bound blocks auto-register via `wp_starter_register_blocks()` scanning `build/blocks/*/block.json`. No manual `register_block_type()` call needed per block.
+Theme-bound blocks auto-register via `futurebase_register_blocks()` scanning `build/blocks/*/block.json`. No manual `register_block_type()` call needed per block.

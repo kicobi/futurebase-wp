@@ -5,7 +5,7 @@ measured, and closed-out project — and where its knowledge lives at each stage
 
 > **Status:** the tooling that automates this lives in
 > [`tools/project-system/`](../tools/project-system/) and is **built** — the
-> `wp-starter lead|baseline|metrics|final|compare|project …` commands shipped
+> `futurebase lead|baseline|metrics|final|compare|project …` commands shipped
 > through Phase 8 (PRs #33–#39); see `ARCHITECTURE.md` there for the remaining
 > Phase 8 backlog (analytics connectors, survey delivery, reminders).
 > This document is the canonical narrative; agent instruction files link here.
@@ -35,17 +35,17 @@ Prospective lead
 - **New client planning lives in `~/Sites/leads/<slug>/`** — a structured,
   local-only lead workspace, **outside** the starter. This is the required home
   for lead-stage analysis so client-specific work never contaminates the shared
-  `wp-starter` repository.
+  `futurebase` repository.
 - **`/planning/` inside the starter is reserved for starter-development scratch
   only** (it is gitignored). Do not put client planning there.
 
 ## 1. Lead workspace
 
 Created when a conversation is serious enough to need feasibility review, scope,
-an estimate, risk assessment, or `wp-starter` knowledge:
+an estimate, risk assessment, or `futurebase` knowledge:
 
 ```bash
-wp-starter lead init "Client Name" --type redesign --platform codeable
+futurebase lead init "Client Name" --type redesign --platform codeable
 # → ~/Sites/leads/client-name/
 ```
 
@@ -56,7 +56,7 @@ implementation, label facts vs assumptions vs recommendations vs questions) are
 in the lead `CLAUDE.md` / `AGENTS.md` templates.
 
 ### Starter knowledge, two ways
-1. **Generated summary** — `references/wp-starter-context.md`, the first thing an
+1. **Generated summary** — `references/futurebase-context.md`, the first thing an
    agent reads.
 2. **Read-only inspection** — the real starter, only when verification is needed.
    Agents must never modify the starter from a lead workspace.
@@ -66,7 +66,7 @@ in the lead `CLAUDE.md` / `AGENTS.md` templates.
 When the project is awarded:
 
 ```bash
-wp-starter lead promote client-name --confirm
+futurebase lead promote client-name --confirm
 ```
 
 Promotion **wraps the existing project-creation workflow** — it does not
@@ -84,6 +84,8 @@ duplicating rename/scaffold logic.
 - **Confirmation** — promotion creates a real GitHub repo, so it **requires
   explicit confirmation**. In `--non-interactive` / agent-driven use it refuses
   unless `--confirm` is passed. Agents must not self-authorize.
+- **Composer** — required for every real promotion, including the offline clone
+  seam. Its preflight runs before any repository or destination is created.
 
 ### Steps
 1. **Validate** the lead workspace. Abort on error — lead untouched.
@@ -93,18 +95,22 @@ duplicating rename/scaffold logic.
    intended template commit, repository ID/node ID, creation time, default
    branch, generated initial commit, and template repository identity.
    Clone only after that receipt is durable.
-3. **Rename** via the existing implementation: `npm run rename -- <slug>`
-   (reuses `bin/rename-theme.sh`; no reimplementation).
-4. **Scaffold `.project/`** and **copy the dossier** per the manifest below.
-5. **Wire agent instructions** — write `.project/agent-context.md`; the repo's
+3. **Rename** via the existing implementation with the client name, `1.0.0`
+   version, Theme URI, and repository identity.
+4. **Reconcile Composer metadata** with `composer update --lock --no-install
+   --no-interaction --quiet`, then require `composer validate
+   --no-check-publish` to pass. The quiet update emits no untagged-package
+   notice; non-quiet validation may emit the harmless notice twice.
+5. **Scaffold `.project/`** and **copy the dossier** per the manifest below.
+6. **Wire agent instructions** — write `.project/agent-context.md`; the repo's
    reusable root `CLAUDE.md` / `AGENTS.md` (from the template) reference it via a
    managed `<!-- project-system:active -->` section. **Root files are not
    replaced.**
-6. **Stamp** `starter.template_commit` (from the *created repo's* template
-   provenance, not merely local `wp-starter` HEAD) and `promoted_at`; set
+7. **Stamp** `starter.template_commit` (from the *created repo's* template
+   provenance, not merely local `futurebase` HEAD) and `promoted_at`; set
    `stage: active`.
-7. **One promotion commit** in the new repo.
-8. **On full success only**, update the lead's structured promotion metadata
+8. **One promotion commit** in the new repo.
+9. **On full success only**, update the lead's structured promotion metadata
    (`status: promoted`, `promoted_to: <remote>`). The lead workspace is **never
    deleted or moved automatically**, and is byte-for-byte unchanged until this
    step.
@@ -112,7 +118,7 @@ duplicating rename/scaffold logic.
 ### Dossier copy manifest
 Three classes:
 - **Versioned (committed):** `brief/` (minus private attachments), `analysis/`,
-  `proposal/`, `metrics/`, `references/wp-starter-context.md`, and `project.yml`
+  `proposal/`, `metrics/`, `references/futurebase-context.md`, and `project.yml`
   (rewritten to `stage: active`).
 - **Private (copied but gitignored):** `brief/attachments/private/**`, anything
   under `raw-private/`, credential/auth material → `.project/private/`,
@@ -121,7 +127,7 @@ Three classes:
   cruft, `.env*`.
 
 ### Partial failure & recovery
-Each step is checkpointed; the lead is unchanged until step 8.
+Each step is checkpointed; the lead is unchanged until step 9.
 - *Remote creation fails* → stop; nothing else runs.
 - *Remote identity/receipt creation fails* → stop; delete the incomplete remote
   before retrying. Without a complete receipt it cannot be adopted safely.
@@ -138,19 +144,26 @@ Each step is checkpointed; the lead is unchanged until step 8.
   destination before removing the recovery receipt.
 - *Rename fails* → local project left for inspection; re-run `npm run rename` or
   discard; lead untouched.
+- *Composer reconciliation fails* → the destination checkpoint remains, the
+  lead stays unchanged, and `--resume` reruns update and validation.
 - *Dossier copy fails* → partial `.project/` flagged; copy is idempotent, safe to
   re-run, or discard the project dir.
 - *Commit fails* → project on disk, uncommitted; re-run the commit step. Lead
-  metadata is still not updated (step 8 gates on commit success).
+  metadata is still not updated (step 9 gates on commit success).
 
 `lead promote --resume` is designed to resume idempotently after a destination
 checkpoint exists. The distinct `--reuse-remote` path covers only the
 pre-destination clone-failure window.
 
+New checkpoints and recovery receipts use Futurebase filenames. Futurebase 2.x
+also reads their legacy `.wp-starter-promotion…json` names and treats the old
+and renamed template repository names as equivalent only where a recorded
+pre-cutover identity is compared with its current name.
+
 ## 3. Archive (lead → lost/abandoned)
 
 ```bash
-wp-starter lead archive client-name
+futurebase lead archive client-name
 ```
 
 Preserves useful knowledge (brief, responses, analysis, estimate, scope, metric
@@ -177,7 +190,7 @@ a run.
 ## 5. Staying in sync with the starter
 
 Promotion is a **one-way copy**. `gh repo create --template` squashes to a fresh
-initial commit, so an active project shares no git history with `wp-starter`:
+initial commit, so an active project shares no git history with `futurebase`:
 `git merge`, `rebase`, and `cherry-pick` across the two are unavailable, and a
 wholesale copy would drag the starter's slug back through every renamed file.
 Fixes made in the starter after promotion therefore never arrive on their own —
@@ -187,10 +200,10 @@ Run `sync` from inside the project to close that gap:
 
 ```bash
 # from the project root — read-only; prints what has drifted
-node tools/project-system/bin/wp-starter.mjs sync --fetch
+node tools/project-system/bin/futurebase.mjs sync --fetch
 
 # apply the slug-free classes once the plan looks right
-node tools/project-system/bin/wp-starter.mjs sync --apply --confirm
+node tools/project-system/bin/futurebase.mjs sync --apply --confirm
 ```
 
 It writes only what the rename contract proves is slug-free (`tools/`,
@@ -204,3 +217,16 @@ a judgement call. Locally edited files are skipped rather than clobbered.
 > never contained. `sync` decides staleness from file content and is unaffected;
 > `--repair-provenance` corrects the recorded value, and every `--apply` stamps
 > an accurate `starter.synced_commit`.
+
+If an existing project still records the checkout's old local path, repair the
+metadata before planning files:
+
+```bash
+node tools/project-system/bin/wp-starter.mjs sync \
+  --starter-path /Users/colin/Sites/futurebase \
+  --repair-source-path
+```
+
+The old entrypoint and path flag warn but remain compatible throughout 2.x.
+New work should use `futurebase.mjs` and `--futurebase-path`. Source-path repair
+runs before Git ref resolution, so a missing `origin/main` cannot block it.
