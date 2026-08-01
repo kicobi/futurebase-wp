@@ -23,7 +23,7 @@ import { run, have, gitHead, isGitRepo, ghRepoExists } from '../../lib/proc.mjs'
 import { scanFiles } from '../../lib/secret-scan.mjs';
 
 const DEFAULT_ORG = 'studiokicobi';
-const DEFAULT_TEMPLATE = 'studiokicobi/futurebase';
+const DEFAULT_TEMPLATE = 'studiokicobi/futurebase-wp';
 const LEGACY_TEMPLATE = 'studiokicobi/wp-starter';
 const PROJECT_DIRS = ['brief', 'analysis', 'proposal', 'decisions', 'metrics', 'baseline', 'final', 'reports', 'follow-up'];
 // The checkpoint survives until AFTER the promotion commit, so that a commit

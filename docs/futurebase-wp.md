@@ -1,11 +1,12 @@
-# Futurebase
+# Futurebase WP
 
 **A futureproof base for accessible, maintainable WordPress websites.**
 
-Futurebase is the in-house WordPress system every project here starts from. It
-is not a page builder and not a theme marketplace product — it is a disciplined
-block-theme foundation plus the delivery system around it, refined across real
-client work and measured on every commit.
+Futurebase WP is the WordPress product in the Futurebase family. It is the
+in-house system every WordPress project here starts from: not a page builder or
+theme-marketplace product, but a disciplined block-theme foundation plus the
+delivery system around it, refined across real client work and measured on
+every commit.
 
 ## The promise
 
@@ -16,7 +17,7 @@ client work and measured on every commit.
   System font stacks, fluid typography, deferred scripts, no framework bloat.
 - **Maintainable.** Everything an editor changes lives in WordPress itself —
   native block editing, curated to the project's own design system. No
-  proprietary builder, no lock-in: when core WordPress updates, Futurebase
+  proprietary builder, no lock-in: when core WordPress updates, Futurebase WP
   sites update with it.
 - **Futureproof.** Built on WordPress's own Full Site Editing architecture
   (PHP 8.3+, WordPress 6.9+), the direction core is actively investing in —
@@ -71,5 +72,6 @@ premium SEO plugin when a project scopes one. See [seo.md](seo.md).
 
 ---
 
-*Futurebase is developed by Colin Lewis. The template repository's technical
-slug is `futurebase`; client projects carry their own identity from day one.*
+*Futurebase WP is developed by Colin Lewis as part of the Futurebase family.
+The template repository's technical slug is `futurebase`; client projects
+carry their own identity from day one.*

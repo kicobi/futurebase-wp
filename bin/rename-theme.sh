@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rename the Futurebase theme layer for a client project.
+# Rename the Futurebase WP theme layer for a client project.
 #
 # Futurebase intentionally uses the same lowercase token for its dashed slug
 # and PHP prefix. That means this script must rename by syntax/context; a broad
@@ -133,7 +133,12 @@ NEW_UPPER="$(printf '%s' "$NEW_SNAKE" | tr '[:lower:]' '[:upper:]')"
 
 cd "$ROOT"
 
-echo "Renaming Futurebase theme:"
+# A repository name may begin with the technical slug (futurebase-wp). Keep
+# the existing Theme URI out of generic slug/handle rewriting unless the caller
+# explicitly supplies its replacement.
+ORIGINAL_THEME_URI="$(sed -n 's/^Theme URI:[[:space:]]*//p' style.css | head -1)"
+
+echo "Renaming $FUTUREBASE_BASE_DISPLAY theme:"
 echo "  slug:     $FUTUREBASE_BASE_SLUG → $NEW_SLUG"
 echo "  prefix:   ${FUTUREBASE_BASE_SNAKE}_ → ${NEW_SNAKE}_"
 echo "  constants:${FUTUREBASE_BASE_UPPER}_ → ${NEW_UPPER}_"
@@ -157,6 +162,7 @@ while IFS= read -r file; do TARGETS+=("$file"); done < <(
 		-not -name 'rename-theme.sh' \
 		-not -name 'test-rename.sh' \
 		-not -name 'audit-identity.sh' \
+		-not -path 'docs/project-lifecycle.md' \
 		2>/dev/null
 )
 
@@ -180,12 +186,17 @@ for file in "${TARGETS[@]}"; do
 	perl -pi -e "s/\`${FUTUREBASE_BASE_SLUG}\`/\`${NEW_SLUG}\`/g" "$file"
 	perl -pi -e "s#(?<!/)${FUTUREBASE_BASE_SLUG}/#${NEW_SLUG}/#g" "$file"
 	perl -pi -e "s#/${FUTUREBASE_BASE_SLUG}\"#/${NEW_SLUG}\"#g" "$file"
-	perl -pi -e "s/\b${FUTUREBASE_BASE_SLUG}-/${NEW_SLUG}-/g" "$file"
+	# Only these dashed identifiers belong to the theme. Family-level lifecycle
+	# names such as futurebase-context and --futurebase-path remain canonical.
+	perl -pi -e "s/\b${FUTUREBASE_BASE_SLUG}-(style|main|script)\b/${NEW_SLUG}-\$1/g" "$file"
 	perl -pi -e "s/(\@package\s+)${FUTUREBASE_BASE_SLUG}\b/\$1${NEW_SLUG}/g" "$file"
 	perl -pi -e "s/(Text Domain:\s*)${FUTUREBASE_BASE_SLUG}\b/\$1${NEW_SLUG}/g" "$file"
-	# Display-name prose is client-owned outside tools/. The managed README
-	# block below reintroduces the one permitted Futurebase provenance sentence.
-	DISPLAY="$THEME_NAME" perl -i -pe 's/\bFuturebase\b/$ENV{DISPLAY}/g' "$file"
+	# Consume the full product display name before replacing any remaining bare
+	# family references. Reversing this order would produce "Client Name WP".
+	BASE_DISPLAY="$FUTUREBASE_BASE_DISPLAY" DISPLAY="$THEME_NAME" perl -i -pe '
+		s/\Q$ENV{BASE_DISPLAY}\E/$ENV{DISPLAY}/g;
+		s/\bFuturebase\b/$ENV{DISPLAY}/g;
+	' "$file"
 done
 
 # Explicit identity/version fields.
@@ -218,6 +229,8 @@ node bin/reconcile-package-lock.mjs --manifest package.json --lock package-lock.
 
 if [ -n "$THEME_URI" ]; then
 	URI="$THEME_URI" perl -i -pe 's|^(Theme URI:\s*).*$|$1$ENV{URI}|' style.css
+elif [ -n "$ORIGINAL_THEME_URI" ]; then
+	URI="$ORIGINAL_THEME_URI" perl -i -pe 's|^(Theme URI:\s*).*$|$1$ENV{URI}|' style.css
 fi
 if [ -n "$CONTRIBUTORS" ]; then
 	if grep -q '^Contributors:' style.css; then
@@ -234,34 +247,32 @@ if ! grep -q '<!-- project-intro:start -->' README.md || ! grep -q '<!-- project
 	exit 1
 fi
 DISPLAY="$THEME_NAME" perl -0777 -i -pe '
-	$replacement = "<!-- project-intro:start -->\n# $ENV{DISPLAY}\n\n**The WordPress theme for $ENV{DISPLAY}.**\n\nBuilt on Futurebase.\n<!-- project-intro:end -->";
+	$replacement = "<!-- project-intro:start -->\n# $ENV{DISPLAY}\n\n**The WordPress theme for $ENV{DISPLAY}.**\n\nBuilt on Futurebase WP.\n<!-- project-intro:end -->";
 	s/<!-- project-intro:start -->.*?<!-- project-intro:end -->/$replacement/s;
 ' README.md
-rm -f \
-	docs/futurebase.md \
-	docs/futurebase-company-site.md \
-	docs/assets/futurebase-social.png \
-	screenshot.png
+rm -f "${FUTUREBASE_PRODUCT_EXCLUSIONS[@]}"
 
 # Structural assertions describe the required result; the runtime backstop
 # catches unanticipated Futurebase identity in files that ship as theme code.
 problems=()
-grep -qF "Theme Name: $THEME_NAME" style.css || problems+=("style.css Theme Name mismatch")
+actual_theme_name="$(sed -n 's/^Theme Name:[[:space:]]*//p' style.css | head -1 | sed 's/[[:space:]]*$//')"
+[ "$actual_theme_name" = "$THEME_NAME" ] || problems+=("style.css Theme Name mismatch: expected '$THEME_NAME', found '$actual_theme_name'")
 grep -qE "^Text Domain:[[:space:]]*${NEW_SLUG}[[:space:]]*$" style.css || problems+=("style.css Text Domain mismatch")
 grep -qE "^Version:[[:space:]]*${THEME_VERSION}[[:space:]]*$" style.css || problems+=("style.css Version mismatch")
-grep -qF "=== $THEME_NAME ===" readme.txt || problems+=("readme.txt title mismatch")
+[ "$(head -1 readme.txt)" = "=== $THEME_NAME ===" ] || problems+=("readme.txt title mismatch")
 grep -qE "^Stable tag:[[:space:]]*${THEME_VERSION}[[:space:]]*$" readme.txt || problems+=("readme.txt Stable tag mismatch")
 grep -q "${NEW_SNAKE}_" functions.php || problems+=("functions.php prefix missing")
 grep -q "${NEW_UPPER}_" inc/navigation-migration.php || problems+=("uppercase constant prefix missing")
 NEW_SNAKE="$NEW_SNAKE" perl -0777 -ne '
 	exit 1 unless /<property\s+name="prefixes".*?<element\s+value="\Q$ENV{NEW_SNAKE}\E"\s*\/>/s;
 ' phpcs.xml.dist || problems+=("PHPCS prefix mismatch")
+grep -qF " * $THEME_NAME theme functions." functions.php || problems+=("functions.php display-name docblock mismatch")
 
 readme_provenance_count="$(grep -o 'Futurebase' README.md 2>/dev/null | wc -l | tr -d ' ')"
 [ "$readme_provenance_count" = "1" ] || problems+=("README.md must contain exactly one Futurebase provenance occurrence; found $readme_provenance_count")
 
-runtime_leftovers="$(grep -rnE "${FUTUREBASE_BASE_SLUG}|${FUTUREBASE_BASE_DISPLAY}|${FUTUREBASE_BASE_UPPER}" "${FUTUREBASE_RUNTIME_PATHS[@]}" 2>/dev/null \
-	| grep -vE '^style\.css:[0-9]+:Theme URI:[[:space:]]*https?://[^[:space:]]+/futurebase([/.]|$)' || true)"
+runtime_leftovers="$(grep -rnE "${FUTUREBASE_BASE_SLUG}|${FUTUREBASE_DISPLAY_SENTINEL}|${FUTUREBASE_BASE_UPPER}" "${FUTUREBASE_RUNTIME_PATHS[@]}" 2>/dev/null \
+	| grep -vE '^style\.css:[0-9]+:Theme URI:[[:space:]]*https?://[^[:space:]]+/futurebase-wp([/.]|$)' || true)"
 if [ -n "$runtime_leftovers" ]; then
 	problems+=("Futurebase identity survived in client runtime paths:")
 	while IFS= read -r line; do [ -n "$line" ] && problems+=("    $line"); done <<< "$runtime_leftovers"

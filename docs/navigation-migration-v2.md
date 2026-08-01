@@ -55,7 +55,7 @@ The migration state lives in the renamed equivalent of
 and `last_error`. The obsolete `futurebase_navigation_seeded` option is removed
 only after both regions are valid.
 
-For pre-2.0 Futurebase installations, debugging data may still use the protected
+For pre-2.0 Futurebase WP installations, debugging data may still use the protected
 post-meta key `_wp_starter_navigation_migration`. The PHP constant name was
 never persisted; only this lowercase meta key can remain in an older database.
 No automated database conversion is required for the disposable base install.

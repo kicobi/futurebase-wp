@@ -67,7 +67,7 @@ function makeTemplate(root, variant = 'ordinary') {
 			'',
 		].join('\n'),
 	);
-	writeFileSync(join(template, 'style.css'), '/*\nTheme Name: Futurebase\nText Domain: futurebase\n*/\n');
+	writeFileSync(join(template, 'style.css'), '/*\nTheme Name: Futurebase WP\nText Domain: futurebase\n*/\n');
 	writeFileSync(join(template, 'composer.json'), JSON.stringify({ name: 'colinlewis/futurebase', require: { php: '^8.3' } }, null, 2) + '\n');
 	writeFileSync(join(template, 'composer.lock'), JSON.stringify({ 'content-hash': 'template-stale', packages: [] }, null, 2) + '\n');
 	writeFileSync(join(template, 'CLAUDE.md'), '# Template instructions\n');

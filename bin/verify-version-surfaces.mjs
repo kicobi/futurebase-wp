@@ -35,9 +35,9 @@ record('tools/project-system/package-lock.json root package version', lifecycleL
 record('tools/project-system/VERSION', read('tools/project-system/VERSION').trim());
 
 if (failures.length > 0) {
-	console.error('Futurebase version audit: FAIL');
+	console.error('Futurebase WP version audit: FAIL');
 	for (const failure of failures) console.error(`  - ${failure}`);
 	process.exit(1);
 }
 
-console.log('Futurebase version audit: OK');
+console.log('Futurebase WP version audit: OK');

@@ -9,14 +9,14 @@
 		"project-lifecycle",
 		"baseline"
 	],
-	"homepage": "https://github.com/studiokicobi/futurebase#readme",
+	"homepage": "https://github.com/studiokicobi/futurebase-wp#readme",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/studiokicobi/futurebase.git",
+		"url": "git+https://github.com/studiokicobi/futurebase-wp.git",
 		"directory": "tools/project-system"
 	},
 	"bugs": {
-		"url": "https://github.com/studiokicobi/futurebase/issues"
+		"url": "https://github.com/studiokicobi/futurebase-wp/issues"
 	},
 	"private": true,
 	"engines": {

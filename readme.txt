@@ -1,4 +1,4 @@
-=== Futurebase ===
+=== Futurebase WP ===
 Contributors: colinlewis
 Tags: full-site-editing, block-patterns, block-styles, style-variations, wide-blocks, template-editing, one-column, accessibility-ready, custom-colors, custom-logo, featured-images, rtl-language-support, sticky-post, threaded-comments, translation-ready
 Requires at least: 6.9
@@ -29,7 +29,7 @@ A Full Site Editing foundation built on top of them.es/starter-fse, tuned for mo
 == Changelog ==
 
 = 2.0.0 =
-* Rename the foundation to Futurebase and strengthen client promotion, synchronization, and identity verification.
+* Rename the WordPress foundation to Futurebase WP and strengthen client promotion, synchronization, and identity verification.
 
 = 1.0.2 =
 * Tighten rename, scaffold, theme.json, and verification guardrails.

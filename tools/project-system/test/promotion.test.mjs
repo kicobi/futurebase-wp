@@ -27,7 +27,7 @@ const checkpointFor = (over = {}) => ({
 	lead_slug: 'acme',
 	dest: '/Users/x/Sites/acme',
 	remote: 'studiokicobi/acme',
-	template: 'studiokicobi/futurebase',
+	template: 'studiokicobi/futurebase-wp',
 	template_commit: 'abc1234',
 	started_at: '2026-07-30T10:00:00.000Z',
 	...over,
@@ -78,14 +78,14 @@ test('template is only compared when the caller supplies one', () => {
 	// Keeps the rule usable from tests and any caller that has no template in
 	// hand, without silently skipping the check for the real one.
 	assert.equal(checkpointMismatch(checkpointFor(), target), null);
-	assert.equal(checkpointMismatch(checkpointFor(), { ...target, template: 'studiokicobi/futurebase' }), null);
+	assert.equal(checkpointMismatch(checkpointFor(), { ...target, template: 'studiokicobi/futurebase-wp' }), null);
 });
 
-test('a pre-cutover checkpoint accepts the renamed Futurebase template', () => {
+test('a pre-cutover checkpoint accepts the renamed Futurebase WP template', () => {
 	assert.equal(
 		checkpointMismatch(checkpointFor({ template: 'studiokicobi/wp-starter' }), {
 			...target,
-			template: 'studiokicobi/futurebase',
+			template: 'studiokicobi/futurebase-wp',
 		}),
 		null,
 	);
@@ -99,7 +99,7 @@ const liveIdentity = (over = {}) => ({
 	default_branch: 'main',
 	initial_commit_sha: 'def5678',
 	commit_count: 1,
-	template_repository: 'studiokicobi/futurebase',
+	template_repository: 'studiokicobi/futurebase-wp',
 	...over,
 });
 
@@ -111,7 +111,7 @@ const receiptFor = (over = {}) => ({
 	lead_slug: 'acme',
 	dest: '/Users/x/Sites/acme',
 	remote: 'studiokicobi/acme',
-	template: 'studiokicobi/futurebase',
+	template: 'studiokicobi/futurebase-wp',
 	template_commit: 'abc1234',
 	repository_id: 123456,
 	repository_node_id: 'R_kgDOExample',
@@ -120,11 +120,11 @@ const receiptFor = (over = {}) => ({
 	default_branch: 'main',
 	initial_commit_sha: 'def5678',
 	initial_commit_count: 1,
-	template_repository: 'studiokicobi/futurebase',
+	template_repository: 'studiokicobi/futurebase-wp',
 	...over,
 });
 
-const recoveryTarget = { ...target, template: 'studiokicobi/futurebase' };
+const recoveryTarget = { ...target, template: 'studiokicobi/futurebase-wp' };
 
 test('a complete receipt matching the untouched generated remote permits clone recovery', () => {
 	assert.equal(recoveryReceiptMismatch(receiptFor(), recoveryTarget, liveIdentity()), null);

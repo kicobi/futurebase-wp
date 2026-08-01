@@ -329,9 +329,9 @@ else
 fi
 
 if node "$ROOT/bin/verify-version-surfaces.mjs"; then
-	pass "Futurebase version surfaces"
+	pass "Futurebase WP version surfaces"
 else
-	fail "Futurebase version surfaces — see output above"
+	fail "Futurebase WP version surfaces — see output above"
 fi
 
 if bash "$ROOT/bin/test-rename.sh"; then

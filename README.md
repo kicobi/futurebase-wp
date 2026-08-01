@@ -1,9 +1,9 @@
 <!-- project-intro:start -->
-# Futurebase
+# Futurebase WP
 
 **A futureproof base for accessible, maintainable WordPress websites.**
 
-Futurebase is a modern Full Site Editing foundation with AI agent guardrails baked in. See [docs/futurebase.md](docs/futurebase.md) for the canonical product narrative and [docs/scorecard.md](docs/scorecard.md) for the evidence model behind it.
+Futurebase is the product family. Futurebase WP is its WordPress foundation: a modern Full Site Editing base with AI agent guardrails baked in. See [docs/futurebase-wp.md](docs/futurebase-wp.md) for the canonical product narrative and [docs/scorecard.md](docs/scorecard.md) for the evidence model behind it.
 <!-- project-intro:end -->
 
 ## What this is
@@ -47,7 +47,7 @@ and CI.
 Requires [`gh`](https://cli.github.com) authenticated (`gh auth login`). The template repo must have the **Template repository** setting enabled on GitHub.
 
 ```bash
-gh repo create studiokicobi/<new-project-name> --template studiokicobi/futurebase --private --clone
+gh repo create studiokicobi/<new-project-name> --template studiokicobi/futurebase-wp --private --clone
 cd <new-project-name>
 npm run rename -- <theme-slug> \
   --theme-name "<Theme Name>" \
@@ -99,8 +99,8 @@ The script performs the following edits in one pass:
 7. **Client version** — updates `style.css`, `readme.txt`, `package.json`, and both root-package version fields in `package-lock.json`.
 8. **Repository identity** — updates Theme URI, npm repository/homepage/bugs fields, and the Composer vendor/package when `--repository` is supplied.
 9. **`phpcs.xml.dist`** — updates the dashed text domain and snake-case prefix independently.
-10. **Client readme history** — resets `readme.txt` to one initial client release and leaves exactly one Futurebase provenance sentence in `README.md`.
-11. **Base-only product material** — removes the Futurebase narrative, company-site brief, social image, and branded theme screenshot from the client checkout while rewriting client-owned identity in `docs/`, `src/`, and `inc/`.
+10. **Client readme history** — resets `readme.txt` to one initial client release and leaves exactly one Futurebase WP provenance sentence in `README.md`.
+11. **Base-only product material** — removes the Futurebase WP narrative, company-site brief, social image, and branded theme screenshot from the client checkout while rewriting client-owned identity in `docs/`, `src/`, and `inc/`.
 
 Re-running the script with the same arguments is a no-op — the `Contributors:` line isn't duplicated, and already-renamed references don't match the search pattern.
 
@@ -109,7 +109,7 @@ After running, manually review:
 - **Directory on disk** — the theme folder name must equal the slug.
 - **`style.css`** — `Description`, `Author`, `Author URI`, and `Tags` remain project-specific review fields. If you skipped `--theme-uri` or `--contributors`, update those lines by hand too.
 - **`package.json`** — review the author after repository identity is set.
-- **`screenshot.png`** — add a client-branded theme screenshot; the Futurebase product screenshot is removed automatically.
+- **`screenshot.png`** — add a client-branded theme screenshot; the Futurebase WP product screenshot is removed automatically.
 - **`docs/conventions.md`** — starter-history prose was rewritten along with everything else; the text describing "the starter ships with the slug `futurebase`" will now name your slug. Adjust or delete as you like.
 - **Translation files** — regenerate `.pot` / `.mo` in `languages/` if you carry them over.
 

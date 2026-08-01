@@ -14,10 +14,10 @@
 	"homepage": "https://colinlewis.se",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/studiokicobi/futurebase.git"
+		"url": "git+https://github.com/studiokicobi/futurebase-wp.git"
 	},
 	"bugs": {
-		"url": "https://github.com/studiokicobi/futurebase/issues"
+		"url": "https://github.com/studiokicobi/futurebase-wp/issues"
 	},
 	"private": true,
 	"devDependencies": {

@@ -1,6 +1,6 @@
 <?php
 /**
- * Futurebase theme functions.
+ * Futurebase WP theme functions.
  *
  * @package futurebase
  */

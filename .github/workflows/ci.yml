@@ -108,7 +108,7 @@ jobs:
                   npm run build
                   npm run verify
 
-            - name: Require Futurebase rename template smoke test
+            - name: Require Futurebase WP rename template smoke test
               run: bash bin/test-rename.sh --require-template
 
     package:

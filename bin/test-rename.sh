@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Non-regression smoke test for the Futurebase-to-client rename contract.
+# Non-regression smoke test for the Futurebase WP-to-client rename contract.
 
 set -u
 
@@ -26,11 +26,19 @@ fi
 
 if ! grep -qE "$FUTUREBASE_TEMPLATE_TEXT_DOMAIN_RE" style.css 2>/dev/null; then
 	if [ "$REQUIRE_TEMPLATE" -eq 1 ]; then
-		echo "rename non-regression: FAIL (Futurebase template sentinel missing)"
+		echo "rename non-regression: FAIL (Futurebase WP template sentinel missing)"
 		exit 1
 	fi
 	echo "rename non-regression: skipped (repo is no longer in template state)"
 	exit 0
+fi
+
+base_theme_name="$(sed -n 's/^Theme Name:[[:space:]]*//p' style.css | head -1 | sed 's/[[:space:]]*$//')"
+if [ "$base_theme_name" != "$FUTUREBASE_BASE_DISPLAY" ] \
+	|| [ "$(head -1 readme.txt 2>/dev/null)" != "=== $FUTUREBASE_BASE_DISPLAY ===" ] \
+	|| ! grep -qF " * $FUTUREBASE_BASE_DISPLAY theme functions." functions.php 2>/dev/null; then
+	echo "rename non-regression: FAIL (Futurebase WP base display surfaces disagree)"
+	exit 1
 fi
 
 WORKTREES=()
@@ -104,16 +112,20 @@ if [ "$RC" -eq 0 ]; then
 fi
 grep -q "${REAL_SNAKE}_" "$WT2/functions.php" 2>/dev/null || problems+=("functions.php missing client prefix")
 grep -q "${REAL_UPPER}_" "$WT2/inc/navigation-migration.php" 2>/dev/null || problems+=("navigation migration missing client constant")
-grep -qE "^Theme Name:[[:space:]]*$REAL_NAME$" "$WT2/style.css" 2>/dev/null || problems+=("Theme Name mismatch")
+actual_client_theme_name="$(sed -n 's/^Theme Name:[[:space:]]*//p' "$WT2/style.css" 2>/dev/null | head -1 | sed 's/[[:space:]]*$//')"
+[ "$actual_client_theme_name" = "$REAL_NAME" ] || problems+=("Theme Name mismatch: expected '$REAL_NAME', found '$actual_client_theme_name'")
 grep -qE "^Text Domain:[[:space:]]*$REAL_SLUG$" "$WT2/style.css" 2>/dev/null || problems+=("Text Domain mismatch")
 grep -qE "^Version:[[:space:]]*$REAL_VERSION$" "$WT2/style.css" 2>/dev/null || problems+=("theme version mismatch")
-grep -qF "=== $REAL_NAME ===" "$WT2/readme.txt" 2>/dev/null || problems+=("readme title mismatch")
+[ "$(head -1 "$WT2/readme.txt" 2>/dev/null)" = "=== $REAL_NAME ===" ] || problems+=("readme title mismatch")
 grep -qE "^Stable tag:[[:space:]]*$REAL_VERSION$" "$WT2/readme.txt" 2>/dev/null || problems+=("readme stable tag mismatch")
 grep -qF '* Initial client theme release.' "$WT2/readme.txt" 2>/dev/null || problems+=("client changelog was not reset")
-[ ! -e "$WT2/docs/futurebase.md" ] || problems+=("Futurebase product narrative survived in client docs")
-[ ! -e "$WT2/docs/futurebase-company-site.md" ] || problems+=("Futurebase company-site brief survived in client docs")
-[ ! -e "$WT2/docs/assets/futurebase-social.png" ] || problems+=("Futurebase social asset survived in client docs")
-[ ! -e "$WT2/screenshot.png" ] || problems+=("Futurebase screenshot survived in the client theme")
+grep -qF " * $REAL_NAME theme functions." "$WT2/functions.php" 2>/dev/null || problems+=("functions.php display-name docblock mismatch")
+if grep -qF "$REAL_NAME WP" "$WT2/style.css" "$WT2/readme.txt" "$WT2/functions.php" 2>/dev/null; then
+	problems+=("client display name retained a trailing WP product suffix")
+fi
+for product_file in "${FUTUREBASE_PRODUCT_EXCLUSIONS[@]}"; do
+	[ ! -e "$WT2/$product_file" ] || problems+=("Futurebase WP product file survived client rename: $product_file")
+done
 
 template_file="$WT2/tools/project-system/templates/lead/CLAUDE.md"
 if [ -f "$template_file" ]; then
@@ -183,7 +195,7 @@ else
 	echo "  real-rename: OK ($REAL_SLUG applied cleanly; tools preserved)"
 fi
 
-# Standalone use keeps the Futurebase repository as Theme URI when no client
+# Standalone use keeps the Futurebase WP repository as Theme URI when no client
 # URI is supplied. That is the runtime backstop's sole intentional exception.
 STANDALONE_SLUG="standalone-client-probe"
 STANDALONE_NAME="Standalone Client Probe"
@@ -195,7 +207,15 @@ if ! bash "$WT3/bin/rename-theme.sh" "$STANDALONE_SLUG" >"$LOG" 2>&1; then
 fi
 grep -qF "Theme Name: $STANDALONE_NAME" "$WT3/style.css" 2>/dev/null || standalone_problems+=("standalone display-name default mismatch")
 grep -qE "^Text Domain:[[:space:]]*$STANDALONE_SLUG$" "$WT3/style.css" 2>/dev/null || standalone_problems+=("standalone text domain mismatch")
-grep -qE '^Theme URI:[[:space:]]*https://github\.com/studiokicobi/futurebase$' "$WT3/style.css" 2>/dev/null || standalone_problems+=("standalone Theme URI compatibility exception missing")
+grep -qE '^Theme URI:[[:space:]]*https://github\.com/studiokicobi/futurebase-wp$' "$WT3/style.css" 2>/dev/null || standalone_problems+=("standalone Theme URI compatibility exception missing")
+grep -qF 'studiokicobi/futurebase-wp' "$WT3/package.json" 2>/dev/null || standalone_problems+=("standalone npm repository identity was rewritten")
+grep -qF 'references/futurebase-context.md' "$WT3/docs/project-lifecycle.md" 2>/dev/null || standalone_problems+=("family lifecycle context name was rewritten")
+grep -qF -- '--futurebase-path' "$WT3/docs/project-lifecycle.md" 2>/dev/null || standalone_problems+=("family lifecycle path flag was rewritten")
+grep -qF 'Futurebase 2.x' "$WT3/docs/project-lifecycle.md" 2>/dev/null || standalone_problems+=("family lifecycle display name was rewritten")
+unexpected_repository="${STANDALONE_SLUG}-wp"
+if grep -rIn --exclude-dir=tools -- "$unexpected_repository" "$WT3" >/dev/null 2>&1; then
+	standalone_problems+=("repository suffix was mistaken for a client theme handle")
+fi
 if [ "${#standalone_problems[@]}" -gt 0 ]; then
 	FAILED=1
 	echo "rename non-regression: FAIL — standalone rename ($STANDALONE_SLUG):"

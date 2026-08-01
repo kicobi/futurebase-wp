@@ -1,6 +1,6 @@
 # Scorecard
 
-Futurebase measures itself. Every scorecard run imports a deterministic demo
+Futurebase WP measures itself. Every scorecard run imports a deterministic demo
 fixture, then audits one URL per shipped template family with Lighthouse
 (mobile + desktop) and pa11y (WCAG 2.1 AA, desktop + mobile viewports).
 

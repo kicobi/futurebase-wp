@@ -9,7 +9,7 @@
 FUTUREBASE_BASE_SLUG="futurebase"
 FUTUREBASE_BASE_SNAKE="futurebase"
 FUTUREBASE_BASE_UPPER="FUTUREBASE"
-FUTUREBASE_BASE_DISPLAY="Futurebase"
+FUTUREBASE_BASE_DISPLAY="Futurebase WP"
 
 FUTUREBASE_TEMPLATE_TEXT_DOMAIN_RE='^Text Domain:[[:space:]]*futurebase[[:space:]]*$'
 FUTUREBASE_TOOL_TEMPLATE_SENTINEL='references/futurebase-context.md'
@@ -32,6 +32,15 @@ FUTUREBASE_RUNTIME_PATHS=(
 	functions.php
 	style.css
 	readme.txt
+)
+
+# Product-positioning files belong only to the Futurebase WP source repository.
+# Client rename removes every entry rather than attempting to rebrand it.
+FUTUREBASE_PRODUCT_EXCLUSIONS=(
+	docs/futurebase-wp.md
+	docs/futurebase-company-site.md
+	docs/assets/futurebase-wp-social.png
+	screenshot.png
 )
 
 # Repo-wide legacy-name exceptions. Each tab-separated row is:
