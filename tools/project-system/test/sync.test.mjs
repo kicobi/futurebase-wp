@@ -177,6 +177,40 @@ test('dependency sync preserves all four client npm lock identity fields across 
 	}
 });
 
+test('dependency planning blocks lock adoption when the client package version is absent', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const starter = join(dir, 'starter');
+		const projectRoot = join(dir, 'project');
+		initRepo(starter);
+		mkdirSync(projectRoot);
+		write(starter, 'package.json', JSON.stringify({ name: 'futurebase', version: '2.0.0', dependencies: { shared: '2.0.0' } }, null, '\t') + '\n');
+		write(
+			starter,
+			'package-lock.json',
+			JSON.stringify({ name: 'futurebase', version: '2.0.0', lockfileVersion: 3, packages: { '': { name: 'futurebase', version: '2.0.0' } } }, null, '\t') + '\n',
+		);
+		const ref = commitAll(starter, 'Futurebase dependency layer');
+		write(projectRoot, 'package.json', JSON.stringify({ name: 'client-theme', private: true, dependencies: { shared: '1.0.0' } }, null, '\t') + '\n');
+		write(
+			projectRoot,
+			'package-lock.json',
+			JSON.stringify({ name: 'client-theme', lockfileVersion: 3, packages: { '': { name: 'client-theme' } } }, null, '\t') + '\n',
+		);
+
+		const plan = planDeps({ projectRoot, starter, ref });
+		const lockEntries = plan.filter((entry) => entry.rel === 'package-lock.json');
+
+		assert.equal(lockEntries.length, 1);
+		assert.equal(lockEntries[0].state, 'blocked');
+		assert.match(lockEntries[0].note, /package\.json/);
+		assert.match(lockEntries[0].note, /version/);
+		assert.equal(lockEntries[0].next, undefined);
+	} finally {
+		cleanup();
+	}
+});
+
 test('source-path repair succeeds before ref resolution and reports separate JSON metadata', () => {
 	const { dir, cleanup } = sandbox();
 	try {

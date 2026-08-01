@@ -42,6 +42,7 @@ and CI.
 | WordPress | 6.9 |
 | PHP | 8.3 |
 
+<!-- template-setup:start -->
 ## Quick start with GitHub CLI
 
 Requires [`gh`](https://cli.github.com) authenticated (`gh auth login`). The template repo must have the **Template repository** setting enabled on GitHub.
@@ -116,6 +117,7 @@ After running, manually review:
 The rename is offline and reconciles npm lockfile identity without package resolution. Because Composer derives its lock hash from the renamed package, finish with `composer update --lock --no-install --no-interaction` before committing.
 
 Run `npm run verify` afterwards to confirm nothing drifted.
+<!-- template-setup:end -->
 
 ## Troubleshooting
 

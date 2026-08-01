@@ -381,8 +381,19 @@ export function planDeps({ projectRoot, starter, ref }) {
 	// starter's lock cannot describe this project, and adopting it would drop
 	// that package on the next clean install.
 	const upLockRaw = textAt(starter, ref, 'package-lock.json');
-	if (upLockRaw && projectPkgName && projectPkgVersion) {
-		if (npmExtra.length) {
+	if (upLockRaw) {
+		const missingLockIdentity = [
+			!projectPkgName && 'name',
+			!projectPkgVersion && 'version',
+		].filter(Boolean);
+		if (missingLockIdentity.length) {
+			entries.push({
+				rel: 'package-lock.json',
+				cls: CLASS.DEPS,
+				state: 'blocked',
+				note: `client package.json is missing lockfile identity field(s): ${missingLockIdentity.join(', ')} — add the missing field(s) and rerun sync`,
+			});
+		} else if (npmExtra.length) {
 			entries.push({ rel: 'package-lock.json', cls: CLASS.DEPS, state: 'blocked', note: `project-only dependencies (${npmExtra.join(', ')}) — run npm install --package-lock-only after reconciling the manifest` });
 		} else {
 			const lock = JSON.parse(upLockRaw);

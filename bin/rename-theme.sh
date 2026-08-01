@@ -191,11 +191,10 @@ for file in "${TARGETS[@]}"; do
 	perl -pi -e "s/\b${FUTUREBASE_BASE_SLUG}-(style|main|script)\b/${NEW_SLUG}-\$1/g" "$file"
 	perl -pi -e "s/(\@package\s+)${FUTUREBASE_BASE_SLUG}\b/\$1${NEW_SLUG}/g" "$file"
 	perl -pi -e "s/(Text Domain:\s*)${FUTUREBASE_BASE_SLUG}\b/\$1${NEW_SLUG}/g" "$file"
-	# Consume the full product display name before replacing any remaining bare
-	# family references. Reversing this order would produce "Client Name WP".
+	# Consume the full two-token product display name. Bare family references are
+	# provenance or base-only prose and must never be globally rewritten.
 	BASE_DISPLAY="$FUTUREBASE_BASE_DISPLAY" DISPLAY="$THEME_NAME" perl -i -pe '
 		s/\Q$ENV{BASE_DISPLAY}\E/$ENV{DISPLAY}/g;
-		s/\bFuturebase\b/$ENV{DISPLAY}/g;
 	' "$file"
 done
 
@@ -250,6 +249,18 @@ DISPLAY="$THEME_NAME" perl -0777 -i -pe '
 	$replacement = "<!-- project-intro:start -->\n# $ENV{DISPLAY}\n\n**The WordPress theme for $ENV{DISPLAY}.**\n\nBuilt on Futurebase WP.\n<!-- project-intro:end -->";
 	s/<!-- project-intro:start -->.*?<!-- project-intro:end -->/$replacement/s;
 ' README.md
+
+# Template setup and rename instructions have served their purpose once a
+# client identity exists. Strip the bounded section on the first run and allow
+# it to remain absent on identical reruns; mismatched markers are corruption.
+setup_start_count="$(grep -cF '<!-- template-setup:start -->' README.md 2>/dev/null || true)"
+setup_end_count="$(grep -cF '<!-- template-setup:end -->' README.md 2>/dev/null || true)"
+if [ "$setup_start_count" = "1" ] && [ "$setup_end_count" = "1" ]; then
+	perl -0777 -i -pe 's/\n*<!-- template-setup:start -->.*?<!-- template-setup:end -->\n*/\n\n/s' README.md
+elif [ "$setup_start_count" != "0" ] || [ "$setup_end_count" != "0" ]; then
+	echo "error: README.md has invalid managed template-setup markers" >&2
+	exit 1
+fi
 rm -f "${FUTUREBASE_PRODUCT_EXCLUSIONS[@]}"
 
 # Structural assertions describe the required result; the runtime backstop

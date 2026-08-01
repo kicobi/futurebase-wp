@@ -40,6 +40,11 @@ if [ "$base_theme_name" != "$FUTUREBASE_BASE_DISPLAY" ] \
 	echo "rename non-regression: FAIL (Futurebase WP base display surfaces disagree)"
 	exit 1
 fi
+if [ "$(grep -cF '<!-- template-setup:start -->' README.md 2>/dev/null || true)" != "1" ] \
+	|| [ "$(grep -cF '<!-- template-setup:end -->' README.md 2>/dev/null || true)" != "1" ]; then
+	echo "rename non-regression: FAIL (README.md managed template-setup block is missing or ambiguous)"
+	exit 1
+fi
 
 WORKTREES=()
 LOG="$(mktemp -t rename-contract-test-log.XXXXXX)"
@@ -134,6 +139,17 @@ fi
 
 readme_count="$(grep -o "$FUTUREBASE_DISPLAY_SENTINEL" "$WT2/README.md" 2>/dev/null | wc -l | tr -d ' ')"
 [ "$readme_count" = "1" ] || problems+=("client README has $readme_count Futurebase occurrences; expected one")
+grep -qF 'Built on Futurebase WP.' "$WT2/README.md" 2>/dev/null || problems+=("client README provenance sentence missing")
+if grep -qF '<!-- template-setup:' "$WT2/README.md" 2>/dev/null \
+	|| grep -qF '## Rename checklist' "$WT2/README.md" 2>/dev/null \
+	|| grep -qF '## Quick start with GitHub CLI' "$WT2/README.md" 2>/dev/null; then
+	problems+=("client README retained template setup or rename instructions")
+fi
+if grep -qF "$REAL_NAME provenance sentence" "$WT2/README.md" 2>/dev/null \
+	|| grep -qF "$REAL_NAME narrative" "$WT2/README.md" 2>/dev/null \
+	|| grep -qF "$REAL_NAME product screenshot" "$WT2/README.md" 2>/dev/null; then
+	problems+=("client README contains display-name-substituted Futurebase product prose")
+fi
 
 node - "$WT2/package.json" "$WT2/package-lock.json" <<'NODE' || problems+=("npm manifest/lock root identities disagree")
 const fs = require('node:fs');
