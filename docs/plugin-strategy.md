@@ -1,7 +1,8 @@
 # Plugin strategy
 
 Decided 2026-08-02: **three in-house plugins, built ahead of client demand,
-delivered by private Composer, never published to wordpress.org.**
+renamed per project exactly like the theme, never published to
+wordpress.org.**
 
 Futurebase WP is a theme, and a theme is the wrong home for anything that
 must survive a theme switch. This document records what the plugin layer is,
@@ -91,42 +92,74 @@ block gets does not change; this plugin is simply the other side of it.
 
 ## Delivery
 
-### Mechanism
+### Renamed at promotion, exactly like the theme
 
-A private Composer VCS repository declared in the project's
-`composer.json` — the same pattern [acf-pro-setup.md](acf-pro-setup.md)
-already uses for ACF Pro. Plugins resolve during a deploy or a maintenance
-window, alongside the git push-to-deploy flow in
-[deployment.md](deployment.md).
+Each project's plugins are renamed to that project's slug in the same pass
+that renames the theme — see [conventions.md](conventions.md) for the slug
+substitution grammar. A client's site runs `<slug>-core`, not
+`futurebase-core`, and carries the client's identity throughout.
 
-No Satis, no update server, no `plugin-update-checker`, no phone-home
-endpoint. A self-hosted update channel is the standard supply-chain weak
-point in premium WordPress plugins; not having one is both less work and a
-smaller attack surface.
+This is one model for everything a client receives, rather than two. It also
+means nothing of ours sits on a site under our name, which removes the
+offboarding and disclosure questions entirely instead of leaving them to be
+managed.
+
+Promotion is the only safe moment for this. A rename changes the plugin
+directory, so WordPress deactivates the old plugin and sees a new one;
+anything keyed to the previous slug is orphaned. At promotion no content
+exists yet, so there is nothing to orphan. The same rename attempted at
+separation, on a site with years of content, could break registered post
+types and stored option keys — which is why it happens at the start and not
+at the end.
+
+Provenance follows the theme's existing rule in
+[futurebase-company-site.md](futurebase-company-site.md): client identity
+throughout, one "Built on Futurebase WP" note.
+
+### What renaming costs
+
+A renamed plugin is a fork. It cannot resolve from a shared Composer
+repository, so there is no upstream dependency and no `composer update` path.
+Plugins classify the same way slug-bearing paths already do in
+`tools/project-system/lib/sync.mjs` — drift is reported, never written —
+and a fix is a hand port into each project, as `bin/` and `docs/` are
+today.
+
+That cost is real and grows linearly with the number of live sites. It is
+accepted knowingly: updates were already going to be manual and deliberate,
+the fleet is small, and the same porting discipline already governs a much
+larger artifact in the theme.
 
 ### No automatic updates
 
 Plugin updates reach a client site because someone deployed them, never on
 their own. That is a deliberate property, not a missing feature: updates are
-an act of maintenance under an ongoing relationship.
+an act of maintenance under an ongoing relationship. Delivery is the
+project's own git push-to-deploy flow in [deployment.md](deployment.md) —
+there is no update server, no `plugin-update-checker`, and no phone-home
+endpoint to secure.
 
-### Plugins are the one layer that can hold a real dependency
+### Renameable by design
 
-`futurebase sync` exists because a promoted project shares no git history
-with the starter, so fixes have to be copied rather than pulled — see
-[project-lifecycle.md](project-lifecycle.md). The theme is renamed per client
-and therefore can't carry an upstream link.
+The rename only works if the plugins are built for it, the same way the theme
+was. This is a Phase 0 requirement, cheap before any code exists and
+expensive afterwards:
 
-Plugins keep a stable identity across every project. They are the only part
-of the stack where a genuine upstream dependency is possible, so the sync
-workaround does not apply to them.
+- the slug must not leak into stored state — option keys, post meta keys, or
+  registered post type names — or a migration must ship with it
+- `bin/rename-theme.sh` grows the plugin paths as scan roots, and
+  `bin/test-rename.sh` asserts no slug literal survives, as it already does
+  for the theme
+- Futurebase Core is the sharp case: it registers post types, so a careless
+  slug in a `register_post_type()` call is content loss on rename, not a
+  cosmetic leftover
 
 ### Ownership
 
-The client owns their copy. GPL guarantees this already — it is not a
-concession being made, it is how the ecosystem works, stated plainly. A
-client who leaves keeps the installed code and can hire anyone to maintain
-it; what they lose is access to the repository and future updates.
+The client owns their copy, under their own name. GPL guarantees the
+ownership already — it is not a concession being made, it is how the
+ecosystem works, stated plainly. A client who leaves keeps the installed code
+and can hire anyone to maintain it; what they lose is future updates.
 
 This resolves what would otherwise be a contradiction with the no-lock-in
 claim in [futurebase-wp.md](futurebase-wp.md). The plugin layer is not
@@ -145,6 +178,11 @@ here makes the boundary explicit rather than implied, which is the point:
 "you own this and can take it anywhere" and "you own this, including when it
 needs attention" are the same sentence.
 
+Renaming at promotion is what makes that boundary clean rather than merely
+stated. A departed client's site runs code under their own name, so there is
+no Futurebase-branded plugin in the wild to disclose against, and no
+notification practice to maintain.
+
 ## Sequencing
 
 Part-time alongside client work. Futurebase SEO goes first because it is the
@@ -154,14 +192,16 @@ accessibility testing.
 
 | Phase | Work | Estimate |
 | --- | --- | --- |
-| 0 | Shared plugin scaffold, CI reuse, Composer delivery pattern | ~1 week |
+| 0 | Shared scaffold, CI reuse, rename + sync wiring | ~1½ weeks |
 | 1 | Futurebase SEO | 2–3 weeks |
 | 2 | Futurebase Core, partly extracted from Phase 1 | ~2 weeks |
 | 3 | Futurebase Blocks, initial 4–5 components | 4–6 weeks |
 
 Roughly a quarter in elapsed time. Phase 0 is the leverage step — three
 plugins inherit whatever it establishes, so it is worth doing properly before
-Phase 1 rather than retrofitting.
+Phase 1 rather than retrofitting. It carries the renameability contract, and
+retrofitting that after Futurebase Core registers post types is the expensive
+version of this work.
 
 ## Promoting before build
 
@@ -196,16 +236,20 @@ The messages that hold today, without any plugin existing yet:
 
 Three, all downstream of the model rather than objections to it.
 
-1. **Fleet version drift.** Without automatic updates, knowing which site
-   runs which plugin version becomes a tracking problem. `futurebase sync`
-   reports theme drift; there is no plugin equivalent. This becomes necessary
-   around the third or fourth live site, not the tenth.
+1. **Porting, not updating.** Because each project's plugins are renamed,
+   every fix is a hand port into a divergent copy rather than an update
+   applied to an identical one. `futurebase sync` reports theme drift and
+   would need to grow the same reporting for plugins; without it, knowing
+   which site is behind is guesswork. This becomes necessary around the third
+   or fourth live site, not the tenth.
 
 2. **Manual security patching.** A vulnerability in one of these has to be
-   carried to every site by hand, which is real work and scales with the
-   number of active clients. Under an ongoing relationship that is the
-   relationship doing its job. Sites with no active relationship are out of
-   scope — see [Ownership](#ownership).
+   carried to every site by hand, and the porting cost above applies to
+   each one. Real work, scaling linearly with active clients. Under an
+   ongoing relationship that is the relationship doing its job. Sites with
+   no active relationship are out of scope — see [Ownership](#ownership) —
+   and after a rename they are not running anything under our name in any
+   case.
 
 3. **Opportunity cost.** Futurebase SEO currently sits at Tier 2 on the
    theme's own roadmap. Phase 1 is a reprioritisation, not an addition.
