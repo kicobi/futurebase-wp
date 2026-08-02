@@ -160,8 +160,21 @@ call_user_func(
 		$registry = WP_Block_Patterns_Registry::get_instance();
 
 		/*
-		 * The namespace is the active theme's slug, which is the convention
-		 * every pattern here follows and what bin/rename-theme.sh rewrites.
+		 * The namespace is the theme's TEXT DOMAIN, not its directory.
+		 *
+		 * Those were the same string until the two were allowed to differ: the
+		 * foundation's directory carries a product suffix its text domain does
+		 * not. get_stylesheet() therefore looked for `<directory>/section-*`
+		 * while the patterns register as `<text-domain>/section-*`, the loop
+		 * below matched nothing, every composed page was built from zero
+		 * sections, and About and Services rendered empty — while the scorecard
+		 * measured them and still reported OK.
+		 *
+		 * bin/rename-theme.sh rewrites the text domain and the pattern slugs
+		 * from one value, so a client cannot drift the two apart.
+		 *
+		 * This file is copied verbatim into client projects, so it must carry
+		 * no literal slug — bin/test-rename.sh asserts that.
 		 *
 		 * It used to be found by probing for `<namespace>/section-hero` and
 		 * erroring if that pattern was absent. That reads "is the theme
@@ -171,7 +184,11 @@ call_user_func(
 		 * active, correct, and simply its own. The registry is still consulted
 		 * below; it is no longer required to contain one specific pattern.
 		 */
-		$namespace = wp_get_theme()->get_stylesheet();
+		$theme     = wp_get_theme();
+		$namespace = $theme->get( 'TextDomain' );
+		if ( ! $namespace ) {
+			$namespace = $theme->get_stylesheet();
+		}
 
 		$available = array();
 		foreach ( $registry->get_all_registered() as $registered ) {

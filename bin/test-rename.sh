@@ -152,6 +152,15 @@ grep -qE '^Author:[[:space:]]*Kicobi$' "$WT2/style.css" 2>/dev/null || problems+
 grep -qE '^Author URI:[[:space:]]*https://kicobi\.com$' "$WT2/style.css" 2>/dev/null || problems+=("Kicobi author URI did not carry into client theme")
 [ "$(head -1 "$WT2/readme.txt" 2>/dev/null)" = "=== $REAL_NAME ===" ] || problems+=("readme title mismatch")
 grep -qE "^Stable tag:[[:space:]]*$REAL_VERSION$" "$WT2/readme.txt" 2>/dev/null || problems+=("readme stable tag mismatch")
+# The version audit runs inside every client's CI through verify-theme.sh. It
+# used to assert one hardcoded Futurebase version across the client surfaces as
+# well as the lifecycle ones, so a normal rename failed it on five surfaces and
+# every promoted project went red on its first push. Nothing caught that: the
+# audit had only ever run against the un-renamed template. A renamed worktree is
+# the one place it could have surfaced, so run it here.
+if ! (cd "$WT2" && node bin/verify-version-surfaces.mjs >>"$LOG" 2>&1); then
+	problems+=("the version audit fails in a renamed client — a promoted project would fail its own CI")
+fi
 grep -qF "Contributors: $REAL_CONTRIBUTORS" "$WT2/readme.txt" 2>/dev/null || problems+=("readme contributors mismatch")
 if grep -q '^Contributors:' "$WT2/style.css" 2>/dev/null; then
 	problems+=("Contributors header was written to style.css instead of readme.txt")

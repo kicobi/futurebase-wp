@@ -74,6 +74,11 @@ copy_paths=(
 	"screenshot.png"
 	"LICENSE"
 	"assets/images"
+	# docs/media-conventions.md tells clients to register brand fonts at
+	# file:./assets/fonts/... in theme.json. Excluding them shipped a theme.json
+	# pointing at files that were not in the zip: WordPress falls back silently,
+	# so the brand font simply vanishes on install.
+	"assets/fonts"
 	"build"
 	"inc"
 	"languages"
