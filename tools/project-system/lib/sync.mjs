@@ -70,7 +70,7 @@ export const PRODUCT_ONLY = [
 // and hand-ported), and the test alone proves nothing. Shipping the pair means
 // a project that ports its verify script gets checks already proven to reject
 // the markup they forbid.
-export const PORTABLE_BIN = ['bin/demo-content.sh', 'bin/scorecard.sh', 'bin/smoke-render.sh', 'bin/smoke-render.php', 'bin/verify-contract.mjs', 'bin/verify-contract.test.mjs'];
+export const PORTABLE_BIN = ['bin/_page-set.sh', 'bin/demo-content.sh', 'bin/scorecard.sh', 'bin/smoke-render.sh', 'bin/smoke-render.php', 'bin/verify-contract.mjs', 'bin/verify-contract.test.mjs'];
 
 // Configuration the portable scripts cannot run without. bin/scorecard.sh is
 // CLASS.SAFE and copies verbatim, but the Lighthouse configs it passes to

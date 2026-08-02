@@ -78,20 +78,11 @@ else
 	RUN_LABEL="$(date +%Y-%m-%d)"
 fi
 
-# Page set: one URL per shipped template family. Slugs are the deterministic
-# fixture slugs created by fixtures/import-demo.php — keep the two in sync.
-LHCI_URLS=(
-	"$WP_URL/"
-	"$WP_URL/about/"
-	"$WP_URL/services/"
-	"$WP_URL/blog/"
-	"$WP_URL/designing-with-demo-content/"
-	"$WP_URL/category/notes/"
-	"$WP_URL/author/demo-author/"
-	"$WP_URL/?s=demo"
-)
-# The 404 page is pa11y-only: LHCI on non-200 responses is unreliable.
-PA11Y_URLS=( "${LHCI_URLS[@]}" "$WP_URL/this-page-does-not-exist/" )
+# Page set: shared with bin/a11y-wp-env.sh so the two harnesses cannot cover
+# different pages. See bin/_page-set.sh.
+. "$ROOT/bin/_page-set.sh"
+IFS=$'\n' read -r -d '' -a LHCI_URLS < <(page_set "$WP_URL" && printf '\0')
+IFS=$'\n' read -r -d '' -a PA11Y_URLS < <(page_set_with_404 "$WP_URL" && printf '\0')
 
 ART_DIR="$ROOT/.artifacts/scorecard/$RUN_LABEL"
 mkdir -p "$ART_DIR"
