@@ -30,6 +30,7 @@ import {
 	missingWorkflowScripts,
 	planDeps,
 	planFiles,
+	PORTABLE_CONFIG,
 	PRODUCT_ONLY,
 	safeFiles,
 } from '../lib/sync.mjs';
@@ -383,4 +384,75 @@ test('a project defining every referenced script reports nothing', () => {
 test('script detection tolerates an unreadable workflow and an absent scripts block', () => {
 	assert.deepEqual(missingWorkflowScripts([null], {}), []);
 	assert.deepEqual(missingWorkflowScripts(['- run: npm run build\n'], null), ['build']);
+});
+
+// --- machine mode and refresh honesty ----------------------------------------
+
+test('an --apply --json run emits one document and nothing else', () => {
+	// The read-only early return skips the human report, but --apply does not, so
+	// the whole report printed to stdout ahead of the payload and a consumer got
+	// prose wrapped around its JSON.
+	const { dir, cleanup } = sandbox();
+	try {
+		const starter = join(dir, 'futurebase');
+		const projectRoot = join(dir, 'project');
+		initRepo(starter);
+		write(starter, 'tools/project-system/VERSION', '2.0.0\n');
+		write(starter, 'fixtures/import-demo.php', '<?php // fixture\n');
+		commitAll(starter, 'Futurebase');
+		git(starter, 'branch', '-f', 'origin/main');
+		write(projectRoot, '.project/project.yml', `project:\n  name: Client\nstarter:\n  source_path: ${starter}\n`);
+
+		const result = spawnSync(
+			process.execPath,
+			[CLI, 'sync', '--project-root', projectRoot, '--futurebase-path', starter, '--ref', 'origin/main', '--apply', '--confirm', '--json'],
+			{ encoding: 'utf8' },
+		);
+		const output = JSON.parse(result.stdout); // throws if prose leaked in
+		assert.equal(output.status, 'applied');
+		assert.ok('composer_lock' in output, 'the JSON must report the reconciliation it performed');
+	} finally {
+		cleanup();
+	}
+});
+
+test('a failed --fetch stops instead of planning against the stale ref it asked to refresh', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const starter = join(dir, 'futurebase');
+		const projectRoot = join(dir, 'project');
+		initRepo(starter);
+		write(starter, 'tools/project-system/VERSION', '2.0.0\n');
+		commitAll(starter, 'Futurebase');
+		// An origin/main that resolves, and a remote that cannot be reached — the
+		// exact state in which discarding the fetch result was invisible.
+		git(starter, 'branch', '-f', 'origin/main');
+		git(starter, 'remote', 'add', 'origin', join(dir, 'no-such-remote.git'));
+		write(projectRoot, '.project/project.yml', `project:\n  name: Client\nstarter:\n  source_path: ${starter}\n`);
+
+		const result = spawnSync(
+			process.execPath,
+			[CLI, 'sync', '--project-root', projectRoot, '--futurebase-path', starter, '--fetch', '--json'],
+			{ encoding: 'utf8' },
+		);
+		assert.notEqual(result.status, 0, 'a refresh that did not happen must not report success');
+		assert.match(result.stdout + result.stderr, /fetch failed/);
+	} finally {
+		cleanup();
+	}
+});
+
+test('portable scripts travel with the configuration they invoke', () => {
+	// bin/scorecard.sh passes these to --config. It was safe while they were
+	// review-class, so a client could receive a newer script without them.
+	assert.equal(classifyPath('bin/scorecard.sh'), CLASS.SAFE);
+	for (const rel of PORTABLE_CONFIG) assert.equal(classifyPath(rel), CLASS.SAFE, `${rel} must travel with the script that reads it`);
+});
+
+test('the documented --allow-mismatch override is actually reachable', () => {
+	// Documented in the compare header and named in its own failure message, but
+	// never registered — so parseArgs rejected it as an unknown option and the
+	// escape hatch could not be used at all.
+	const result = spawnSync(process.execPath, [CLI, 'compare', '--project-root', '/nonexistent', '--allow-mismatch', '--json'], { encoding: 'utf8' });
+	assert.doesNotMatch(result.stderr + result.stdout, /unknown option/i, 'the flag must be registered');
 });

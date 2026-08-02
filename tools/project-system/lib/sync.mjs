@@ -72,6 +72,13 @@ export const PRODUCT_ONLY = [
 // the markup they forbid.
 export const PORTABLE_BIN = ['bin/demo-content.sh', 'bin/scorecard.sh', 'bin/smoke-render.sh', 'bin/smoke-render.php', 'bin/verify-contract.mjs', 'bin/verify-contract.test.mjs'];
 
+// Configuration the portable scripts cannot run without. bin/scorecard.sh is
+// CLASS.SAFE and copies verbatim, but the Lighthouse configs it passes to
+// --config were review-class, so a client could receive a newer scorecard
+// script without the files it invokes. Slug-free by inspection and asserted so
+// by bin/test-rename.sh, exactly as PORTABLE_BIN is.
+export const PORTABLE_CONFIG = ['lighthouserc-desktop.json', 'lighthouserc-mobile.json'];
+
 // Ordered; first match wins.
 const RULES = [
 	// Checked before the workflow rule below, which would otherwise claim these.
@@ -84,7 +91,7 @@ const RULES = [
 	[CLASS.SAFE, (r) => r.startsWith('tools/')],
 	[CLASS.SAFE, (r) => r.startsWith('.github/workflows/')],
 	[CLASS.SAFE, (r) => r.startsWith('fixtures/')],
-	[CLASS.SAFE, (r) => PORTABLE_BIN.includes(r)],
+	[CLASS.SAFE, (r) => PORTABLE_BIN.includes(r) || PORTABLE_CONFIG.includes(r)],
 
 	// Dependency layer. Slug-bearing only in name fields, so it is merged
 	// field-by-field rather than copied.
