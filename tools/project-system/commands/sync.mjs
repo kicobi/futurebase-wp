@@ -106,7 +106,15 @@ export async function sync(_positional, flags) {
 
 	if (flags.fetch) {
 		info('fetching starter …');
-		run('git', ['fetch', '--quiet', 'origin'], { cwd: starter });
+		// The result was discarded. A broken remote — network down, auth expired,
+		// origin renamed — exits 128 and leaves the previous origin/main in place,
+		// so --fetch went on to plan and apply against exactly the stale state it
+		// was asked to refresh, and reported success. Asking to refresh and
+		// silently not refreshing is worse than not asking.
+		const fetched = run('git', ['fetch', '--quiet', 'origin'], { cwd: starter });
+		if (!fetched.ok) {
+			die(`git fetch failed in ${starter}: ${(fetched.stderr || fetched.error?.message || 'unknown error').split('\n')[0]}`, EXIT.ACCESS_FAILURE, { json });
+		}
 	}
 
 	const ref = flags.ref || DEFAULT_REF;
@@ -158,69 +166,76 @@ export async function sync(_positional, flags) {
 		});
 	}
 
-	// 5. Report.
-	console.log(c.bold(`sync — ${record.project?.name ?? root.split('/').pop()} ← ${ref}`));
-	info(`starter: ${starter}`);
-	info(`ref:     ${refSubject(starter, ref) ?? refSha}`);
-	if (recorded && ancestry === false) {
-		warn(`recorded template_commit ${recorded.slice(0, 7)} is not an ancestor of ${ref}`);
-		info('promotion records the local starter HEAD, which may sit on an unmerged branch.');
-		info('The plan below is content-based and unaffected. Use --repair-provenance to correct it.');
-	} else if (recorded && ancestry === null) {
-		warn(`recorded template_commit ${recorded.slice(0, 7)} is not present in this starter checkout`);
-	}
-	console.log('');
-
-	const show = (title, list, colour) => {
-		if (!list.length) return;
-		console.log(c.bold(title));
-		for (const e of list) {
-			const mark = e.state === 'add' ? '+' : e.state === 'upstream-deleted' ? '-' : '~';
-			console.log(`  ${colour(mark)} ${e.rel}  ${c.dim(e.cls)}${e.note ? c.dim(` — ${e.note}`) : ''}`);
+	// The human report is stdout, and so is the JSON document. In --apply
+	// --json the read-only early return above does not fire, so the whole
+	// report used to print before emitJson and a consumer got prose wrapped
+	// around its payload. Machine mode emits exactly one document.
+	if (!json) {
+		// 5. Report.
+		console.log(c.bold(`sync — ${record.project?.name ?? root.split('/').pop()} ← ${ref}`));
+		info(`starter: ${starter}`);
+		info(`ref:     ${refSubject(starter, ref) ?? refSha}`);
+		if (recorded && ancestry === false) {
+			warn(`recorded template_commit ${recorded.slice(0, 7)} is not an ancestor of ${ref}`);
+			info('promotion records the local starter HEAD, which may sit on an unmerged branch.');
+			info('The plan below is content-based and unaffected. Use --repair-provenance to correct it.');
+		} else if (recorded && ancestry === null) {
+			warn(`recorded template_commit ${recorded.slice(0, 7)} is not present in this starter checkout`);
 		}
 		console.log('');
-	};
 
-	show(`Will apply (${writable.length})`, writable, c.green);
-	show(`Locally modified — skipped (${conflicts.length})`, conflicts, c.red);
-	if (review.length) {
-		show(`Drifted upstream — port by hand (${review.length})`, review, c.yellow);
-		info('These carry the theme slug, so copying them would undo the rename.');
-		console.log('');
-	}
-	if (blocked.length) {
-		console.log(c.bold(`Cannot adopt safely (${blocked.length})`));
-		for (const e of blocked) {
-			console.log(`  ${c.red('!')} ${e.rel}  ${c.dim(e.cls)}`);
-			info(e.note);
+		const show = (title, list, colour) => {
+			if (!list.length) return;
+			console.log(c.bold(title));
+			for (const e of list) {
+				const mark = e.state === 'add' ? '+' : e.state === 'upstream-deleted' ? '-' : '~';
+				console.log(`  ${colour(mark)} ${e.rel}  ${c.dim(e.cls)}${e.note ? c.dim(` — ${e.note}`) : ''}`);
+			}
+			console.log('');
+		};
+
+		show(`Will apply (${writable.length})`, writable, c.green);
+		show(`Locally modified — skipped (${conflicts.length})`, conflicts, c.red);
+		if (review.length) {
+			show(`Drifted upstream — port by hand (${review.length})`, review, c.yellow);
+			info('These carry the theme slug, so copying them would undo the rename.');
+			console.log('');
 		}
-		console.log('');
-	}
-	show(`Removed upstream — left in place (${deleted.length})`, deleted, c.dim);
+		if (blocked.length) {
+			console.log(c.bold(`Cannot adopt safely (${blocked.length})`));
+			for (const e of blocked) {
+				console.log(`  ${c.red('!')} ${e.rel}  ${c.dim(e.cls)}`);
+				info(e.note);
+			}
+			console.log('');
+		}
+		show(`Removed upstream — left in place (${deleted.length})`, deleted, c.dim);
 
-	// Workflows are CLASS.SAFE and copy over verbatim, but the npm scripts and
-	// bin/ files they call do not. Say so here rather than letting the client's
-	// next CI run report it as `Missing script`.
-	const workflowTexts = entries
-		.filter((e) => e.rel.startsWith('.github/workflows/') && e.state !== 'upstream-deleted')
-		.map((e) => textAt(starter, ref, e.rel));
-	let projectScripts = {};
-	try {
-		projectScripts = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).scripts || {};
-	} catch {
-		projectScripts = {};
-	}
-	const missingScripts = missingWorkflowScripts(workflowTexts, projectScripts);
-	if (missingScripts.length) {
-		console.log(c.bold(`Workflows call scripts this project does not define (${missingScripts.length})`));
-		for (const name of missingScripts) console.log(`  ${c.yellow('!')} npm run ${name}`);
-		info('Synced workflows carry these calls, but package.json scripts are never merged.');
-		info('Add them — and hand-port the bin/ files behind them — or CI fails on the next push.');
-		console.log('');
-	}
+		// Workflows are CLASS.SAFE and copy over verbatim, but the npm scripts and
+		// bin/ files they call do not. Say so here rather than letting the client's
+		// next CI run report it as `Missing script`.
+		const workflowTexts = entries
+			.filter((e) => e.rel.startsWith('.github/workflows/') && e.state !== 'upstream-deleted')
+			.map((e) => textAt(starter, ref, e.rel));
+		let projectScripts = {};
+		try {
+			projectScripts = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).scripts || {};
+		} catch {
+			projectScripts = {};
+		}
+		const missingScripts = missingWorkflowScripts(workflowTexts, projectScripts);
+		if (missingScripts.length) {
+			console.log(c.bold(`Workflows call scripts this project does not define (${missingScripts.length})`));
+			for (const name of missingScripts) console.log(`  ${c.yellow('!')} npm run ${name}`);
+			info('Synced workflows carry these calls, but package.json scripts are never merged.');
+			info('Add them — and hand-port the bin/ files behind them — or CI fails on the next push.');
+			console.log('');
+		}
 
-	if (!drifted.length) ok('project is in sync with the starter');
-	else info(`${entries.length - drifted.length} file(s) already up to date`);
+		if (!drifted.length) ok('project is in sync with the starter');
+		else info(`${entries.length - drifted.length} file(s) already up to date`);
+
+	}
 
 	// 6. Repair provenance (independent of --apply).
 	if (flags['repair-provenance']) {
@@ -281,8 +296,38 @@ export async function sync(_positional, flags) {
 		process.exit(EXIT.OK);
 	}
 
+	// composer.lock carries a content-hash derived from composer.json — which
+	// legitimately differs here, since the project keeps its own package name.
+	// An adopted lock is therefore always reported stale until composer rewrites
+	// that hash. `update --lock` rewrites only the lock metadata; it does not
+	// change resolved package versions.
+	//
+	// This runs BEFORE the JSON is emitted. It used to sit after, and emitJson
+	// exits — so machine-driven sync applied the files, reported success, and
+	// skipped the reconciliation human mode performed, leaving a lock composer
+	// would call stale on the next install.
+	const touchedNpm = written.some((r) => r === 'package.json' || r === 'package-lock.json');
+	const touchedComposer = written.some((r) => r === 'composer.json' || r === 'composer.lock');
+	let composerLock = null;
+	if (touchedComposer) {
+		if (!have('composer')) {
+			composerLock = 'composer-not-found';
+			if (!json) warn('composer not found — run `composer update --lock` to reconcile the lock hash');
+		} else {
+			const r = run('composer', ['update', '--lock', '--no-install', '--no-interaction', '--quiet'], { cwd: root });
+			composerLock = r.ok ? 'reconciled' : 'failed';
+			if (!json) {
+				if (r.ok) ok('composer.lock content-hash reconciled');
+				else warn(`could not reconcile composer.lock hash — run: composer update --lock\n  ${r.stderr || r.stdout}`);
+			}
+		}
+	}
+
 	if (json) {
-		emitJson({ status: 'applied', ref, ref_sha: refSha, written, failed, skipped_conflicts: conflicts.map((e) => e.rel) }, failed.length ? EXIT.WARNINGS : EXIT.OK);
+		emitJson(
+			{ status: 'applied', ref, ref_sha: refSha, written, failed, skipped_conflicts: conflicts.map((e) => e.rel), composer_lock: composerLock },
+			failed.length ? EXIT.WARNINGS : EXIT.OK,
+		);
 	}
 
 	console.log('');
@@ -290,22 +335,6 @@ export async function sync(_positional, flags) {
 	if (failed.length) fail(`${failed.length} could not be written: ${failed.join(', ')}`);
 	if (conflicts.length) warn(`${conflicts.length} locally-modified file(s) skipped — reconcile by hand`);
 
-	// composer.lock carries a content-hash derived from composer.json — which
-	// legitimately differs here, since the project keeps its own package name.
-	// An adopted lock is therefore always reported stale until composer
-	// rewrites that hash. `update --lock` rewrites only the lock metadata; it
-	// does not change resolved package versions.
-	const touchedNpm = written.some((r) => r === 'package.json' || r === 'package-lock.json');
-	const touchedComposer = written.some((r) => r === 'composer.json' || r === 'composer.lock');
-	if (touchedComposer) {
-		if (have('composer')) {
-			const r = run('composer', ['update', '--lock', '--no-install', '--no-interaction', '--quiet'], { cwd: root });
-			if (r.ok) ok('composer.lock content-hash reconciled');
-			else warn(`could not reconcile composer.lock hash — run: composer update --lock\n  ${r.stderr || r.stdout}`);
-		} else {
-			warn('composer not found — run `composer update --lock` to reconcile the lock hash');
-		}
-	}
 	console.log('');
 	console.log('Next:');
 	let step = 1;

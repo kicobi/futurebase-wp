@@ -69,6 +69,10 @@ const OPTIONS = {
 	apply: { type: 'boolean', default: false },
 	'repair-provenance': { type: 'boolean', default: false },
 	'repair-source-path': { type: 'boolean', default: false },
+	// compare — documented in the command header and its own failure message, but
+	// never registered, so parseArgs rejected it as unknown and the documented
+	// escape hatch could not be used at all.
+	'allow-mismatch': { type: 'boolean', default: false },
 	// compare / survey / tasks
 	'baseline-run': { type: 'string' },
 	'final-run': { type: 'string' },

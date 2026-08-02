@@ -227,8 +227,9 @@ SYNC_LIB="$WT2/tools/project-system/lib/sync.mjs"
 portable_bin="$(node -e "
 	const { pathToFileURL } = require('node:url');
 	import(pathToFileURL(process.argv[1]).href).then((module) => {
-		if (!Array.isArray(module.PORTABLE_BIN) || module.PORTABLE_BIN.length === 0) process.exit(2);
-		console.log(module.PORTABLE_BIN.join('\\n'));
+		const list = [...(module.PORTABLE_BIN || []), ...(module.PORTABLE_CONFIG || [])];
+		if (list.length === 0) process.exit(2);
+		console.log(list.join('\\n'));
 	}).catch(() => process.exit(2));
 " "$SYNC_LIB" 2>>"$LOG")"
 if [ -z "$portable_bin" ]; then
