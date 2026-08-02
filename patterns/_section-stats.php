@@ -15,7 +15,7 @@
 ?>
 <!-- wp:group {"align":"full","className":"is-style-section","backgroundColor":"contrast-2","textColor":"base","layout":{"type":"constrained"}} -->
 <div class="wp-block-group alignfull is-style-section has-base-color has-contrast-2-background-color has-text-color has-background">
-	<!-- wp:columns {"align":"wide","style":{"spacing":{"blockGap":{"top":"var:preset|spacing|50","left":"var:preset|spacing|50"}}}} -->
+	<!-- wp:columns {"align":"wide"} -->
 	<div class="wp-block-columns alignwide">
 		<!-- wp:column -->
 		<div class="wp-block-column">

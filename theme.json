@@ -351,6 +351,11 @@
 			}
 		},
 		"blocks": {
+			"core/columns": {
+				"spacing": {
+					"blockGap": "var:preset|spacing|50"
+				}
+			},
 			"core/navigation": {
 				"elements": {
 					"link": {
