@@ -8,7 +8,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { EXIT, die, ok, info, fail, emitJson, c } from '../lib/output.mjs';
-import { findProjectRoot, projectPaths, latestRunId, isRunId, readRunSummary } from '../lib/baseline.mjs';
+import { findProjectRoot, projectPaths, latestRunId, isRunId, readRunSummary, evidenceVerdict } from '../lib/baseline.mjs';
 import { readYaml } from '../lib/yaml.mjs';
 import { loadMetrics } from '../lib/metrics.mjs';
 import { buildComparison, renderComparison } from '../lib/compare.mjs';
@@ -28,11 +28,39 @@ export function compare(_positional, flags) {
 
 	let baselineRunDir;
 	let finalRunDir;
+	let baselineSummary;
+	let finalSummary;
 	try {
-		({ runDir: baselineRunDir } = readRunSummary(paths.baselineDir, baseId));
-		({ runDir: finalRunDir } = readRunSummary(paths.finalDir, finalId));
+		({ runDir: baselineRunDir, summary: baselineSummary } = readRunSummary(paths.baselineDir, baseId));
+		({ runDir: finalRunDir, summary: finalSummary } = readRunSummary(paths.finalDir, finalId));
 	} catch (err) {
 		die(`cannot compare the selected runs: ${err.message}`, EXIT.INVALID_CONFIG, { json });
+	}
+
+	// A comparison is a claim made to a client about what changed, so both sides
+	// have to be evidence worth standing behind.
+	//
+	// readRunSummary only proves the summary parses and matches its directory. A
+	// run whose modules FAILED satisfies that too, and the partial artifacts it
+	// left behind still contain numbers — so comparing them produced reports like
+	// "broken links 9 → 0" from a baseline that had crashed part-way through the
+	// crawl, and exited 0 while saying it.
+	//
+	// evidenceVerdict() already encodes the rule: something succeeded, nothing
+	// failed, and every artifact a module claims is actually on disk. It was
+	// applied when writing the record and not when reading it back.
+	for (const [label, summary, runDir, id] of [
+		['baseline', baselineSummary, baselineRunDir, baseId],
+		['final', finalSummary, finalRunDir, finalId],
+	]) {
+		const verdict = evidenceVerdict(summary, runDir);
+		if (verdict.captured) continue;
+		const blocking = `${label} run ${id} did not capture usable evidence: ${verdict.reason}`;
+		if (json) emitJson({ status: 'not-comparable', baseline_run: baseId, final_run: finalId, blocking: [blocking] }, EXIT.INVALID_CONFIG);
+		fail(blocking);
+		info('A comparison built on it would report movement that was never measured.');
+		info(`Re-run the ${label} capture, or choose another run with --${label}-run.`);
+		process.exit(EXIT.INVALID_CONFIG);
 	}
 
 	let projectName = root.split('/').pop();

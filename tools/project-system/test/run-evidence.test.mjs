@@ -8,8 +8,11 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, symlinkSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
 import {
@@ -372,6 +375,182 @@ test('symlinked run directories are never selected', () => {
 		symlinkSync(outside, join(dir, linkedId));
 		assert.deepEqual(listRuns(dir), []);
 		assert.equal(latestRunId(dir), null);
+	} finally {
+		cleanup();
+	}
+});
+
+// --- comparison refuses evidence nobody should build on ----------------------
+//
+// A comparison is a claim made to a client about what changed. `compare` read
+// both runs with readRunSummary, which only proves a summary parses and matches
+// its directory — a run whose modules FAILED satisfies that too, and the partial
+// artifacts it left behind still contain numbers. So a baseline that crashed
+// part-way through the crawl produced an exit-0 report claiming broken links had
+// improved 9 → 0. evidenceVerdict() already encoded the rule; it was applied
+// when writing the record and not when reading it back.
+
+const COMPARE_CLI = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'futurebase.mjs');
+
+function writeRunWithEvidence(parentDir, runId, kind, status, modules) {
+	const dir = join(parentDir, runId);
+	mkdirSync(join(dir, 'crawl'), { recursive: true });
+	// Evidence on disk regardless of outcome — that is what made the failure
+	// dangerous rather than merely unhelpful.
+	writeFileSync(join(dir, 'crawl', 'crawl.json'), '{}\n', 'utf8');
+	writeFileSync(
+		join(dir, 'summary.json'),
+		JSON.stringify({ schema_version: 1, run_id: runId, project_type: 'new', kind, status, started_at: '2026-07-30T10:00:00.000Z', finished_at: '2026-07-30T10:04:00.000Z', modules }, null, 2),
+		'utf8',
+	);
+	return dir;
+}
+
+function compareFixture(dir, baselineModules, baselineStatus) {
+	const root = join(dir, 'project');
+	mkdirSync(join(root, '.project'), { recursive: true });
+	writeFileSync(join(root, '.project', 'project.yml'), 'project:\n  name: Probe\n', 'utf8');
+	writeRunWithEvidence(join(root, '.project', 'baseline'), '2026-07-30T100000Z', 'baseline', baselineStatus, baselineModules);
+	writeRunWithEvidence(join(root, '.project', 'final'), '2026-08-01T100000Z', 'final', 'completed', [{ module: 'crawl', status: 'complete' }]);
+	return spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--json'], { encoding: 'utf8' });
+}
+
+test('a failed baseline cannot become a client report claiming improvement', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const r = compareFixture(dir, [{ module: 'crawl', status: 'failed' }], 'failed');
+		assert.notEqual(r.status, 0, 'a failed baseline must not produce an exit-0 comparison');
+		const out = JSON.parse(r.stdout);
+		assert.equal(out.status, 'not-comparable');
+		assert.match(out.blocking[0], /baseline run .* did not capture usable evidence/);
+	} finally {
+		cleanup();
+	}
+});
+
+test('the gate rejects the evidence, not the comparison itself', () => {
+	// The same fixture with a baseline that actually succeeded must get past this
+	// check — otherwise the test above would pass for the wrong reason.
+	const { dir, cleanup } = sandbox();
+	try {
+		const r = compareFixture(dir, [{ module: 'crawl', status: 'complete' }], 'completed');
+		const out = r.stdout ? JSON.parse(r.stdout) : {};
+		const blocking = (out.blocking || []).join(' ');
+		assert.ok(!/did not capture usable evidence/.test(blocking), `evidence gate fired on a clean baseline: ${blocking}`);
+	} finally {
+		cleanup();
+	}
+});
+
+// --- a module may not report evidence it did not gather ----------------------
+//
+// Both of these returned `complete`. A comparison then treats `complete` as the
+// before half of a client-facing claim, so a module that reports it without
+// having measured anything is how a wrong number reaches a client — the same
+// failure as comparing a failed run, one layer earlier.
+
+import { run as wordpressModule } from '../modules/wordpress.mjs';
+import { run as manualModule } from '../modules/manual.mjs';
+
+test('a WP-CLI that answers nothing is unavailable, not a site with nothing on it', async () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		// `true` exits 0 and prints nothing — the minimal case, but a broken SSH
+		// alias behaves identically. Every query then returned the empty fallback
+		// and the module reported a real inventory of zero plugins and zero post
+		// types, indistinguishable from a bare site.
+		const result = await wordpressModule({ runDir: dir, config: { wordpress: { cli: 'true' } } });
+		assert.equal(result.status, 'unavailable');
+		assert.match(result.reason, /did not report a version/);
+	} finally {
+		cleanup();
+	}
+});
+
+test('an inventory whose every query failed is failed, not complete', async () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const fake = join(dir, 'fakewp');
+		writeFileSync(fake, '#!/bin/sh\nif [ "$1" = core ]; then echo 6.9; else exit 1; fi\n', 'utf8');
+		chmodSync(fake, 0o755);
+		const result = await wordpressModule({ runDir: dir, config: { wordpress: { cli: fake } } });
+		assert.equal(result.status, 'failed');
+		assert.match(result.reason, /themes|plugins|post types/);
+	} finally {
+		cleanup();
+	}
+});
+
+test('scaffolded prompts nobody answered are pending, not complete', async () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		// A new-site baseline runs this module alone, so `complete` here meant a
+		// captured baseline for a project with nothing written down.
+		const fresh = await manualModule({ runDir: dir, config: { mode: 'new' } });
+		assert.equal(fresh.status, 'pending');
+		assert.ok(!EVIDENCE_STATUSES_FOR_TEST.has(fresh.status), 'pending must not count as captured evidence');
+
+		writeFileSync(join(dir, 'notes', 'observations.md'), '# Manual observations\n\nEditors cannot update the hero.\n', 'utf8');
+		const answered = await manualModule({ runDir: dir, config: { mode: 'new' } });
+		assert.equal(answered.status, 'complete_with_warnings');
+		assert.match(answered.reason, /new-site-baseline\.md/);
+		assert.equal(answered.headline.recorded, 1);
+	} finally {
+		cleanup();
+	}
+});
+
+const EVIDENCE_STATUSES_FOR_TEST = new Set(['complete', 'complete_with_warnings']);
+
+// --- the whole-record validator has to look at the whole record --------------
+
+function validateFixture(dir, build) {
+	const root = join(dir, 'project');
+	mkdirSync(join(root, '.project', 'follow-up'), { recursive: true });
+	writeFileSync(join(root, '.project', 'project.yml'), 'schema_version: 1\nproject:\n  name: Probe\n', 'utf8');
+	build(join(root, '.project'));
+	const r = spawnSync(process.execPath, [COMPARE_CLI, 'project', 'validate', '--project-root', root, '--json'], { encoding: 'utf8' });
+	return { r, out: r.stdout ? JSON.parse(r.stdout) : {} };
+}
+
+test('a run whose summary disagrees with its own directory is an issue', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const { r, out } = validateFixture(dir, (pd) => {
+			// The summary claims a different run than the directory holding it —
+			// a corrupted or hand-edited run that used to pass with status ok,
+			// because nothing enumerated the runs at all.
+			const runDir = join(pd, 'baseline', '2026-07-30T100000Z');
+			mkdirSync(join(runDir, 'crawl'), { recursive: true });
+			writeFileSync(join(runDir, 'crawl', 'crawl.json'), '{}\n', 'utf8');
+			writeFileSync(
+				join(runDir, 'summary.json'),
+				JSON.stringify({ schema_version: 1, run_id: '2026-08-01T120000Z', project_type: 'new', kind: 'baseline', status: 'completed', started_at: '2026-07-30T10:00:00.000Z', finished_at: '2026-07-30T10:04:00.000Z', modules: [{ module: 'crawl', status: 'complete' }] }),
+				'utf8',
+			);
+		});
+		assert.notEqual(r.status, 0, 'a malformed run must not validate clean');
+		assert.ok(out.issues.some((i) => /baseline\/2026-07-30T100000Z/.test(i)), `run not reported: ${JSON.stringify(out.issues)}`);
+	} finally {
+		cleanup();
+	}
+});
+
+test('survey answers outside their own scale are an issue', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const { r, out } = validateFixture(dir, (pd) => {
+			writeFileSync(
+				join(pd, 'follow-up', 'survey-30-days.yml'),
+				'schema_version: 1\nkind: survey-results\nperiod: 90-days\nitems:\n  - id: confidence\n    value: 999\n  - id: confidence\n    value: -50\n',
+				'utf8',
+			);
+		});
+		assert.notEqual(r.status, 0);
+		const all = out.issues.join(' | ');
+		assert.match(all, /outside the 1–5 scale/);
+		assert.match(all, /duplicate item "confidence"/);
+		assert.match(all, /named for "30-days"/);
 	} finally {
 		cleanup();
 	}

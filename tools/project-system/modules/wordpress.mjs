@@ -18,14 +18,29 @@ function wpRunner(config) {
 	return (args) => run(cli[0], [...cli.slice(1), ...args], { cwd });
 }
 
-function json(res, fallback = null) {
-	if (!res.ok) return fallback;
+// Every failed or unparsable query used to collapse to the same empty fallback
+// as a genuinely empty result, and the module reported `complete` either way. A
+// wrapper that exits 0 without output — `wordpress.cli: "true"` is the minimal
+// case, but a broken SSH alias behaves the same — produced an inventory of zero
+// plugins, zero post types and zero content, indistinguishable from a real
+// reading of a bare site. Record what could not be answered instead.
+function json(res, label, problems, fallback = null) {
+	if (!res.ok) {
+		problems.push(`${label}: command failed (${(res.stderr || res.error?.message || 'no output').slice(0, 80)})`);
+		return fallback;
+	}
 	try {
 		return JSON.parse(res.stdout);
 	} catch {
+		problems.push(`${label}: output was not JSON`);
 		return fallback;
 	}
 }
+
+// `wp core version` on a working CLI prints a version. A wrapper that exits 0
+// with nothing to say is not WP-CLI, and treating it as reachable is what let
+// every subsequent query fail quietly.
+const VERSION_SHAPE = /^\d+\.\d+/;
 
 export async function run_(ctx) {
 	const { runDir, config } = ctx;
@@ -36,16 +51,25 @@ export async function run_(ctx) {
 	if (!version.ok) {
 		return { module: 'wordpress', status: 'unavailable', reason: `WP-CLI not reachable (${(version.stderr || version.error?.message || 'no output').slice(0, 120)})` };
 	}
+	if (!VERSION_SHAPE.test(version.stdout.trim())) {
+		return {
+			module: 'wordpress',
+			status: 'unavailable',
+			reason: `WP-CLI responded but did not report a version (${JSON.stringify(version.stdout.trim().slice(0, 60))}) — check wordpress.cli`,
+		};
+	}
+
+	const problems = [];
 
 	const outDir = join(runDir, 'wordpress');
 	mkdirSync(outDir, { recursive: true });
 
 	const php = wp(['eval', 'echo PHP_VERSION;']);
 	const multisite = wp(['eval', 'echo is_multisite() ? 1 : 0;']);
-	const themes = json(wp(['theme', 'list', '--format=json', '--fields=name,status,version']), []);
-	const plugins = json(wp(['plugin', 'list', '--format=json', '--fields=name,status,version']), []);
-	const postTypes = json(wp(['post-type', 'list', '--format=json', '--fields=name,label,public']), []);
-	const taxonomies = json(wp(['taxonomy', 'list', '--format=json', '--fields=name,label']), []);
+	const themes = json(wp(['theme', 'list', '--format=json', '--fields=name,status,version']), 'themes', problems, []);
+	const plugins = json(wp(['plugin', 'list', '--format=json', '--fields=name,status,version']), 'plugins', problems, []);
+	const postTypes = json(wp(['post-type', 'list', '--format=json', '--fields=name,label,public']), 'post types', problems, []);
+	const taxonomies = json(wp(['taxonomy', 'list', '--format=json', '--fields=name,label']), 'taxonomies', problems, []);
 	const adminCount = wp(['user', 'list', '--role=administrator', '--format=count']);
 
 	// Content counts per registered post type (best-effort).
@@ -73,9 +97,20 @@ export async function run_(ctx) {
 	};
 	writeFileSync(join(outDir, 'wordpress.json'), JSON.stringify(inventory, null, 2) + '\n', 'utf8');
 
+	// An inventory that could not read themes, plugins AND post types is not a
+	// thin reading of a bare site — it is a reading that did not happen, and
+	// reporting it as evidence is how a comparison later quotes numbers nobody
+	// measured.
+	const core = ['themes', 'plugins', 'post types'];
+	const coreFailed = core.filter((label) => problems.some((p) => p.startsWith(`${label}:`)));
+	if (coreFailed.length === core.length) {
+		return { module: 'wordpress', status: 'failed', reason: `no inventory could be read: ${problems.join('; ')}` };
+	}
+
 	return {
 		module: 'wordpress',
-		status: 'complete',
+		status: problems.length ? 'complete_with_warnings' : 'complete',
+		...(problems.length ? { reason: problems.join('; ') } : {}),
 		evidence_path: 'wordpress/',
 		tool: 'wp-cli',
 		tool_version: null,
