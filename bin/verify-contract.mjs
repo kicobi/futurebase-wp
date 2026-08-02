@@ -266,7 +266,7 @@ function sizeInRem(size) {
 	if (rem) return parseFloat(rem[1]);
 	const px = /^([\d.]+)px$/.exec(size ?? '');
 	if (px) return parseFloat(px[1]) / REM_PX;
-	return null; // em, %, clamp(), var() — a separate rule's business
+	return null; // em, %, clamp(), var() — unmeasurable; the caller reports it
 }
 
 export function checkFluidTypography(theme) {
@@ -280,7 +280,15 @@ export function checkFluidTypography(theme) {
 
 	for (const preset of typography.fontSizes ?? []) {
 		const rem = sizeInRem(preset.size);
-		if (rem === null || rem <= 1) continue;
+		// A size the rule cannot measure used to be skipped, so a `2em` heading
+		// escaped the fluid requirement entirely — the check reported OK because
+		// it had quietly declined to look. If it cannot be measured it cannot be
+		// held to the contract, so say that rather than passing it.
+		if (rem === null) {
+			problems.push(`theme.json: fontSize '${preset.slug}' is ${JSON.stringify(preset.size ?? null)} — sizes must be rem or px so the fluid rule can measure them`);
+			continue;
+		}
+		if (rem <= 1) continue;
 		if (!preset.fluid || typeof preset.fluid !== 'object') {
 			problems.push(`theme.json: fontSize '${preset.slug}' is ${preset.size} (> 1rem) but declares no fluid { min, max }`);
 			continue;
@@ -320,7 +328,11 @@ export function checkCustomTemplates(theme, hasTemplate) {
 // judgement about the asset, not a property of the markup — docs/media-
 // conventions.md owns that, and review enforces it. What a parser CAN say is
 // that no markup hardcodes a path into the theme directory, in any of its forms.
-const THEME_PATH_RE = /(\/wp-content\/themes\/|get_stylesheet_directory_uri|get_template_directory_uri)/;
+// PHP function names are case-insensitive, and there is more than one way to
+// reach the theme root: get_theme_root_uri() and the non-_uri path variants all
+// hardcode the same thing and all passed. get_theme_file_uri() — the sanctioned
+// call — is deliberately not matched.
+const THEME_PATH_RE = /\/wp-content\/themes\/|get_(?:stylesheet|template)_directory(?:_uri)?\b|get_theme_root(?:_uri)?\b/i;
 
 export function checkThemePaths(files) {
 	const problems = [];

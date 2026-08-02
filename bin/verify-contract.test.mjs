@@ -313,3 +313,55 @@ test('reported line numbers survive comment blanking', () => {
 	const html = '<!--\nTitle: Home\n-->\n<!-- wp:group {"style":{"color":{"background":"#abcdef"}}} /-->';
 	assert.match(raw(html)[0], /:4:/, 'blanking must preserve line numbers, not shift them');
 });
+
+// --- gaps in the item 5 and item 7 rules --------------------------------------
+
+test('every theme-root construction is caught, whatever its case', () => {
+	// PHP function names are case-insensitive, and the blacklist named only two
+	// of the several ways to reach the theme root.
+	const forms = [
+		"<?php echo get_theme_root_uri() . '/acme/assets/logo.svg';",
+		"<?php echo GET_THEME_ROOT_URI() . '/acme/assets/logo.svg';",
+		"<?php echo get_theme_root() . '/acme/assets/logo.svg';",
+		"<?php echo Get_Stylesheet_Directory_Uri();",
+		"<?php echo get_stylesheet_directory();",
+		"<?php echo get_template_directory();",
+		'<img src="/wp-content/themes/acme/assets/logo.svg">',
+	];
+	for (const contents of forms) {
+		assert.equal(
+			checkThemePaths([{ file: 'patterns/_probe.php', contents }]).length,
+			1,
+			`not caught: ${contents}`,
+		);
+	}
+});
+
+test('the sanctioned theme-file helpers are not flagged', () => {
+	// Otherwise the rule would reject the very call docs/media-conventions.md
+	// tells you to use.
+	for (const contents of ["<?php echo get_theme_file_uri('assets/images/logo.svg');", "<?php echo get_theme_file_path('assets/fonts/brand.woff2');"]) {
+		assert.deepEqual(checkThemePaths([{ file: 'patterns/_probe.php', contents }]), []);
+	}
+});
+
+test('a size the fluid rule cannot measure is reported, not skipped', () => {
+	// `2em` is heading-sized, but sizeInRem() returns null for it — and null was
+	// treated as "nothing to check", so the preset escaped the rule silently.
+	const theme = { settings: { typography: { fluid: true, fontSizes: [{ slug: 'huge', size: '2em' }] } } };
+	assert.ok(
+		checkFluidTypography(theme).some((p) => p.includes('must be rem or px')),
+		'an unmeasurable size must be named',
+	);
+});
+
+test('rem and px presets are still measured, not rejected as unsupported', () => {
+	const ok = { settings: { typography: { fluid: true, fontSizes: [
+		{ slug: 'small', size: '1rem' },
+		{ slug: 'large', size: '1.75rem', fluid: { min: '1.5rem', max: '1.75rem' } },
+		{ slug: 'body', size: '16px' },
+	] } } };
+	assert.deepEqual(checkFluidTypography(ok), []);
+	const px = { settings: { typography: { fluid: true, fontSizes: [{ slug: 'big', size: '32px' }] } } };
+	assert.ok(checkFluidTypography(px).some((p) => p.includes('declares no fluid')), 'px above body scale still needs a range');
+});
