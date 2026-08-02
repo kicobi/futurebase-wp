@@ -271,7 +271,8 @@
 						"style": "solid",
 						"width": "2px",
 						"offset": "2px"
-					}
+					},
+					"shadow": "0 0 0 2px var(--wp--preset--color--base)"
 				},
 				":visited": {
 					"color": {
@@ -285,7 +286,7 @@
 					"text": "var(--wp--preset--color--contrast-2)"
 				},
 				"typography": {
-					"textDecoration": "none"
+					"textDecoration": "underline"
 				},
 				":hover": {
 					"typography": {
@@ -350,6 +351,62 @@
 			}
 		},
 		"blocks": {
+			"core/navigation": {
+				"elements": {
+					"link": {
+						"typography": {
+							"textDecoration": "none"
+						},
+						":hover": {
+							"typography": {
+								"textDecoration": "none"
+							}
+						},
+						":focus": {
+							"typography": {
+								"textDecoration": "none"
+							}
+						},
+						":focus-visible": {
+							"typography": {
+								"textDecoration": "none"
+							}
+						},
+						":active": {
+							"typography": {
+								"textDecoration": "none"
+							}
+						},
+						":visited": {
+							"typography": {
+								"textDecoration": "none"
+							}
+						}
+					}
+				}
+			},
+			"core/button": {
+				"typography": {
+					"textDecoration": "none"
+				},
+				"variations": {
+					"pricing-featured": {
+						"border": {
+							"color": "transparent",
+							"style": "solid",
+							"width": "1px"
+						},
+						"color": {
+							"background": "var(--wp--preset--color--base)",
+							"text": "var(--wp--preset--color--contrast-2)"
+						},
+						"typography": {
+							"textDecoration": "none"
+						},
+						"css": "&:hover { background-color: var(--wp--preset--color--contrast); color: var(--wp--preset--color--base); text-decoration: none; } &:focus { background-color: var(--wp--preset--color--contrast); color: var(--wp--preset--color--base); text-decoration: none; } &:active { background-color: var(--wp--preset--color--contrast); color: var(--wp--preset--color--base); text-decoration: none; } &:visited { background-color: var(--wp--preset--color--contrast); color: var(--wp--preset--color--base); text-decoration: none; } &:focus-visible { background-color: var(--wp--preset--color--contrast); color: var(--wp--preset--color--base); outline: 2px solid var(--wp--preset--color--base); outline-offset: 2px; text-decoration: none; }"
+					}
+				}
+			},
 			"core/post-title": {
 				"typography": {
 					"fontFamily": "var(--wp--preset--font-family--serif)",

@@ -401,6 +401,87 @@ function ensureGitignore(dest) {
 	writeFileSync(gi, body, 'utf8');
 }
 
+// Secret findings cross a trust boundary when they reach terminal or JSON
+// output. The scanner may retain private diagnostic context internally, but a
+// promotion refusal needs only stable identity fields to tell the operator
+// what to fix. In particular, never echo the matched source line: for a real
+// credential that would turn the safety gate itself into a disclosure.
+function publicSecretFindings(findings, root) {
+	const prefix = `${root}/`;
+	return findings.map(({ file, line, rule }) => ({
+		file: file.startsWith(prefix) ? file.slice(prefix.length) : file,
+		line,
+		rule,
+	}));
+}
+
+function yamlMappingKeyLine(path, mapping, key) {
+	const lines = readFileSync(path, 'utf8').split(/\r?\n/);
+	let mappingIndent = null;
+	for (let index = 0; index < lines.length; index++) {
+		const line = lines[index];
+		if (mappingIndent === null) {
+			const match = line.match(new RegExp(`^(\\s*)${mapping}\\s*:\\s*(?:#.*)?$`));
+			if (match) mappingIndent = match[1].length;
+			continue;
+		}
+		if (!line.trim() || line.trimStart().startsWith('#')) continue;
+		const indent = line.match(/^\s*/)[0].length;
+		if (indent <= mappingIndent) break;
+		if (new RegExp(`^\\s*${key}\\s*:`).test(line)) return index + 1;
+	}
+	return 0;
+}
+
+// Inspect the validated values, not just their YAML source representation.
+// YAML escape continuations can join a credential across physical lines, and
+// the generic scanner intentionally has format-level thresholds. Neither is a
+// valid reason for project URLs to carry userinfo into a client repository.
+function configuredUrlCredentialFindings(config, path) {
+	const findings = [];
+	for (const key of ['production', 'staging']) {
+		const value = config.urls?.[key];
+		if (typeof value !== 'string') continue;
+		// Standalone parsing catches special-scheme forms whose slashes are absent,
+		// partial, or backslashes. Based parsing catches scheme-relative network
+		// paths. Inspect both: either interpretation carrying userinfo is unsafe.
+		const hasUserinfo = [undefined, 'https://futurebase.invalid'].some((base) => {
+			try {
+				const parsed = base === undefined ? new URL(value) : new URL(value, base);
+				return !!(parsed.username || parsed.password);
+			} catch {
+				return false;
+			}
+		});
+		if (!hasUserinfo) continue;
+		findings.push({ file: path, line: yamlMappingKeyLine(path, 'urls', key), rule: 'url-userinfo' });
+	}
+	return findings;
+}
+
+function refuseSecrets(findings, { json, root, step = null, dest = null }) {
+	const safeFindings = publicSecretFindings(findings, root);
+	if (json) {
+		emitJson(
+			{
+				status: 'error',
+				...(step ? { step } : {}),
+				code: EXIT.PRIVACY_VIOLATION,
+				message: 'secret scan found potential credentials',
+				findings: safeFindings,
+				...(dest ? { dest } : {}),
+			},
+			EXIT.PRIVACY_VIOLATION,
+		);
+	}
+	fail(`secret scan found ${safeFindings.length} potential credential(s) in files bound for git:`);
+	for (const finding of safeFindings) info(`${finding.file}:${finding.line} [${finding.rule}]`);
+	console.log('');
+	info('Move these into a private/ location or remove them, then retry. Override with --skip-secret-scan only if you are certain.');
+	if (dest) info(`Project dir (for inspection / --resume): ${dest}`);
+	process.exit(EXIT.PRIVACY_VIOLATION);
+}
+
 export async function leadPromote(positional, flags) {
 	const json = !!flags.json;
 	const slug = positional[0];
@@ -422,6 +503,19 @@ export async function leadPromote(positional, flags) {
 	const leadCheck = validateProject(leadCfg);
 	if (!leadCheck.valid) die(`lead project.yml is invalid:\n  ${leadCheck.errors.join('\n  ')}`, EXIT.INVALID_CONFIG, { json });
 	if (leadCfg.project?.stage !== 'lead') die(`workspace is not a lead (stage: ${leadCfg.project?.stage})`, EXIT.INVALID_CONFIG, { json });
+	const configuredUrlFindings = flags['skip-secret-scan'] ? [] : configuredUrlCredentialFindings(leadCfg, leadCfgPath);
+	if (configuredUrlFindings.length && !flags['dry-run']) {
+		refuseSecrets(configuredUrlFindings, { json, root: leadPath });
+	}
+
+	// project.yml is regenerated rather than copied, so it is deliberately not
+	// part of the dossier manifest below. Scan it as its own preflight boundary
+	// before resolving or creating any destination/remote: its URL fields flow
+	// directly into the active project record.
+	const leadConfigFindings = flags['skip-secret-scan'] ? [] : scanFiles([leadCfgPath]);
+	if (leadConfigFindings.length && !flags['dry-run']) {
+		refuseSecrets(leadConfigFindings, { json, root: leadPath });
+	}
 
 	// Resolve targets.
 	const org = flags.org || DEFAULT_ORG;
@@ -504,7 +598,8 @@ export async function leadPromote(positional, flags) {
 	// Dossier manifest + secret scan (scan the would-be-committed set in the lead).
 	const manifest = buildManifest(leadPath);
 	const versionedFiles = manifest.versioned.map((r) => join(leadPath, r));
-	const findings = flags['skip-secret-scan'] ? [] : scanFiles(versionedFiles);
+	const dossierFindings = flags['skip-secret-scan'] ? [] : scanFiles(versionedFiles);
+	const findings = [...configuredUrlFindings, ...leadConfigFindings, ...dossierFindings];
 
 	// --dry-run: print the plan, change nothing.
 	if (flags['dry-run']) {
@@ -542,12 +637,7 @@ export async function leadPromote(positional, flags) {
 
 	// Secret gate (real run).
 	if (findings.length) {
-		if (json) emitJson({ status: 'error', code: EXIT.PRIVACY_VIOLATION, message: 'secret scan found potential credentials', findings }, EXIT.PRIVACY_VIOLATION);
-		fail(`secret scan found ${findings.length} potential credential(s) in files bound for git:`);
-		for (const f of findings) info(`${f.file.replace(leadPath + '/', '')}:${f.line} [${f.rule}]  ${f.snippet}`);
-		console.log('');
-		info('Move these into a private/ location or remove them, then retry. Override with --skip-secret-scan only if you are certain.');
-		process.exit(EXIT.PRIVACY_VIOLATION);
+		refuseSecrets(findings, { json, root: leadPath });
 	}
 
 	// Confirmation gate — promotion creates a real GitHub repo.
@@ -862,6 +952,12 @@ export async function leadPromote(positional, flags) {
 	const activeConfigPath = symlinkFreePath(dest, join('.project', 'project.yml'));
 	if (!activeConfigPath) recover('stamp', 'active project.yml path contains a symlink', EXIT.ACCESS_FAILURE);
 	writeYaml(activeConfigPath, activeCfg);
+	const activeConfigFindings = flags['skip-secret-scan']
+		? []
+		: [...configuredUrlCredentialFindings(activeCfg, activeConfigPath), ...scanFiles([activeConfigPath])];
+	if (activeConfigFindings.length) {
+		refuseSecrets(activeConfigFindings, { json, root: dest, step: 'secret-scan', dest });
+	}
 
 	// Step 7: one promotion commit.
 	//
