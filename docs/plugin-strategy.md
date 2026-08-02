@@ -132,6 +132,19 @@ This resolves what would otherwise be a contradiction with the no-lock-in
 claim in [futurebase-wp.md](futurebase-wp.md). The plugin layer is not
 proprietary in any sense that traps a site.
 
+Ownership cuts both ways, and the second half is the support boundary:
+
+> **Maintenance follows the relationship.** A client with no active
+> relationship owns their copy and is responsible for it. There is no
+> obligation to patch, notify, or support code running on a site we are no
+> longer engaged to look after.
+
+This is not a hedge added on top of the licence — GPL disclaims warranty and
+liability outright, so it is what the code already ships under. Stating it
+here makes the boundary explicit rather than implied, which is the point:
+"you own this and can take it anywhere" and "you own this, including when it
+needs attention" are the same sentence.
+
 ## Sequencing
 
 Part-time alongside client work. Futurebase SEO goes first because it is the
@@ -188,12 +201,11 @@ Three, all downstream of the model rather than objections to it.
    reports theme drift; there is no plugin equivalent. This becomes necessary
    around the third or fourth live site, not the tenth.
 
-2. **Manual security patching, and lapsed clients.** A vulnerability in one
-   of these has to be carried to every site by hand. Under an ongoing
-   relationship that is the relationship doing its job. For a client whose
-   retainer has lapsed, their site keeps running this code with the
-   Futurebase name in the plugin header. The notification policy for that
-   case should be decided before an incident, not during one.
+2. **Manual security patching.** A vulnerability in one of these has to be
+   carried to every site by hand, which is real work and scales with the
+   number of active clients. Under an ongoing relationship that is the
+   relationship doing its job. Sites with no active relationship are out of
+   scope — see [Ownership](#ownership).
 
 3. **Opportunity cost.** Futurebase SEO currently sits at Tier 2 on the
    theme's own roadmap. Phase 1 is a reprioritisation, not an addition.
