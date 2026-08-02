@@ -36,6 +36,21 @@ export const CLASS = {
 // the starter's published numbers and has no meaning downstream.
 const STARTER_ONLY = ['.github/workflows/scorecard.yml'];
 
+// Futurebase WP's own product material. bin/rename-theme.sh DELETES these from a
+// client during promotion, so reporting them as drift told the operator to port
+// the product narrative — and the branded screenshot — back into a client theme.
+// screenshot.png is the one that bites: it is what wp-admin shows under
+// Appearance → Themes.
+//
+// Mirrors FUTUREBASE_PRODUCT_EXCLUSIONS in the shared rename contract;
+// bin/test-rename.sh asserts the two lists are identical.
+export const PRODUCT_ONLY = [
+	'docs/futurebase-wp.md',
+	'docs/futurebase-company-site.md',
+	'docs/assets/futurebase-wp-social.png',
+	'screenshot.png',
+];
+
 // The portable exceptions inside bin/. Everything else there is slug-bearing —
 // rename rewrites the prefix and text domain into it — but these four derive
 // the theme slug at runtime from the pattern registry or style.css, and
@@ -60,7 +75,7 @@ export const PORTABLE_BIN = ['bin/demo-content.sh', 'bin/scorecard.sh', 'bin/smo
 // Ordered; first match wins.
 const RULES = [
 	// Checked before the workflow rule below, which would otherwise claim these.
-	[CLASS.NEVER, (r) => STARTER_ONLY.includes(r)],
+	[CLASS.NEVER, (r) => STARTER_ONLY.includes(r) || PRODUCT_ONLY.includes(r)],
 
 	// Starter-owned infrastructure. rename-theme.sh never scans tools/, and
 	// test-rename.sh actively asserts that fixtures/ carry no slug literal
@@ -299,12 +314,35 @@ function serialize(obj, indent) {
 // own dependency, and replacing the block would silently delete it. The cost is
 // that an entry the starter has since dropped lingers here — a far cheaper
 // failure than removing a dependency the client's site needs.
+// Merged dependency blocks are re-sorted. `lint:pkg` (wp-scripts lint-pkg-json)
+// enforces alphabetical order and runs in client CI, so a merge that appended an
+// upstream dependency turned every client's build red until someone re-sorted the
+// block by hand.
 function unionKeys(target, source, keys) {
 	for (const k of keys) {
 		if (!source || !Object.prototype.hasOwnProperty.call(source, k)) continue;
-		target[k] = { ...(target[k] || {}), ...source[k] };
+		const merged = { ...(target[k] || {}), ...source[k] };
+		target[k] = Object.fromEntries(Object.keys(merged).sort().map((name) => [name, merged[name]]));
 	}
 	return target;
+}
+
+// `.github/workflows/` is CLASS.SAFE, so a workflow copies over verbatim — but
+// what it CALLS does not travel with it. The `npm run <name>` targets live in
+// package.json, whose `scripts` block is never merged (only the dependency
+// blocks are), and the bin/ files behind them are review-class hand-ports. A
+// project promoted from an older template therefore receives CI referencing
+// scripts it does not define, and finds out when the run fails.
+//
+// Pure so it can be tested without a repository: callers pass the upstream
+// workflow texts and the project's own scripts block.
+export function missingWorkflowScripts(workflowTexts, projectScripts) {
+	const referenced = new Set();
+	for (const text of workflowTexts) {
+		for (const match of String(text || '').matchAll(/npm run ([a-z0-9][a-z0-9:_-]*)/gi)) referenced.add(match[1]);
+	}
+	const have = projectScripts || {};
+	return [...referenced].filter((name) => !Object.prototype.hasOwnProperty.call(have, name)).sort();
 }
 
 // Dependency names the project has that upstream does not. Their presence makes

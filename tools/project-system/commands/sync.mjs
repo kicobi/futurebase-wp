@@ -11,7 +11,7 @@
 // reported for a human to port by hand — they are slug-bearing, so copying them
 // would drag the starter's slug back into a renamed project.
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { join, resolve } from 'node:path';
 import { EXIT, die, ok, warn, info, fail, emitJson, c } from '../lib/output.mjs';
@@ -23,10 +23,12 @@ import {
 	applyEntry,
 	detectBase,
 	isAncestor,
+	missingWorkflowScripts,
 	planDeps,
 	planFiles,
 	refSubject,
 	resolveRef,
+	textAt,
 } from '../lib/sync.mjs';
 
 const DEFAULT_REF = 'origin/main';
@@ -195,6 +197,27 @@ export async function sync(_positional, flags) {
 		console.log('');
 	}
 	show(`Removed upstream — left in place (${deleted.length})`, deleted, c.dim);
+
+	// Workflows are CLASS.SAFE and copy over verbatim, but the npm scripts and
+	// bin/ files they call do not. Say so here rather than letting the client's
+	// next CI run report it as `Missing script`.
+	const workflowTexts = entries
+		.filter((e) => e.rel.startsWith('.github/workflows/') && e.state !== 'upstream-deleted')
+		.map((e) => textAt(starter, ref, e.rel));
+	let projectScripts = {};
+	try {
+		projectScripts = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).scripts || {};
+	} catch {
+		projectScripts = {};
+	}
+	const missingScripts = missingWorkflowScripts(workflowTexts, projectScripts);
+	if (missingScripts.length) {
+		console.log(c.bold(`Workflows call scripts this project does not define (${missingScripts.length})`));
+		for (const name of missingScripts) console.log(`  ${c.yellow('!')} npm run ${name}`);
+		info('Synced workflows carry these calls, but package.json scripts are never merged.');
+		info('Add them — and hand-port the bin/ files behind them — or CI fails on the next push.');
+		console.log('');
+	}
 
 	if (!drifted.length) ok('project is in sync with the starter');
 	else info(`${entries.length - drifted.length} file(s) already up to date`);
