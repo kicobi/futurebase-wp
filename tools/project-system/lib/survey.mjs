@@ -118,3 +118,39 @@ export function scaleDeltas(earlier, later) {
 	}
 	return rows;
 }
+
+// Rules JSON Schema cannot express, and which matter because these values
+// become a reported delta in front of a client.
+//
+// The schema types `value` as number|string|null because open questions carry
+// prose — so it cannot know which ids are 1–5 scale questions, and draft-07
+// cannot require uniqueness by a property. The result was that a hand-edited
+// survey containing 999 and -50, or the same question twice, validated cleanly;
+// scaleDeltas() builds its lookup with Object.fromEntries, so of two entries
+// sharing an id the later silently wins.
+export const SCALE_IDS = new Set(SCALE.map((question) => question.id));
+
+export function surveyIssues(doc, expectedPeriod = null) {
+	const issues = [];
+	const seen = new Set();
+
+	for (const item of doc?.items || []) {
+		if (seen.has(item.id)) issues.push(`duplicate item "${item.id}" — the later answer would silently replace the earlier one`);
+		seen.add(item.id);
+
+		if (SCALE_IDS.has(item.id) && typeof item.value === 'number') {
+			if (!Number.isInteger(item.value) || item.value < 1 || item.value > 5) {
+				issues.push(`item "${item.id}" has value ${item.value}, outside the 1–5 scale it is measured on`);
+			}
+		}
+	}
+
+	// A file named for one period holding another's answers attributes the
+	// measurement to the wrong point in time, which is the one thing a follow-up
+	// survey exists to establish.
+	if (expectedPeriod && doc?.period && doc.period !== expectedPeriod) {
+		issues.push(`period is "${doc.period}" but the file is named for "${expectedPeriod}"`);
+	}
+
+	return issues;
+}

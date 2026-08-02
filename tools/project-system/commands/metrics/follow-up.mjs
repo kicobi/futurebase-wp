@@ -13,7 +13,7 @@ import { findProjectRoot, projectPaths } from '../../lib/baseline.mjs';
 import { readYaml } from '../../lib/yaml.mjs';
 import { loadMetrics } from '../../lib/metrics.mjs';
 import { validateSurveyResults } from '../../lib/validate.mjs';
-import { loadResults, scaleDeltas } from '../../lib/survey.mjs';
+import { loadResults, scaleDeltas, surveyIssues } from '../../lib/survey.mjs';
 
 const answered = (doc) => (doc?.items || []).some((i) => i.value != null && i.value !== '');
 const fmt = (v) => (v == null ? '—' : v);
@@ -33,6 +33,14 @@ export function metricsFollowUp(_positional, flags) {
 		const { valid, errors } = validateSurveyResults(doc);
 		if (!valid) {
 			invalid.push(`survey-${period}.yml: ${errors[0]}`);
+			continue;
+		}
+		// The schema cannot see an out-of-range scale value, a duplicated
+		// question, or a period that disagrees with the filename — and this is
+		// the command that turns these answers into a delta shown to a client.
+		const semantic = surveyIssues(doc, period);
+		if (semantic.length) {
+			invalid.push(`survey-${period}.yml: ${semantic[0]}`);
 			continue;
 		}
 		if (answered(doc)) surveys[period] = doc;

@@ -8,7 +8,9 @@
 import { existsSync, readdirSync, lstatSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { EXIT, die, ok, warn, info, fail, emitJson, c } from '../../lib/output.mjs';
-import { findProjectRoot, projectPaths } from '../../lib/baseline.mjs';
+import { findProjectRoot, projectPaths, readRunSummary } from '../../lib/baseline.mjs';
+import { listRuns } from '../../lib/record.mjs';
+import { surveyIssues } from '../../lib/survey.mjs';
 import { readYaml } from '../../lib/yaml.mjs';
 import { validateProject, validateBaselineConfig, validateObservations, validateJourneys, validateSurveyResults } from '../../lib/validate.mjs';
 import { checkMetrics } from '../../lib/metrics.mjs';
@@ -87,7 +89,41 @@ export function projectValidate(_positional, flags) {
 	validateDoc(join(pd, 'observations.yml'), validateObservations, 'observations.yml', issues);
 	validateDoc(join(pd, 'baseline.config.yml'), validateBaselineConfig, 'baseline.config.yml', issues);
 	for (const period of ['baseline', '30-days', '90-days']) {
-		validateDoc(join(pd, 'follow-up', `survey-${period}.yml`), validateSurveyResults, `follow-up/survey-${period}.yml`, issues);
+		const surveyPath = join(pd, 'follow-up', `survey-${period}.yml`);
+		validateDoc(surveyPath, validateSurveyResults, `follow-up/survey-${period}.yml`, issues);
+		// Impossible values, duplicate ids, and a period disagreeing with the
+		// filename all pass the schema — see surveyIssues() for why it cannot
+		// express them — and all become a reported delta shown to a client.
+		if (existsSync(surveyPath)) {
+			try {
+				for (const issue of surveyIssues(readYaml(surveyPath), period)) issues.push(`follow-up/survey-${period}.yml: ${issue}`);
+			} catch {
+				/* parse errors are already reported by validateDoc */
+			}
+		}
+	}
+
+	// Baseline and final runs are the evidence every client report is built from,
+	// and the "whole record" validator never looked at them. A summary.json that
+	// failed its schema, or whose run_id disagreed with the directory holding it,
+	// passed with status ok — so a corrupted or hand-edited run sat in the record
+	// looking healthy. readRunSummary already enforces both; nothing called it
+	// from here.
+	//
+	// Evidence completeness is deliberately NOT an issue: a run still awaiting
+	// human observations is legitimate work in progress, and `compare` is where
+	// that has to be refused.
+	for (const [label, dir] of [
+		['baseline', paths.baselineDir],
+		['final', paths.finalDir],
+	]) {
+		for (const id of listRuns(dir)) {
+			try {
+				readRunSummary(dir, id);
+			} catch (err) {
+				issues.push(`${label}/${id}: ${String(err.message).split('\n')[0]}`);
+			}
+		}
 	}
 
 	// secret scan of the committed record (private classes excluded).

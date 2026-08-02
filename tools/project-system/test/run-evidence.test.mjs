@@ -501,3 +501,57 @@ test('scaffolded prompts nobody answered are pending, not complete', async () =>
 });
 
 const EVIDENCE_STATUSES_FOR_TEST = new Set(['complete', 'complete_with_warnings']);
+
+// --- the whole-record validator has to look at the whole record --------------
+
+function validateFixture(dir, build) {
+	const root = join(dir, 'project');
+	mkdirSync(join(root, '.project', 'follow-up'), { recursive: true });
+	writeFileSync(join(root, '.project', 'project.yml'), 'schema_version: 1\nproject:\n  name: Probe\n', 'utf8');
+	build(join(root, '.project'));
+	const r = spawnSync(process.execPath, [COMPARE_CLI, 'project', 'validate', '--project-root', root, '--json'], { encoding: 'utf8' });
+	return { r, out: r.stdout ? JSON.parse(r.stdout) : {} };
+}
+
+test('a run whose summary disagrees with its own directory is an issue', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const { r, out } = validateFixture(dir, (pd) => {
+			// The summary claims a different run than the directory holding it —
+			// a corrupted or hand-edited run that used to pass with status ok,
+			// because nothing enumerated the runs at all.
+			const runDir = join(pd, 'baseline', '2026-07-30T100000Z');
+			mkdirSync(join(runDir, 'crawl'), { recursive: true });
+			writeFileSync(join(runDir, 'crawl', 'crawl.json'), '{}\n', 'utf8');
+			writeFileSync(
+				join(runDir, 'summary.json'),
+				JSON.stringify({ schema_version: 1, run_id: '2026-08-01T120000Z', project_type: 'new', kind: 'baseline', status: 'completed', started_at: '2026-07-30T10:00:00.000Z', finished_at: '2026-07-30T10:04:00.000Z', modules: [{ module: 'crawl', status: 'complete' }] }),
+				'utf8',
+			);
+		});
+		assert.notEqual(r.status, 0, 'a malformed run must not validate clean');
+		assert.ok(out.issues.some((i) => /baseline\/2026-07-30T100000Z/.test(i)), `run not reported: ${JSON.stringify(out.issues)}`);
+	} finally {
+		cleanup();
+	}
+});
+
+test('survey answers outside their own scale are an issue', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const { r, out } = validateFixture(dir, (pd) => {
+			writeFileSync(
+				join(pd, 'follow-up', 'survey-30-days.yml'),
+				'schema_version: 1\nkind: survey-results\nperiod: 90-days\nitems:\n  - id: confidence\n    value: 999\n  - id: confidence\n    value: -50\n',
+				'utf8',
+			);
+		});
+		assert.notEqual(r.status, 0);
+		const all = out.issues.join(' | ');
+		assert.match(all, /outside the 1–5 scale/);
+		assert.match(all, /duplicate item "confidence"/);
+		assert.match(all, /named for "30-days"/);
+	} finally {
+		cleanup();
+	}
+});
