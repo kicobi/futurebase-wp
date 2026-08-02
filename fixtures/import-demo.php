@@ -157,28 +157,67 @@ call_user_func(
 		// ---------------------------------------------------------------------------
 		// 2. Discover the theme's pattern namespace from the registry.
 		// ---------------------------------------------------------------------------
-		$registry  = WP_Block_Patterns_Registry::get_instance();
-		$namespace = '';
+		$registry = WP_Block_Patterns_Registry::get_instance();
+
+		/*
+		 * The namespace is the active theme's slug, which is the convention
+		 * every pattern here follows and what bin/rename-theme.sh rewrites.
+		 *
+		 * It used to be found by probing for `<namespace>/section-hero` and
+		 * erroring if that pattern was absent. That reads "is the theme
+		 * active?" but actually asks "is this theme still shaped like the
+		 * starter?" — and a promoted project that has replaced the starter's
+		 * homepage has no section-hero, so the import died on a theme that was
+		 * active, correct, and simply its own. The registry is still consulted
+		 * below; it is no longer required to contain one specific pattern.
+		 */
+		$namespace = wp_get_theme()->get_stylesheet();
+
+		$available = array();
 		foreach ( $registry->get_all_registered() as $registered ) {
-			if ( preg_match( '#^(.+)/section-hero$#', $registered['name'], $m ) ) {
-				$namespace = $m[1];
-				break;
+			if ( preg_match( '#^' . preg_quote( $namespace, '#' ) . '/section-(.+)$#', $registered['name'], $m ) ) {
+				$available[ $m[1] ] = $registered['name'];
 			}
-		}
-		if ( '' === $namespace ) {
-			WP_CLI::error( 'No <namespace>/section-hero pattern registered — is the theme active?' );
 		}
 
-		$expand_sections = function ( array $sections ) use ( $registry, $namespace ) {
+		if ( empty( $available ) ) {
+			WP_CLI::warning(
+				sprintf(
+					'No %s/section-* patterns are registered. Pages will be created without composed content.',
+					$namespace
+				)
+			);
+		}
+
+		/*
+		 * Sections the caller asks for that this theme does not have are
+		 * skipped, not fatal. A fixture is scaffolding: it should furnish
+		 * whatever the theme can furnish and say what it could not, rather
+		 * than refuse to run because a project outgrew the starter's homepage.
+		 */
+		$expand_sections = function ( array $sections ) use ( $registry, $available, $namespace ) {
 			$content = '';
+			$missing = array();
+
 			foreach ( $sections as $section ) {
-				$name = $namespace . '/section-' . $section;
-				if ( ! $registry->is_registered( $name ) ) {
-					WP_CLI::error( 'Pattern not registered: ' . $name );
+				if ( ! isset( $available[ $section ] ) ) {
+					$missing[] = $section;
+					continue;
 				}
-				$pattern  = $registry->get_registered( $name );
+
+				$pattern  = $registry->get_registered( $available[ $section ] );
 				$content .= $pattern['content'] . "\n\n";
 			}
+
+			if ( $missing ) {
+				WP_CLI::log(
+					sprintf(
+						'  skipped (not in this theme): %s',
+						implode( ', ', array_map( static fn ( $s ) => $namespace . '/section-' . $s, $missing ) )
+					)
+				);
+			}
+
 			return $content;
 		};
 
