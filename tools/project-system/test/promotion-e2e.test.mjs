@@ -148,10 +148,11 @@ function composerCalls(harness) {
 		.map((line) => JSON.parse(line));
 }
 
-function makeLead(root) {
+function makeLead(root, { staging = null, stagingYaml = null } = {}) {
 	const workspace = join(root, 'leads');
 	const lead = join(workspace, 'acme');
 	mkdirSync(join(lead, 'brief'), { recursive: true });
+	const stagingLines = stagingYaml ?? [`  staging: ${staging === null ? 'null' : JSON.stringify(staging)}`];
 	writeFileSync(
 		join(lead, 'project.yml'),
 		[
@@ -168,7 +169,7 @@ function makeLead(root) {
 			`  source_path: ${JSON.stringify(STARTER_ROOT)}`,
 			'urls:',
 			'  production: null',
-			'  staging: null',
+			...stagingLines,
 			'baseline:',
 			'  mode: redesign',
 			'privacy:',
@@ -292,7 +293,7 @@ function makeFakeGh(root, template) {
 	return { bin, state, templateSha };
 }
 
-function promoteViaFakeGh({ root, workspace, fake, reuse = false, composer = null }) {
+function promoteViaFakeGh({ root, workspace, fake, reuse = false, composer = null, json = false }) {
 	const dest = join(root, 'dest');
 	const args = [
 		CLI,
@@ -313,6 +314,7 @@ function promoteViaFakeGh({ root, workspace, fake, reuse = false, composer = nul
 		'--non-interactive',
 	];
 	if (reuse) args.push('--reuse-remote');
+	if (json) args.push('--json');
 	const composerHarness = composer || makeFakeComposer(root);
 	const result = spawnSync(process.execPath, args, {
 		encoding: 'utf8',
@@ -331,6 +333,72 @@ function promoteViaFakeGh({ root, workspace, fake, reuse = false, composer = nul
 		},
 	});
 	return { ...result, dest, output: `${result.stdout}\n${result.stderr}` };
+}
+
+const credentialUrlCases = [
+	{
+		name: 'a YAML escape continuation',
+		credential: 'YamlEscapedCredential987654321',
+		leadOptions: {
+			stagingYaml: ['  staging: "https://admin:YamlEscapedCredential987654321\\', '    @staging.example.com"'],
+		},
+	},
+	{
+		name: 'a two-character password',
+		credential: 'Q7',
+		leadOptions: { staging: 'https://admin:Q7@staging.example.com' },
+	},
+	{
+		name: 'a scheme-relative authenticated URL',
+		credential: 'SchemeRelativeCredential987654321',
+		leadOptions: { staging: '//admin:SchemeRelativeCredential987654321@staging.example.com' },
+	},
+	{
+		name: 'a slashless HTTPS authenticated URL',
+		credential: 'R8',
+		leadOptions: { staging: 'https:admin:R8@staging.example.com' },
+	},
+	{
+		name: 'a single-slash HTTPS authenticated URL',
+		credential: 'S9',
+		leadOptions: { staging: 'https:/admin:S9@staging.example.com' },
+	},
+	{
+		name: 'a backslash HTTPS authenticated URL',
+		credential: 'T6',
+		leadOptions: { staging: 'https:\\admin:T6@staging.example.com' },
+	},
+];
+
+for (const { name, credential, leadOptions } of credentialUrlCases) {
+	for (const json of [false, true]) {
+		test(`${name} aborts before GitHub creation without leaking in ${json ? 'JSON' : 'human'} output`, () => {
+			const { dir, cleanup } = sandbox();
+			try {
+				const template = makeTemplate(dir);
+				const workspace = makeLead(dir, leadOptions);
+				const fake = makeFakeGh(dir, template);
+				const result = promoteViaFakeGh({ root: dir, workspace, fake, json });
+
+				assert.equal(result.status, 6, result.output);
+				assert.equal(result.stdout.includes(credential), false, 'stdout must not echo the credential');
+				assert.equal(result.stderr.includes(credential), false, 'stderr must not echo the credential');
+				assert.equal(existsSync(result.dest), false, 'promotion must not create the destination');
+				assert.equal(existsSync(fake.state), false, 'the fake GitHub remote must not be created');
+				assert.match(readFileSync(join(workspace, 'acme', 'project.yml'), 'utf8'), /status: won/);
+
+				if (json) {
+					const payload = JSON.parse(result.stdout);
+					assert.equal(payload.code, 6);
+					assert.deepEqual(payload.findings, [{ file: 'project.yml', line: 14, rule: 'url-userinfo' }]);
+				} else {
+					assert.match(result.output, /project\.yml:14 \[url-userinfo\]/);
+				}
+			} finally {
+				cleanup();
+			}
+		});
+	}
 }
 
 test('offline promotion completes, commits, and removes its checkpoint', () => {

@@ -116,6 +116,10 @@ if ( ! function_exists( 'futurebase_register_block_styles' ) ) {
 	 * (cards, writing, cta). Patterns opt in with
 	 * `"className":"is-style-section"`.
 	 *
+	 * The `pricing-featured` variation on core/button supplies a complete,
+	 * token-driven set of colours and interaction states for the featured
+	 * pricing call to action.
+	 *
 	 * @return void
 	 */
 	function futurebase_register_block_styles() {
@@ -124,6 +128,14 @@ if ( ! function_exists( 'futurebase_register_block_styles' ) ) {
 			array(
 				'name'  => 'section',
 				'label' => __( 'Section', 'futurebase' ),
+			)
+		);
+
+		register_block_style(
+			'core/button',
+			array(
+				'name'  => 'pricing-featured',
+				'label' => __( 'Pricing featured', 'futurebase' ),
 			)
 		);
 	}

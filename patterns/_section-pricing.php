@@ -68,8 +68,8 @@
 			<!-- /wp:list -->
 			<!-- wp:buttons -->
 			<div class="wp-block-buttons">
-				<!-- wp:button {"backgroundColor":"base","textColor":"contrast-2"} -->
-				<div class="wp-block-button"><a class="wp-block-button__link has-contrast-2-color has-base-background-color has-text-color has-background wp-element-button" href="#"><?php echo esc_html__( 'Choose Standard', 'futurebase' ); ?></a></div>
+				<!-- wp:button {"className":"is-style-pricing-featured"} -->
+				<div class="wp-block-button is-style-pricing-featured"><a class="wp-block-button__link wp-element-button" href="#"><?php echo esc_html__( 'Choose Standard', 'futurebase' ); ?></a></div>
 				<!-- /wp:button -->
 			</div>
 			<!-- /wp:buttons -->
