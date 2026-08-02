@@ -1,10 +1,25 @@
 name: CI
 
+# `pull_request` carries no branch filter on purpose.
+#
+# With `branches: [main]` a pull request opened against anything other than
+# main never ran — which is every pull request in a stack. They reported zero
+# checks, and retargeting one to main afterwards does not help: that fires
+# `edited`, and this workflow listens for the default `opened`, `synchronize`
+# and `reopened`. The only way to get a run was to close and reopen the pull
+# request by hand.
+#
+# Unfiltered, each pull request is checked against the base it will actually
+# merge into, which is the point of checking it at all. The concurrency group
+# below keys on `github.ref`, and for a pull request that resolves to
+# `refs/pull/<n>/merge`, so stacked runs do not cancel one another.
+#
+# `push` keeps its filter. A branch with an open pull request is already
+# covered by `synchronize`; running both would double every job.
 on:
     push:
         branches: [main]
     pull_request:
-        branches: [main]
 
 permissions:
     contents: read
