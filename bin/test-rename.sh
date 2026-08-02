@@ -236,6 +236,25 @@ for probe in fixtures $portable_bin; do
 	fi
 done
 
+# PRODUCT_ONLY in the sync classifier and FUTUREBASE_PRODUCT_EXCLUSIONS here are
+# the same fact in two languages: files belonging to Futurebase WP alone, which
+# rename DELETES from a client. If they drift, sync starts telling the operator to
+# port the product narrative — and the branded screenshot wp-admin displays — back
+# into a client theme.
+product_only="$(node -e "
+	const { pathToFileURL } = require('node:url');
+	import(pathToFileURL(process.argv[1]).href).then((module) => {
+		if (!Array.isArray(module.PRODUCT_ONLY) || module.PRODUCT_ONLY.length === 0) process.exit(2);
+		console.log(module.PRODUCT_ONLY.slice().sort().join('\\n'));
+	}).catch(() => process.exit(2));
+" "$SYNC_LIB" 2>>"$LOG")"
+contract_product="$(printf '%s\n' "${FUTUREBASE_PRODUCT_EXCLUSIONS[@]}" | sort)"
+if [ -z "$product_only" ]; then
+	problems+=("could not read PRODUCT_ONLY from the sync classifier")
+elif [ "$product_only" != "$contract_product" ]; then
+	problems+=("PRODUCT_ONLY and FUTUREBASE_PRODUCT_EXCLUSIONS disagree — sync would offer a client the files rename deletes")
+fi
+
 if [ "${#problems[@]}" -gt 0 ]; then
 	FAILED=1
 	echo "rename non-regression: FAIL — real rename ($REAL_SLUG):"

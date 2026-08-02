@@ -27,8 +27,10 @@ import {
 	classifyPath,
 	detectBase,
 	isAncestor,
+	missingWorkflowScripts,
 	planDeps,
 	planFiles,
+	PRODUCT_ONLY,
 	safeFiles,
 } from '../lib/sync.mjs';
 
@@ -318,4 +320,67 @@ test('safe-file discovery never follows a symlinked portable root', () => {
 	} finally {
 		cleanup();
 	}
+});
+
+// --- client fidelity --------------------------------------------------------
+//
+// Three ways a sync used to hand a working client project a broken one. Each was
+// found by migrating a real project, not by a test, so each gets one here.
+
+test('Futurebase product material is never offered to a client for porting', () => {
+	// rename-theme.sh DELETES these during promotion. Reporting them as drift told
+	// the operator to copy the product narrative — and the branded screenshot that
+	// wp-admin displays — back into a client theme.
+	for (const rel of PRODUCT_ONLY) {
+		assert.equal(classifyPath(rel), CLASS.NEVER, `${rel} must never be surfaced to a client`);
+	}
+	assert.ok(PRODUCT_ONLY.includes('screenshot.png'), 'the branded theme screenshot is the one that bites');
+});
+
+test('a merged dependency block comes back alphabetically sorted', () => {
+	// lint:pkg (wp-scripts lint-pkg-json) enforces alphabetical order and runs in
+	// client CI, so appending an upstream dependency turned the client's build red.
+	const { dir, cleanup } = sandbox();
+	try {
+		const starter = join(dir, 'starter');
+		const projectRoot = join(dir, 'project');
+		initRepo(starter);
+		mkdirSync(projectRoot);
+
+		const upstream = { '@lhci/cli': '1.0.0', '@wordpress/env': '1.0.0', 'pa11y-ci': '1.0.0' };
+		write(starter, 'package.json', JSON.stringify({ name: 'futurebase', version: '2.0.0', devDependencies: upstream }, null, '\t') + '\n');
+		const ref = commitAll(starter, 'starter adds a dependency that sorts first');
+
+		// The client's own block is already ordered; the merge appends @lhci/cli.
+		const client = { '@wordpress/env': '1.0.0', 'pa11y-ci': '1.0.0' };
+		write(projectRoot, 'package.json', JSON.stringify({ name: 'client-theme', version: '1.0.2', devDependencies: client }, null, '\t') + '\n');
+
+		const entries = planDeps({ projectRoot, starter, ref });
+		const manifest = entries.find((e) => e.rel === 'package.json');
+		const merged = JSON.parse(manifest.next);
+
+		assert.deepEqual(Object.keys(merged.devDependencies), ['@lhci/cli', '@wordpress/env', 'pa11y-ci']);
+		assert.equal(merged.version, '1.0.2', 'the client version is still its own');
+	} finally {
+		cleanup();
+	}
+});
+
+test('workflow script calls the project cannot satisfy are reported', () => {
+	// .github/workflows is CLASS.SAFE and copies verbatim, but the npm targets it
+	// calls live in package.json's scripts block, which is never merged. A project
+	// promoted from an older template got CI referencing scripts it lacked.
+	const workflow = 'jobs:\n  a:\n    steps:\n      - run: npm run build\n      - run: npm run test:navigation\n      - run: npm run demo:import\n';
+	const missing = missingWorkflowScripts([workflow], { build: 'wp-scripts build' });
+	assert.deepEqual(missing, ['demo:import', 'test:navigation']);
+});
+
+test('a project defining every referenced script reports nothing', () => {
+	const workflow = '- run: npm run build\n- run: npm run verify\n';
+	assert.deepEqual(missingWorkflowScripts([workflow], { build: 'x', verify: 'y' }), []);
+});
+
+test('script detection tolerates an unreadable workflow and an absent scripts block', () => {
+	assert.deepEqual(missingWorkflowScripts([null], {}), []);
+	assert.deepEqual(missingWorkflowScripts(['- run: npm run build\n'], null), ['build']);
 });
