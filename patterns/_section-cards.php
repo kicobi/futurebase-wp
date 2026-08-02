@@ -17,7 +17,7 @@
 	<h2 class="wp-block-heading has-text-align-center"><?php echo esc_html__( 'What we do', 'futurebase' ); ?></h2>
 	<!-- /wp:heading -->
 
-	<!-- wp:columns {"align":"wide","style":{"spacing":{"blockGap":{"top":"var:preset|spacing|50","left":"var:preset|spacing|50"}}}} -->
+	<!-- wp:columns {"align":"wide"} -->
 	<div class="wp-block-columns alignwide">
 		<!-- wp:column -->
 		<div class="wp-block-column">
