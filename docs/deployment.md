@@ -30,6 +30,45 @@ Not tracked — don't ship these:
 - `.wp-env.override.json`
 - `.env` files of any stripe
 
+## Packaging a release zip
+
+`npm run package` builds the theme, then runs [bin/package-theme.sh](../bin/package-theme.sh) to produce an installable zip at `.dist/<slug>.zip`. This is the deploy path for any host without git integration, and the simplest one for a demo or a one-off install.
+
+```bash
+npm run package
+```
+
+What it does, in order:
+
+1. **Preflight.** Aborts if `rsync` or `zip` are missing from `PATH`.
+2. **Reads the slug from the `Text Domain` line in `style.css`** — not the repo name, not the working directory. The archive is `<slug>.zip` and its single top-level folder is `<slug>/`, which becomes the installed theme's directory name on the server. Run `npm run rename -- <slug>` first if that isn't the name you want there.
+3. **Checks the build exists.** Missing `build/main.{js,css,asset.php}` — or any of `style.css`, `functions.php`, `theme.json`, `templates/index.html`, `parts/header.html`, `patterns/home.php` — aborts with a pointer to `npm run build`.
+4. **Copies runtime paths only:** `style.css`, `functions.php`, `theme.json`, `readme.txt`, `screenshot.png`, `LICENSE`, `assets/images`, `assets/fonts`, `build`, `inc`, `languages`, `parts`, `patterns`, `styles`, `templates`. Anything absent is skipped silently.
+5. **Prints the zip path on stdout**, so it composes: `npm run package --silent | tail -1`.
+
+Everything else stays out: `src/`, `bin/`, `docs/`, `tools/`, `fixtures/`, `node_modules/`, the SCSS and JS sources under `assets/`, `.git`, and the Composer files. `vendor/` is excluded too — if the project has Composer runtime dependencies, run `composer install --no-dev` on the host after installing the theme.
+
+`FUTUREBASE_DIST_DIR` overrides the output directory.
+
+### Validating the zip
+
+`npm run package:check` builds and then runs [bin/test-package.sh](../bin/test-package.sh) against the result. It fails if the zip is empty, contains entries outside the theme directory, is missing a required runtime file, ships a dev-only path, or ships `assets/` sources other than `images/` and `fonts/`. It also asserts that `style.css`'s `Text Domain` matches the package directory name.
+
+Two of its checks are worth knowing about, because the failures they catch are silent on the server rather than loud:
+
+- every `assets/images/` file referenced by a packaged pattern must exist in the zip — otherwise the pattern 404s its placeholder on a fresh install;
+- every locally hosted font that `theme.json` registers at `file:./assets/fonts/…` must exist in the zip — WordPress falls back silently when it doesn't, so the brand font just disappears.
+
+Run it before handing a zip to a client or pushing one to a demo host.
+
+### Installing the zip
+
+- **wp-admin** — Appearance → Themes → Add New → Upload Theme → choose the zip → Install → Activate.
+- **WP-CLI over SSH** — `wp theme install /path/to/<slug>.zip --activate`
+- **SFTP** — unzip locally, upload the `<slug>/` folder into `wp-content/themes/`, activate.
+
+Installing a zip whose slug differs from the theme already on the server creates a *second* theme directory rather than replacing the first. Activate the new one, confirm the site renders, then delete the old one.
+
 ## Environment variables
 
 | Variable | Purpose | Where it's read |
@@ -42,11 +81,31 @@ Most managed hosts expose a UI for setting these. On Kinsta, WP Engine, Pressabl
 
 ## Host-specific notes
 
-### Kinsta, WP Engine, Pressable, Rocket.net
+Applies to every host below: they sometimes run their own asset optimisation (minification, code splitting) on top of what the theme ships. Disable host-level optimisation on `build/main.{js,css}` — it's already minified by `@wordpress/scripts`, and re-minifying can break sourcemaps or double-process WordPress dependency externals.
 
-Supports git push-to-deploy. Set up a repository in the host's dashboard, push `main` (or a deploy branch), the host pulls and atomically swaps the theme directory.
+### WP Engine, Pressable — native git deployment
 
-Watch for: hosts sometimes run their own asset optimisation (minification, code splitting) on top of what the theme ships. Disable host-level optimisation on `build/main.{js,css}` — it's already minified by `@wordpress/scripts` and re-minifying can break sourcemaps or double-process WordPress dependency externals.
+These two really do deploy from a repository, by different mechanisms.
+
+**WP Engine** uses GitPush: add an SSH key in the User Portal, add the host as a git remote, then `git push <remote> <branch>`. WP Engine scans for PHP errors, updates the changed files, and clears the cache.
+
+**Pressable** has a GitHub integration configured in its dashboard — push to the configured branch and each push becomes a deployment in the site's Git History. It supports configurable deployment paths and a `.deployignore`. It does not sync WordPress core or `wp-content/uploads/`, and does not delete removed files unless that is enabled per-branch.
+
+### Kinsta — no dashboard git integration
+
+**Kinsta managed WordPress hosting has no repository connection in MyKinsta.** Their documentation is explicit that there is no `git push kinsta <site>` equivalent. Git exists only server-side, reachable over SSH. If you are looking for a repo-connection screen in the control panel, there isn't one.
+
+(Kinsta *Application Hosting* — their Node/Python product — does have GitHub integration. Different product; it does not apply to a WordPress site.)
+
+Three workable paths, in ascending order of moving parts:
+
+1. **Packaged zip.** Build with `npm run package` and install it — see [Packaging a release zip](#packaging-a-release-zip). No credentials leave your machine, and nothing has to be configured on the host. This is the recommended path for a demo or an occasional release.
+2. **SSH + `git pull` on the container.** Kinsta's own documented approach: SSH in, clone or pull the repository into the theme directory. Private repos need a personal access token. Deployment is manually triggered.
+3. **GitHub Actions over SSH.** Kinsta's CI/CD guide runs `git fetch origin main && git reset --hard origin/main` over SSH from a workflow. It needs the server IP, SSH username, password, and port stored as repository secrets, and it **requires removing the IP allowlist in MyKinsta**, because Actions runners have dynamic IPs. That is a real security trade for the convenience of not uploading a zip — weigh it deliberately rather than by default.
+
+### Rocket.net
+
+SSH, SFTP, and WP-CLI are available. Git integration is advertised, but sources disagree on whether it is configurable from the dashboard — verify on the actual account before planning a deploy around it. The packaged-zip and SSH paths work regardless.
 
 ### Pantheon
 
@@ -102,7 +161,7 @@ automated.
 
 1. **Provision the host.** Fresh WordPress install, admin user created, site URL configured.
 2. **Set env vars.** `ACF_PRO_LICENSE`, `WP_ENVIRONMENT_TYPE=production`.
-3. **Push code.** Git integration if the host offers it, otherwise SFTP of the theme directory to `wp-content/themes/<slug>/`.
+3. **Push code.** Git integration if the host actually offers it (WP Engine, Pressable — *not* Kinsta), otherwise `npm run package` and install the zip, or SFTP the theme directory to `wp-content/themes/<slug>/`.
 4. **Install Composer deps** (only if the project uses them): `composer install --no-dev --prefer-dist` over SSH.
 5. **Activate the theme.** `wp theme activate <slug>` or via wp-admin.
 6. **Install and activate ACF Pro** (only if the project uses ACF). `ACF_PRO_LICENSE` handles activation. Verify with `wp plugin list --status=active`.
