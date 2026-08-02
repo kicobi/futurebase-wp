@@ -12,7 +12,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 import { scanText, scanFiles } from '../lib/secret-scan.mjs';
 import { containedPath, isInside, symlinkFreePath } from '../lib/paths.mjs';
@@ -328,4 +330,71 @@ test('operational findings still explain themselves', () => {
 	const findings = scanFiles([join(tmpdir(), `futurebase-absent-${Date.now()}.yml`)]);
 	assert.equal(findings[0].rule, 'unscannable');
 	assert.match(findings[0].snippet, /could not stat/);
+});
+
+// --- project init writes stay inside the project -----------------------------
+//
+// symlinkFreePath existed and was tested, and promote.mjs resolved its
+// destination writes through it. `project init` built .project with a plain
+// join, which follows a symlink like any other traversal — so a checkout
+// containing `.project -> ../elsewhere` made init populate a directory outside
+// the project it was pointed at, create six files there, and report success.
+
+const INIT_CLI = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'futurebase.mjs');
+
+function initInto(root, extraArgs = []) {
+	return spawnSync(process.execPath, [INIT_CLI, 'project', 'init', '--project-root', root, '--slug', 'probe', ...extraArgs], { encoding: 'utf8' });
+}
+
+test('project init refuses a symlinked .project and writes nothing outside', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const root = join(dir, 'proj');
+		const outside = join(dir, 'elsewhere');
+		mkdirSync(root);
+		mkdirSync(outside);
+		symlinkSync(outside, join(root, '.project'));
+
+		// --force is the dangerous path: without it existsSync follows the link
+		// and the command stops on "already exists" by accident rather than by
+		// rule, so the guard has to hold for both.
+		const r = initInto(root, ['--force']);
+		assert.notEqual(r.status, 0, 'a symlinked .project must be refused');
+		assert.match(r.stdout + r.stderr, /refusing to write through a symlink/);
+		assert.equal(existsSync(join(outside, 'project.yml')), false, 'nothing may be written outside the project root');
+	} finally {
+		cleanup();
+	}
+});
+
+test('project init refuses a symlinked directory nested under .project', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const root = join(dir, 'proj');
+		const outside = join(dir, 'elsewhere');
+		mkdirSync(join(root, '.project'), { recursive: true });
+		mkdirSync(outside);
+		symlinkSync(outside, join(root, '.project', 'baseline'));
+
+		const r = initInto(root, ['--force']);
+		assert.notEqual(r.status, 0);
+		assert.match(r.stdout + r.stderr, /refusing to write through a symlink/);
+		assert.equal(existsSync(join(outside, 'project.yml')), false);
+	} finally {
+		cleanup();
+	}
+});
+
+test('project init still scaffolds an ordinary project', () => {
+	// So the two refusals above cannot pass by refusing everything.
+	const { dir, cleanup } = sandbox();
+	try {
+		const root = join(dir, 'proj');
+		mkdirSync(root);
+		const r = initInto(root);
+		assert.equal(r.status, 0, r.stdout + r.stderr);
+		assert.ok(existsSync(join(root, '.project', 'project.yml')));
+	} finally {
+		cleanup();
+	}
 });

@@ -12,7 +12,7 @@ import { basename, join, resolve } from 'node:path';
 import { EXIT, die, ok, info, emitJson } from '../../lib/output.mjs';
 import { isValidSlug, slugify } from '../../lib/slug.mjs';
 import { projectPaths } from '../../lib/baseline.mjs';
-import { templatesDir } from '../../lib/paths.mjs';
+import { templatesDir, symlinkFreePath } from '../../lib/paths.mjs';
 import { writeYaml } from '../../lib/yaml.mjs';
 import { validateProject } from '../../lib/validate.mjs';
 
@@ -59,6 +59,26 @@ export function projectInit(_positional, flags) {
 	const root = resolve(flags['project-root'] || process.cwd());
 	const paths = projectPaths(root);
 
+	// Every write in this command lands under .project, so containment is checked
+	// here once and each path resolved through it.
+	//
+	// projectPaths() builds that path with a plain join, which follows a symlink
+	// like any other traversal. A checkout containing `.project -> ../elsewhere`
+	// — an accidental restore, a hostile archive — therefore made init populate a
+	// directory outside the project it was pointed at, create six files there,
+	// and report success. promote.mjs has resolved destination writes through
+	// symlinkFreePath since the containment work; this command never did.
+	//
+	// Checked before the "already exists" test, because existsSync follows the
+	// link too: a symlinked .project must be refused whether or not --force is
+	// passed, not quietly accepted by one of the two paths.
+	const safePath = (rel) => {
+		const resolved = symlinkFreePath(root, rel);
+		if (!resolved) die(`refusing to write through a symlink: ${join(root, rel)}`, EXIT.ACCESS_FAILURE, { json });
+		return resolved;
+	};
+	safePath('.project');
+
 	if (existsSync(paths.projectDir) && !flags.force) die(`project record already exists: ${paths.projectDir} (use --force to add missing pieces)`, EXIT.ACCESS_FAILURE, { json });
 
 	const slug = flags.slug ? String(flags.slug) : inferSlug(root);
@@ -67,10 +87,10 @@ export function projectInit(_positional, flags) {
 	const type = flags.type || 'redesign';
 	if (!['new', 'redesign'].includes(type)) die('--type must be new|redesign', EXIT.INVALID_CONFIG, { json });
 
-	for (const d of PROJECT_DIRS) mkdirSync(join(paths.projectDir, d), { recursive: true });
+	for (const d of PROJECT_DIRS) mkdirSync(safePath(join('.project', d)), { recursive: true });
 
 	// project.yml (don't clobber an existing one on --force)
-	const cfgPath = join(paths.projectDir, 'project.yml');
+	const cfgPath = safePath(join('.project', 'project.yml'));
 	if (!existsSync(cfgPath)) {
 		const config = {
 			schema_version: 1,
@@ -86,7 +106,7 @@ export function projectInit(_positional, flags) {
 
 	// seed structured docs + record docs (only if absent)
 	const seed = (rel, data) => {
-		const p = join(paths.projectDir, rel);
+		const p = safePath(join('.project', rel));
 		if (!existsSync(p)) writeYaml(p, data);
 	};
 	seed('metrics/metrics.yml', { schema_version: 1, kind: 'metrics', items: [] });
@@ -95,8 +115,8 @@ export function projectInit(_positional, flags) {
 	const copyIfAbsent = (src, dest) => {
 		if (!existsSync(dest)) cpSync(src, dest);
 	};
-	copyIfAbsent(join(templatesDir, 'active', 'agent-context.md'), join(paths.projectDir, 'agent-context.md'));
-	copyIfAbsent(join(templatesDir, 'active', 'PROJECT-RECORD.md'), join(paths.projectDir, 'PROJECT-RECORD.md'));
+	copyIfAbsent(join(templatesDir, 'active', 'agent-context.md'), safePath(join('.project', 'agent-context.md')));
+	copyIfAbsent(join(templatesDir, 'active', 'PROJECT-RECORD.md'), safePath(join('.project', 'PROJECT-RECORD.md')));
 	ensureGitignore(root);
 
 	if (json) emitJson({ status: 'created', slug, name, type, path: paths.projectDir });
