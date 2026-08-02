@@ -147,7 +147,13 @@ jobs:
             - run: npm ci
             - run: npm run build
             - run: npm run env:start
-            - run: npm run test:navigation
+            # inc/ is CLASS.NEVER, so sync never delivers the navigation
+            # migration to a client — a project promoted before that feature
+            # existed has nothing for this gate to exercise, and the synced
+            # workflow would fail it forever. Run it where the feature is.
+            - name: Navigation migration
+              if: hashFiles('inc/navigation-migration.php') != ''
+              run: npm run test:navigation
             # Activates the theme and imports the fixture. Without it wp-env
             # serves core's default theme and this gate greens on the wrong
             # software; a11y-wp-env.sh now refuses to run in that state.
