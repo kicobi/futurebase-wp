@@ -10,6 +10,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
 import {
@@ -372,6 +375,68 @@ test('symlinked run directories are never selected', () => {
 		symlinkSync(outside, join(dir, linkedId));
 		assert.deepEqual(listRuns(dir), []);
 		assert.equal(latestRunId(dir), null);
+	} finally {
+		cleanup();
+	}
+});
+
+// --- comparison refuses evidence nobody should build on ----------------------
+//
+// A comparison is a claim made to a client about what changed. `compare` read
+// both runs with readRunSummary, which only proves a summary parses and matches
+// its directory — a run whose modules FAILED satisfies that too, and the partial
+// artifacts it left behind still contain numbers. So a baseline that crashed
+// part-way through the crawl produced an exit-0 report claiming broken links had
+// improved 9 → 0. evidenceVerdict() already encoded the rule; it was applied
+// when writing the record and not when reading it back.
+
+const COMPARE_CLI = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'futurebase.mjs');
+
+function writeRunWithEvidence(parentDir, runId, kind, status, modules) {
+	const dir = join(parentDir, runId);
+	mkdirSync(join(dir, 'crawl'), { recursive: true });
+	// Evidence on disk regardless of outcome — that is what made the failure
+	// dangerous rather than merely unhelpful.
+	writeFileSync(join(dir, 'crawl', 'crawl.json'), '{}\n', 'utf8');
+	writeFileSync(
+		join(dir, 'summary.json'),
+		JSON.stringify({ schema_version: 1, run_id: runId, project_type: 'new', kind, status, started_at: '2026-07-30T10:00:00.000Z', finished_at: '2026-07-30T10:04:00.000Z', modules }, null, 2),
+		'utf8',
+	);
+	return dir;
+}
+
+function compareFixture(dir, baselineModules, baselineStatus) {
+	const root = join(dir, 'project');
+	mkdirSync(join(root, '.project'), { recursive: true });
+	writeFileSync(join(root, '.project', 'project.yml'), 'project:\n  name: Probe\n', 'utf8');
+	writeRunWithEvidence(join(root, '.project', 'baseline'), '2026-07-30T100000Z', 'baseline', baselineStatus, baselineModules);
+	writeRunWithEvidence(join(root, '.project', 'final'), '2026-08-01T100000Z', 'final', 'completed', [{ module: 'crawl', status: 'complete' }]);
+	return spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--json'], { encoding: 'utf8' });
+}
+
+test('a failed baseline cannot become a client report claiming improvement', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const r = compareFixture(dir, [{ module: 'crawl', status: 'failed' }], 'failed');
+		assert.notEqual(r.status, 0, 'a failed baseline must not produce an exit-0 comparison');
+		const out = JSON.parse(r.stdout);
+		assert.equal(out.status, 'not-comparable');
+		assert.match(out.blocking[0], /baseline run .* did not capture usable evidence/);
+	} finally {
+		cleanup();
+	}
+});
+
+test('the gate rejects the evidence, not the comparison itself', () => {
+	// The same fixture with a baseline that actually succeeded must get past this
+	// check — otherwise the test above would pass for the wrong reason.
+	const { dir, cleanup } = sandbox();
+	try {
+		const r = compareFixture(dir, [{ module: 'crawl', status: 'complete' }], 'completed');
+		const out = r.stdout ? JSON.parse(r.stdout) : {};
+		const blocking = (out.blocking || []).join(' ');
+		assert.ok(!/did not capture usable evidence/.test(blocking), `evidence gate fired on a clean baseline: ${blocking}`);
 	} finally {
 		cleanup();
 	}
