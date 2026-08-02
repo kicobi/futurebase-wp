@@ -224,7 +224,7 @@ npm run build
 
 The scaffold generates `src/blocks/author-card/` with `block.json`, `index.js`, `edit.js`, and `render.php` (dynamic server render). `npm run build` compiles it to `build/blocks/author-card/`, and `futurebase_register_blocks()` in [functions.php](functions.php) auto-registers every compiled block on `init` — no per-block PHP wiring.
 
-Reusable blocks that should outlive the theme belong in a **companion plugin**, not here. See [docs/block-authoring.md](docs/block-authoring.md#theme-bound-vs-plugin-block) for the rule.
+Reusable blocks that should outlive the theme belong in a **companion plugin**, not here. See [docs/block-authoring.md](docs/block-authoring.md#theme-bound-vs-plugin-block) for the rule, and [docs/plugin-strategy.md](docs/plugin-strategy.md) for which in-house plugins that means and how they reach client sites.
 
 For the middle ground — a pattern with fixed shape but dynamic data (author card, pricing tier, meta display) — use **block bindings**. [docs/block-bindings.md](docs/block-bindings.md) covers `acf/field`, `core/post-meta`, and how to register custom binding sources.
 
