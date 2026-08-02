@@ -142,6 +142,11 @@ Run `npm run verify` (or `bin/verify-theme.sh` directly) before handing work bac
 
 ## Plugin / API rules
 
+The in-house plugin layer — which plugins exist, what belongs in each, how
+they are delivered, and the test for adding a fourth — is decided in
+[docs/plugin-strategy.md](docs/plugin-strategy.md). Nothing is built yet;
+read it before proposing that functionality move out of the theme.
+
 When changing plugin code:
 - preserve namespace and autoloading patterns already used in the repo
 - sanitize input
