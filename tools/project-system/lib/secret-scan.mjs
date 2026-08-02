@@ -81,10 +81,22 @@ export function isSuppressedCredentialValue(rawValue) {
 	return [...PLACEHOLDER_PATTERNS, ...REFERENCE_PATTERNS].some((pattern) => pattern.test(value));
 }
 
-function redact(line) {
-	const t = line.trim();
-	return t.length > 80 ? t.slice(0, 77) + '…' : t;
-}
+// A credential finding never carries the matched line.
+//
+// This field used to hold it, trimmed to 80 characters by a function called
+// redact() that did not redact — truncation leaves any credential shorter than
+// the limit completely intact, which is most of them. Promotion then printed the
+// field to the terminal and serialized it into --json, so the gate disclosed
+// exactly what it was built to protect. A safety check that leaks its own
+// finding is worse than none, because it is trusted and it runs in CI logs.
+//
+// The rule and the line number are what make a refusal actionable: they say
+// which file, where, and what kind. Reproducing the value adds nothing the
+// operator cannot get by opening the file they already own.
+//
+// Operational rules keep a message here instead, because those describe the FILE
+// — unreadable, oversized, binary — rather than quoting anything inside it.
+const WITHHELD = 'match withheld';
 
 export function scanText(text) {
 	const findings = [];
@@ -102,7 +114,7 @@ export function scanText(text) {
 			const value = (extract ? extract(m) : m[group] ?? m[0]).trim();
 			if (suppressible && isSuppressedCredentialValue(value)) continue;
 			if (value.length < minLength) continue;
-			findings.push({ line: i + 1, rule, snippet: redact(line) });
+			findings.push({ line: i + 1, rule, snippet: WITHHELD });
 			break; // one finding per line is enough to flag it
 		}
 	}

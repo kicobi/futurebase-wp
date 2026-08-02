@@ -286,3 +286,46 @@ test('applyEntry still writes an ordinary contained path', () => {
 		cleanup();
 	}
 });
+
+// --- the gate must not disclose what it catches ------------------------------
+//
+// `snippet` used to carry the matched line, trimmed to 80 characters by a
+// function named redact() that did not redact. Promotion printed it to the
+// terminal and serialized it into --json, so a real credential reached CI logs
+// through the check built to stop it.
+
+test('a credential finding never carries the matched value', () => {
+	const sentinel = 'S3nt1nelPassw0rdValue123456';
+	for (const text of [
+		`api_key: ${sentinel}`,
+		`password = "${sentinel}"`,
+		`url: https://admin:${sentinel}@staging.example.test`,
+	]) {
+		const findings = scanText(text);
+		assert.ok(findings.length > 0, `expected a finding for: ${text.slice(0, 20)}…`);
+		const serialized = JSON.stringify(findings);
+		assert.ok(!serialized.includes(sentinel), `the finding disclosed the credential: ${serialized}`);
+		assert.ok(findings[0].rule, 'the rule is what makes the refusal actionable');
+		assert.equal(typeof findings[0].line, 'number');
+	}
+});
+
+test('a finding never echoes any part of the source line', () => {
+	// Not just the captured value — the surrounding line leaks context too.
+	// The rule name legitimately appears in a finding; the value and the
+	// surrounding context must not.
+	const findings = scanText('api_key: AbcdEFGHijklMNOP123456789  # rotate before 2027-01');
+	assert.equal(findings.length, 1);
+	const serialized = JSON.stringify(findings);
+	for (const fragment of ['AbcdEFGH', 'rotate', '2027-01']) {
+		assert.ok(!serialized.includes(fragment), `leaked "${fragment}" from the scanned line`);
+	}
+});
+
+test('operational findings still explain themselves', () => {
+	// unscannable and binary describe the FILE, not its contents, so they keep a
+	// message — that is what tells the operator which class to move it to.
+	const findings = scanFiles([join(tmpdir(), `futurebase-absent-${Date.now()}.yml`)]);
+	assert.equal(findings[0].rule, 'unscannable');
+	assert.match(findings[0].snippet, /could not stat/);
+});
