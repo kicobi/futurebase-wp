@@ -8,7 +8,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, symlinkSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
@@ -441,3 +441,63 @@ test('the gate rejects the evidence, not the comparison itself', () => {
 		cleanup();
 	}
 });
+
+// --- a module may not report evidence it did not gather ----------------------
+//
+// Both of these returned `complete`. A comparison then treats `complete` as the
+// before half of a client-facing claim, so a module that reports it without
+// having measured anything is how a wrong number reaches a client — the same
+// failure as comparing a failed run, one layer earlier.
+
+import { run as wordpressModule } from '../modules/wordpress.mjs';
+import { run as manualModule } from '../modules/manual.mjs';
+
+test('a WP-CLI that answers nothing is unavailable, not a site with nothing on it', async () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		// `true` exits 0 and prints nothing — the minimal case, but a broken SSH
+		// alias behaves identically. Every query then returned the empty fallback
+		// and the module reported a real inventory of zero plugins and zero post
+		// types, indistinguishable from a bare site.
+		const result = await wordpressModule({ runDir: dir, config: { wordpress: { cli: 'true' } } });
+		assert.equal(result.status, 'unavailable');
+		assert.match(result.reason, /did not report a version/);
+	} finally {
+		cleanup();
+	}
+});
+
+test('an inventory whose every query failed is failed, not complete', async () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const fake = join(dir, 'fakewp');
+		writeFileSync(fake, '#!/bin/sh\nif [ "$1" = core ]; then echo 6.9; else exit 1; fi\n', 'utf8');
+		chmodSync(fake, 0o755);
+		const result = await wordpressModule({ runDir: dir, config: { wordpress: { cli: fake } } });
+		assert.equal(result.status, 'failed');
+		assert.match(result.reason, /themes|plugins|post types/);
+	} finally {
+		cleanup();
+	}
+});
+
+test('scaffolded prompts nobody answered are pending, not complete', async () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		// A new-site baseline runs this module alone, so `complete` here meant a
+		// captured baseline for a project with nothing written down.
+		const fresh = await manualModule({ runDir: dir, config: { mode: 'new' } });
+		assert.equal(fresh.status, 'pending');
+		assert.ok(!EVIDENCE_STATUSES_FOR_TEST.has(fresh.status), 'pending must not count as captured evidence');
+
+		writeFileSync(join(dir, 'notes', 'observations.md'), '# Manual observations\n\nEditors cannot update the hero.\n', 'utf8');
+		const answered = await manualModule({ runDir: dir, config: { mode: 'new' } });
+		assert.equal(answered.status, 'complete_with_warnings');
+		assert.match(answered.reason, /new-site-baseline\.md/);
+		assert.equal(answered.headline.recorded, 1);
+	} finally {
+		cleanup();
+	}
+});
+
+const EVIDENCE_STATUSES_FOR_TEST = new Set(['complete', 'complete_with_warnings']);
