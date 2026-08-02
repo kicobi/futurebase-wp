@@ -74,6 +74,23 @@ export function parseBlocks(html) {
 // of each patterns/*.php. A reference to a pattern that does not exist renders
 // as nothing at all — the page silently loses a section — and the old check
 // had no way to notice.
+// Visible text that sits outside every block.
+//
+// parseBlocks only sees delimiters, so raw markup between them was invisible: a
+// template or page-level pattern could carry a hardcoded <h1> and every check
+// still returned an empty problem list. Tags are stripped before the test
+// because a group legitimately serializes its own <main> wrapper into the
+// template — it is the TEXT that indicates content, and content belongs in a
+// pattern.
+export function residualText(html) {
+	return String(html)
+		.replace(/<!--[\s\S]*?-->/g, ' ')
+		.replace(/<[^>]*>/g, ' ')
+		.replace(/&[a-z]+;|&#\d+;/gi, ' ')
+		.replace(/\s+/g, ' ')
+		.trim();
+}
+
 export function collectPatternSlugs(files) {
 	const slugs = new Set();
 	for (const { contents } of files) {
@@ -81,6 +98,53 @@ export function collectPatternSlugs(files) {
 		if (m) slugs.add(m[1]);
 	}
 	return slugs;
+}
+
+// --- item 1: tokens first ----------------------------------------------------
+
+// Commentary, blanked so line numbers survive. Everything else is scanned —
+// including block delimiters, which is the whole point.
+//
+// The bash gate this replaces skipped every line beginning `<!--`. That is
+// exactly how Gutenberg serializes a block delimiter, so
+// `<!-- wp:paragraph {"style":{"color":{"text":"#ff0000"}}} --><p>…</p>` was
+// discarded whole — attributes and inline HTML together — whenever the
+// delimiter shared a line with its saved markup, which is the normal
+// serialization for a simple block. The exclusion existed for the file-header
+// comments at the top of templates/front-page.html and parts/footer.html, and a
+// line-prefix test cannot tell those from a block.
+const blankOut = (match) => match.replace(/[^\n]/g, ' ');
+
+export function scannableSource(source) {
+	return String(source)
+		.replace(/\/\*[\s\S]*?\*\//g, blankOut)
+		.replace(/<!--(?!\s*\/?wp:)[\s\S]*?-->/g, blankOut);
+}
+
+// Tolerated because core's own blocks serialize them and the theme cannot say it
+// otherwise: an image width attribute, and a spacer's height.
+const TOLERATED = [/"width":"\d+px"/, /<div style="height:\s*\d+px"/];
+
+const RAW_VALUE_RULES = [
+	['hex color', /#[0-9a-fA-F]{3,8}\b/],
+	['rgb()/rgba()', /\brgba?\([^)]*\)/],
+	['px value', /\b\d+px\b/],
+	['rem value', /\b\d+(?:\.\d+)?rem\b/],
+];
+
+export function checkRawValues(files) {
+	const problems = [];
+	for (const { file, contents } of files) {
+		const lines = scannableSource(contents).split('\n');
+		lines.forEach((line, index) => {
+			if (TOLERATED.some((re) => re.test(line))) return;
+			for (const [label, re] of RAW_VALUE_RULES) {
+				const hit = line.match(re);
+				if (hit) problems.push(`${file}:${index + 1}: raw ${label} "${hit[0]}" — every value resolves to a theme.json preset`);
+			}
+		});
+	}
+	return problems;
 }
 
 // --- item 3: templates wire --------------------------------------------------
@@ -125,7 +189,26 @@ export function checkTemplateWiring(html, { file = 'templates/front-page.html', 
 	if (patterns.length > 1) {
 		problems.push(`${file}: references ${patterns.length} patterns (${patterns.map((p) => p.attrs.slug ?? '?').join(', ')}) — a template wires ONE page-level pattern`);
 	}
+	for (const p of patterns) {
+		// A reference with no slug renders as nothing, and missingPattern() cannot
+		// speak about a slug it was not given — so the absence has to be named
+		// here or an empty <!-- wp:pattern /--> passes every check.
+		if (!p.attrs.slug) problems.push(`${file}: a wp:pattern reference has no slug — it renders as nothing`);
+	}
 	for (const p of patterns) problems.push(...missingPattern(p.attrs.slug, knownPatterns, file));
+
+	// Inside main there is exactly one child: the page-level pattern. An extra
+	// wrapper group passed because core/group is a legal WIRING block and nesting
+	// left the root shape untouched — but layout inside a template is layout the
+	// pattern should own.
+	const nested = blocks.filter((b) => b.depth > 0);
+	const extra = nested.filter((b) => b.name !== 'core/pattern');
+	if (extra.length) {
+		problems.push(`${file}: main wraps ${extra.map((b) => b.name).join(', ')} around the pattern — a template wires, it does not lay out`);
+	}
+
+	const residue = residualText(html);
+	if (residue) problems.push(`${file}: carries hardcoded content ("${residue.slice(0, 60)}") — content belongs in a pattern`);
 
 	return problems;
 }
@@ -164,6 +247,10 @@ export function checkPageComposition(php, themeSlug, { file = 'patterns/home.php
 			problems.push(...missingPattern(slug, knownPatterns, file));
 		}
 	}
+
+	const residue = residualText(php);
+	if (residue) problems.push(`${file}: carries hardcoded content ("${residue.slice(0, 60)}") — a page-level pattern composes section patterns`);
+
 	return problems;
 }
 
@@ -308,13 +395,15 @@ function main() {
 		problems.push('theme.json is missing');
 	}
 
-	problems.push(...checkThemePaths(collect(['patterns', 'templates', 'parts'], root)));
+	const markup = collect(['patterns', 'templates', 'parts'], root);
+	problems.push(...checkThemePaths(markup));
+	problems.push(...checkRawValues(markup));
 
 	if (problems.length) {
 		for (const p of problems) console.error(`  ${p}`);
 		process.exit(1);
 	}
-	console.log('  contract items 3, 4, 5, 7, 9: OK');
+	console.log('  contract items 1, 3, 4, 5, 7, 9: OK');
 }
 
 // Only run when invoked directly, so the checks stay importable by the tests.

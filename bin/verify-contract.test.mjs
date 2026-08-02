@@ -10,7 +10,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseBlocks, collectPatternSlugs, checkTemplateWiring, checkPageComposition, checkFluidTypography, checkCustomTemplates, checkThemePaths } from './verify-contract.mjs';
+import { parseBlocks, collectPatternSlugs, checkRawValues, checkTemplateWiring, checkPageComposition, checkFluidTypography, checkCustomTemplates, checkThemePaths } from './verify-contract.mjs';
 
 // A slug this theme is not. These fixtures test the SHAPE the contract
 // requires, not this particular theme, and using the real slug made them look
@@ -227,4 +227,89 @@ test('hardcoded theme directory paths are rejected in every form', () => {
 		const problems = checkThemePaths([{ file: 'patterns/a.php', contents: bad }]);
 		assert.equal(problems.length, 1, `must reject: ${bad}`);
 	}
+});
+
+// --- gaps the parsed checks used to accept ------------------------------------
+//
+// Each of these returned an empty problem array. parseBlocks only sees
+// delimiters, so raw markup between them was invisible; core/group is a legal
+// wiring block, so an extra wrapper left the root shape untouched; and
+// missingPattern() cannot speak about a slug it was never given.
+
+test('hardcoded content in a template is rejected', () => {
+	const html = WIRING.replace('<main>', '<main><h1>Welcome to Acme</h1>');
+	assert.ok(
+		checkTemplateWiring(html).some((p) => p.includes('hardcoded content')),
+		'raw markup between blocks must be caught',
+	);
+});
+
+test('a template legitimately carrying a group wrapper still passes', () => {
+	// The group serializes its own <main> into the template. Stripping tags before
+	// looking for text is what keeps that from reading as content.
+	assert.deepEqual(checkTemplateWiring(WIRING), []);
+});
+
+test('an extra layout wrapper around the pattern is rejected', () => {
+	const html = WIRING.replace(
+		'<!-- wp:pattern {"slug":"acme-theme/home"} /-->',
+		'<!-- wp:group {"layout":{"type":"constrained"}} --><div><!-- wp:pattern {"slug":"acme-theme/home"} /--></div><!-- /wp:group -->',
+	);
+	assert.ok(
+		checkTemplateWiring(html).some((p) => p.includes('does not lay out')),
+		'layout inside a template belongs to the pattern',
+	);
+});
+
+test('a pattern reference with no slug is rejected', () => {
+	const html = WIRING.replace('<!-- wp:pattern {"slug":"acme-theme/home"} /-->', '<!-- wp:pattern /-->');
+	assert.ok(
+		checkTemplateWiring(html).some((p) => p.includes('no slug')),
+		'a slugless reference renders as nothing',
+	);
+});
+
+test('hardcoded content beside a valid section reference is rejected', () => {
+	const php = '<!-- wp:pattern {"slug":"acme-theme/section-hero"} /--><h2>Our services</h2>';
+	assert.ok(
+		checkPageComposition(php, SLUG).some((p) => p.includes('hardcoded content')),
+		'text outside every block is content',
+	);
+});
+
+// --- item 1: tokens first -----------------------------------------------------
+//
+// The bash gate this replaces skipped every line starting `<!--`, which is how
+// Gutenberg serializes a block delimiter — so raw values inside block attributes
+// passed whenever the delimiter shared a line with its saved markup, which is
+// the normal serialization for a simple block.
+
+const raw = (contents) => checkRawValues([{ file: 'patterns/_probe.php', contents }]);
+
+test('raw values inside a one-line block delimiter are caught', () => {
+	const html = '<!-- wp:paragraph {"style":{"color":{"text":"#ff0000"}}} --><p>Hi</p><!-- /wp:paragraph -->';
+	assert.ok(raw(html).some((p) => p.includes('hex color')), 'a hex in block attributes must be caught');
+});
+
+test('every raw value form is caught on a delimiter line', () => {
+	for (const [value, label] of [['#ff0000', 'hex'], ['rgba(0,0,0,.5)', 'rgb'], ['24px', 'px'], ['2rem', 'rem']]) {
+		const html = `<!-- wp:group {"style":{"spacing":{"padding":"${value}"}}} --><div></div><!-- /wp:group -->`;
+		assert.ok(raw(html).length > 0, `${label} on a delimiter line must be caught`);
+	}
+});
+
+test('a file-header comment is not scanned', () => {
+	// This is what the line-prefix exclusion was protecting, and why it could not
+	// simply be deleted: templates and parts open with an HTML comment.
+	const html = '<!--\nTitle: Home\nPalette: #ff0000 was the old brand colour\n-->\n<!-- wp:pattern {"slug":"acme/section-hero"} /-->';
+	assert.deepEqual(raw(html), []);
+});
+
+test('a PHP docblock is not scanned', () => {
+	assert.deepEqual(raw('<?php\n/**\n * Spacing was 2rem before tokens.\n */\n'), []);
+});
+
+test('reported line numbers survive comment blanking', () => {
+	const html = '<!--\nTitle: Home\n-->\n<!-- wp:group {"style":{"color":{"background":"#abcdef"}}} /-->';
+	assert.match(raw(html)[0], /:4:/, 'blanking must preserve line numbers, not shift them');
 });

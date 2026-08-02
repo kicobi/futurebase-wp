@@ -26,72 +26,19 @@ warn() { printf "  \033[33m!\033[0m %s\n" "$1"; }
 section() { printf "\n\033[1m%s\033[0m\n" "$1"; }
 
 # ---------------------------------------------------------------------------
-# 1. Tokens first. No raw hex/rgb/px/rem in pattern or template markup.
+# 1. Tokens first — now parsed, not grepped. See bin/verify-contract.mjs.
 # ---------------------------------------------------------------------------
-section "1. Tokens first (no raw hex/rgb/px/rem in patterns/templates/parts)"
-
-# Scan only the content lines — skip PHP docblocks and HTML-comment header lines.
-hex_hits=$(
-	{ grep -rEn '#[0-9a-fA-F]{3,8}\b' patterns templates parts 2>/dev/null || true; } \
-		| grep -v -E '^[^:]+:[0-9]+:[[:space:]]*(\*|//|<!--|\*/|/\*\*|\*\*)' \
-		| grep -v -E '@package|@since|@return|@param' \
-		|| true
-)
-if [ -n "$hex_hits" ]; then
-	fail "raw hex color found in markup:"
-	printf "%s\n" "$hex_hits" | sed 's/^/    /'
-else
-	pass "no raw hex colors in patterns/templates/parts"
-fi
-
-rgb_hits=$(
-	{ grep -rEn '\brgba?\([^)]*\)' patterns templates parts 2>/dev/null || true; } \
-		| grep -v -E '^[^:]+:[0-9]+:[[:space:]]*(\*|//|<!--)' \
-		|| true
-)
-if [ -n "$rgb_hits" ]; then
-	fail "raw rgb()/rgba() found in markup:"
-	printf "%s\n" "$rgb_hits" | sed 's/^/    /'
-else
-	pass "no raw rgb()/rgba() in patterns/templates/parts"
-fi
-
-px_hits=$(
-	{ grep -rEn '\b[0-9]+px\b' patterns templates parts 2>/dev/null || true; } \
-		| grep -v -E '^[^:]+:[0-9]+:[[:space:]]*(\*|//|<!--|/\*\*)' \
-		| grep -v -E 'Viewport Width' \
-		| grep -v -E '"width":"[0-9]+px"' \
-		| grep -v -E 'width="[0-9]+"' \
-		|| true
-)
-# `px` in spacer/height attributes is tolerated for legacy core blocks;
-# if you want to tighten further, remove the grep -v filters above.
-if [ -n "$px_hits" ]; then
-	# Treat as a warning surface — still report, but don't fail if every hit
-	# is a known-ok pattern (outline/spacer heights, etc).
-	offending=$(printf "%s\n" "$px_hits" | grep -vE ':[[:space:]]*<div style="height:\s*[0-9]+px"' || true)
-	if [ -n "$offending" ]; then
-		fail "raw px values in markup (outside known-ok spacers):"
-		printf "%s\n" "$offending" | sed 's/^/    /'
-	else
-		pass "px values only appear in spacer heights (tolerated)"
-	fi
-else
-	pass "no raw px values in patterns/templates/parts"
-fi
-
-rem_hits=$(
-	{ grep -rEn '\b[0-9]+([.][0-9]+)?rem\b' patterns templates parts 2>/dev/null || true; } \
-		| grep -v -E '^[^:]+:[0-9]+:[[:space:]]*(\*|//|<!--|/\*\*)' \
-		|| true
-)
-if [ -n "$rem_hits" ]; then
-	fail "raw rem values in markup:"
-	printf "%s\n" "$rem_hits" | sed 's/^/    /'
-else
-	pass "no raw rem values in patterns/templates/parts"
-fi
-
+# This was four greps that excluded any line beginning `<!--`, to skip the file
+# header comments at the top of templates/front-page.html and parts/footer.html.
+# But that is also exactly how Gutenberg serializes a block delimiter, so
+# `<!-- wp:paragraph {"style":{"color":{"text":"#ff0000"}}} --><p>…</p>` was
+# discarded whole — attributes and inline HTML together — whenever a block was
+# serialized on one line, which is the normal form for a simple block. A
+# line-prefix test cannot tell a header comment from a block.
+#
+# checkRawValues() blanks genuine commentary and scans everything else, so the
+# delimiters are read rather than skipped, and bin/verify-contract.test.mjs
+# feeds it each raw form on a delimiter line.
 # ---------------------------------------------------------------------------
 # 3. Patterns compose; templates wire.
 #    front-page.html must not contain content blocks other than header/main/pattern/footer.
@@ -106,7 +53,7 @@ section "3, 4, 5, 7, 9. Parsed contract checks"
 # feeds each check markup that must fail it.
 if command -v node > /dev/null; then
 	if contract_output=$(node bin/verify-contract.mjs 2>&1); then
-		pass "contract items 3, 4, 5, 7, 9 (parsed)"
+		pass "contract items 1, 3, 4, 5, 7, 9 (parsed)"
 	else
 		fail "contract violations:"
 		printf "%s\n" "$contract_output" | sed 's/^/    /'
