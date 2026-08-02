@@ -162,15 +162,19 @@ call_user_func(
 		/*
 		 * The namespace is the theme's TEXT DOMAIN, not its directory.
 		 *
-		 * Those were the same string until the two were allowed to differ:
-		 * Futurebase WP lives in futurebase-wp/ but registers
-		 * futurebase/section-*. get_stylesheet() returns the directory, so the
-		 * loop below matched nothing, every composed page was built from zero
+		 * Those were the same string until the two were allowed to differ: the
+		 * foundation's directory carries a product suffix its text domain does
+		 * not. get_stylesheet() therefore looked for `<directory>/section-*`
+		 * while the patterns register as `<text-domain>/section-*`, the loop
+		 * below matched nothing, every composed page was built from zero
 		 * sections, and About and Services rendered empty — while the scorecard
 		 * measured them and still reported OK.
 		 *
 		 * bin/rename-theme.sh rewrites the text domain and the pattern slugs
 		 * from one value, so a client cannot drift the two apart.
+		 *
+		 * This file is copied verbatim into client projects, so it must carry
+		 * no literal slug — bin/test-rename.sh asserts that.
 		 *
 		 * It used to be found by probing for `<namespace>/section-hero` and
 		 * erroring if that pattern was absent. That reads "is the theme
