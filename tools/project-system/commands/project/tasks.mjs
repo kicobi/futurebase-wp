@@ -13,6 +13,7 @@ import { EXIT, die, ok, info, emitJson } from '../../lib/output.mjs';
 import { findProjectRoot, projectPaths } from '../../lib/baseline.mjs';
 import { recordSummary } from '../../lib/record.mjs';
 import { buildTaskTree, renderMarkdown, renderJson, renderGithub } from '../../lib/tasks.mjs';
+import { requirePath } from '../../lib/paths.mjs';
 
 const FORMATS = ['markdown', 'json', 'github'];
 
@@ -38,7 +39,7 @@ export function projectTasks(_positional, flags) {
 	const out = format === 'github' ? renderGithub(tasks) : renderMarkdown(tasks, summary.project?.name || root.split('/').pop());
 
 	if (flags.write) {
-		const file = join(paths.projectDir, format === 'github' ? 'tasks.github.sh' : 'tasks.md');
+		const file = paths.at(format === 'github' ? 'tasks.github.sh' : 'tasks.md');
 		writeFileSync(file, out, 'utf8');
 		ok(`tasks written: ${file}`);
 		const pending = tasks.filter((t) => t.measurement_status === 'pending').length;

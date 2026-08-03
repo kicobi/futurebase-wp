@@ -14,6 +14,7 @@ import { readYaml } from '../../lib/yaml.mjs';
 import { loadMetrics } from '../../lib/metrics.mjs';
 import { validateSurveyResults } from '../../lib/validate.mjs';
 import { loadResults, scaleDeltas, surveyIssues } from '../../lib/survey.mjs';
+import { requirePath } from '../../lib/paths.mjs';
 
 const answered = (doc) => (doc?.items || []).some((i) => i.value != null && i.value !== '');
 const fmt = (v) => (v == null ? '—' : v);
@@ -129,7 +130,7 @@ export function metricsFollowUp(_positional, flags) {
 	}
 
 	mkdirSync(paths.reportsDir, { recursive: true });
-	const out = join(paths.reportsDir, 'follow-up.md');
+	const out = requirePath(paths.reportsDir, 'follow-up.md');
 	writeFileSync(out, md.join('\n'), 'utf8');
 
 	if (json) emitJson({ status: 'ok', periods: Object.keys(surveys), deltas: deltaSets, report: out, comparison: comparison || null, invalid });

@@ -2,7 +2,7 @@
 //
 // futurebase lead inspect [<slug>] [--workspace-root <path>] [--json]
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { EXIT, die, ok, warn, info, emitJson, c } from '../../lib/output.mjs';
 import { leadDir, leadsRoot } from '../../lib/paths.mjs';
@@ -33,9 +33,13 @@ function dossierState(dir, rel, marker) {
 function listLeads(root, json) {
 	let entries = [];
 	try {
+		// lstat, not stat: a symlinked entry is not a workspace this tool manages,
+		// and leadDir() refuses one. Listing it anyway advertised a lead that
+		// inspect, archive and promote would then all refuse to open.
 		entries = readdirSync(root).filter((f) => {
 			try {
-				return statSync(join(root, f)).isDirectory() && existsSync(join(root, f, 'project.yml'));
+				const st = lstatSync(join(root, f));
+				return st.isDirectory() && !st.isSymbolicLink() && existsSync(join(root, f, 'project.yml'));
 			} catch {
 				return false;
 			}

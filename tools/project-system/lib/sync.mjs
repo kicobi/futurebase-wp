@@ -18,7 +18,7 @@
 import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { containedPath } from './paths.mjs';
+import { managedRoot, symlinkFreePath } from './paths.mjs';
 import { run } from './proc.mjs';
 
 export const CLASS = {
@@ -502,7 +502,17 @@ export function applyEntry(entry, { projectRoot, starter }) {
 	// contained-looking string while the filesystem resolves it elsewhere, and
 	// writeFileSync follows it out of the root. Resolve through the real path
 	// and refuse rather than write blind.
-	const abs = containedPath(projectRoot, entry.rel);
+	//
+	// The previous resolver realpath'd the deepest EXISTING ancestor, which meant
+	// a dangling final symlink — `.github/workflows/ci.yml -> ../../../../ci.yml`,
+	// pointing at nothing yet — looked like a path that simply did not exist. Its
+	// parent was inside the project, so the write was allowed, and writeFileSync
+	// then created the file the link pointed at. lstat sees the link whether or
+	// not it resolves; realpath cannot.
+	//
+	// Refusal is per entry rather than fatal: the caller reports it in `failed`,
+	// so one odd path does not abandon the rest of the sync.
+	const abs = symlinkFreePath(managedRoot(projectRoot), entry.rel);
 	if (abs === null) return false;
 	mkdirSync(dirname(abs), { recursive: true });
 

@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { EXIT, die, ok, info, emitJson } from '../../lib/output.mjs';
 import { findProjectRoot, projectPaths } from '../../lib/baseline.mjs';
 import { loadMetrics, splitTiming } from '../../lib/metrics.mjs';
+import { requirePath } from '../../lib/paths.mjs';
 
 export function metricsClientMessage(_positional, flags) {
 	const json = !!flags.json;
@@ -35,7 +36,7 @@ Do these feel like the right measures of success?
 `;
 
 	if (flags.write) {
-		const out = join(projectDir, 'metrics', 'client-message.md');
+		const out = requirePath(projectDir, join('metrics', 'client-message.md'));
 		writeFileSync(out, message, 'utf8');
 		if (json) emitJson({ status: 'written', path: out });
 		ok(`client message written: ${out}`);

@@ -5,6 +5,7 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { readYaml, writeYaml, readJson } from './yaml.mjs';
+import { managedRoot, requirePath } from './paths.mjs';
 import { validateBaselineRun } from './validate.mjs';
 
 // Nearest ancestor of `start` that contains a .project/ directory (or the
@@ -20,15 +21,55 @@ export function findProjectRoot(start = process.cwd(), override) {
 	}
 }
 
+// Every `.project/**` write in this tool resolves through here, so this is where
+// containment belongs. The old version was six plain joins, and findProjectRoot
+// above locates `.project` with existsSync, which FOLLOWS a symlink — so a
+// checkout carrying `.project -> /somewhere/else` (an accidental restore, a
+// client's tarball) sent baseline configs, run summaries, reports, metrics,
+// surveys, case studies and the project record itself outside the repo, with
+// every command reporting success.
+//
+// Fixing it at the twenty-odd call sites was the wrong shape: they all derive
+// their paths from this one function, and the two commands that had been fixed
+// by hand had each already missed a write. Refusing here covers the family.
+//
+// The symlinked `.project` is still FOUND rather than skipped — walking past it
+// to an ancestor's real `.project` would silently operate on a different
+// project, which is worse than stopping.
+//
+// Lazily, and this matters. Resolving all five eagerly meant a link on ANY of
+// them refused EVERY command, including read-only ones that never touch it —
+// and `.project/baseline -> /Volumes/big/baseline` is a reasonable thing for an
+// operator to do with a directory full of screenshots and Lighthouse JSON. A
+// guard that takes the whole tool offline over a path the command never opens
+// is a guard people route around.
+//
+// `at()` is the resolver for everything BELOW these directories. Proving that
+// `.project/reports` is not a symlink says nothing about the file written
+// inside it, and each caller that joined its own leaf onto a checked directory
+// was a way out of the tree: guard the path you are about to write, not its
+// parent.
 export function projectPaths(root) {
-	const projectDir = join(root, '.project');
+	const base = managedRoot(root);
+	const at = (...parts) => requirePath(base, join('.project', ...parts));
 	return {
-		root,
-		projectDir,
-		configPath: join(projectDir, 'baseline.config.yml'),
-		baselineDir: join(projectDir, 'baseline'),
-		finalDir: join(projectDir, 'final'),
-		reportsDir: join(projectDir, 'reports'),
+		root: base,
+		at,
+		get projectDir() {
+			return at();
+		},
+		get configPath() {
+			return at('baseline.config.yml');
+		},
+		get baselineDir() {
+			return at('baseline');
+		},
+		get finalDir() {
+			return at('final');
+		},
+		get reportsDir() {
+			return at('reports');
+		},
 	};
 }
 

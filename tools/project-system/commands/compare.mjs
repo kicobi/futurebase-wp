@@ -12,6 +12,7 @@ import { findProjectRoot, projectPaths, latestRunId, isRunId, readRunSummary, ev
 import { readYaml } from '../lib/yaml.mjs';
 import { loadMetrics } from '../lib/metrics.mjs';
 import { buildComparison, renderComparison } from '../lib/compare.mjs';
+import { requirePath } from '../lib/paths.mjs';
 
 export function compare(_positional, flags) {
 	const json = !!flags.json;
@@ -91,10 +92,10 @@ export function compare(_positional, flags) {
 
 	mkdirSync(paths.reportsDir, { recursive: true });
 	const stamp = finalId;
-	const htmlPath = join(paths.reportsDir, `comparison-${stamp}.html`);
+	const htmlPath = requirePath(paths.reportsDir, `comparison-${stamp}.html`);
 	writeFileSync(htmlPath, html, 'utf8');
-	writeFileSync(join(paths.reportsDir, `comparison-${stamp}.md`), internalMd, 'utf8');
-	writeFileSync(join(paths.reportsDir, `comparison-${stamp}-client.md`), clientMd, 'utf8');
+	writeFileSync(requirePath(paths.reportsDir, `comparison-${stamp}.md`), internalMd, 'utf8');
+	writeFileSync(requirePath(paths.reportsDir, `comparison-${stamp}-client.md`), clientMd, 'utf8');
 
 	const improved = comparison.rows.filter((r) => r.change === 'better').length;
 	const regressed = comparison.rows.filter((r) => r.change === 'worse').length;
