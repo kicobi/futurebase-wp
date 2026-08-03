@@ -10,7 +10,12 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseBlocks, collectPatternSlugs, checkRawValues, checkTemplateWiring, checkPageComposition, checkFluidTypography, checkCustomTemplates, checkThemePaths } from './verify-contract.mjs';
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { parseBlocks, collect, collectPatternSlugs, checkRawValues, checkTemplateWiring, checkPageComposition, checkFluidTypography, checkCustomTemplates, checkThemePaths } from './verify-contract.mjs';
 
 // A slug this theme is not. These fixtures test the SHAPE the contract
 // requires, not this particular theme, and using the real slug made them look
@@ -157,6 +162,30 @@ test('composing a non-section pattern is rejected', () => {
 test('composing another theme’s pattern is rejected', () => {
 	const php = '<!-- wp:pattern {"slug":"twentytwentyfive/hero"} /-->';
 	assert.ok(checkPageComposition(php, SLUG).some((p) => p.includes('not a acme-theme/ pattern')));
+});
+
+// The header docblock is PHP too, so "no PHP" cannot be the rule — which is
+// exactly why the residue check swallowed the rest of it. `<[^>]*>` removes
+// `<?php echo 'Buy now'; ?>` the same way it removes a tag, so hardcoded copy
+// behind an echo left an empty residue and passed.
+test('the pattern header is PHP and still passes', () => {
+	const php = "<?php\n/**\n * Title: Home\n * Slug: acme-theme/home\n */\n?>\n<!-- wp:pattern {\"slug\":\"acme-theme/section-hero\"} /-->";
+	assert.deepEqual(checkPageComposition(php, SLUG), []);
+});
+
+test('executable PHP in a page-level pattern is rejected', () => {
+	const header = "<?php\n/**\n * Title: Home\n */\n?>\n";
+	const php = `${header}<!-- wp:pattern {"slug":"acme-theme/section-hero"} /-->\n<?php echo esc_html__( 'Buy now', 'acme-theme' ); ?>`;
+	const problems = checkPageComposition(php, SLUG);
+	assert.ok(
+		problems.some((p) => p.includes('executable PHP')),
+		'content behind an echo is content the residue check cannot see',
+	);
+	assert.match(problems.find((p) => p.includes('executable PHP')), /:7:/, 'the reported line is where the PHP opens');
+});
+
+test('the short echo tag is executable too', () => {
+	assert.ok(checkPageComposition('<?= $heading ?>', SLUG).some((p) => p.includes('executable PHP')));
 });
 
 // --- item 7 ------------------------------------------------------------------
@@ -309,6 +338,21 @@ test('a PHP docblock is not scanned', () => {
 	assert.deepEqual(raw('<?php\n/**\n * Spacing was 2rem before tokens.\n */\n'), []);
 });
 
+test('a tolerated value does not exempt the rest of its line', () => {
+	// The exemption tested the whole LINE and returned. A block delimiter
+	// serializes as one line, so a single core-written width or spacer height
+	// hid every raw value sitting beside it in the same attributes.
+	const image = '<!-- wp:image {"width":"600px","style":{"color":{"text":"#ff0000"}}} /-->';
+	assert.ok(raw(image).some((p) => p.includes('hex color')), 'a hex beside a tolerated width must still be caught');
+	const spacer = '<div style="height: 50px" class="wp-block-spacer" data-accent="#abcdef"></div>';
+	assert.ok(raw(spacer).some((p) => p.includes('hex color')), 'a hex beside a tolerated spacer height must still be caught');
+});
+
+test('what core serializes itself is still tolerated', () => {
+	assert.deepEqual(raw('<!-- wp:image {"width":"600px"} /-->'), []);
+	assert.deepEqual(raw('<div style="height: 50px" aria-hidden="true" class="wp-block-spacer"></div>'), []);
+});
+
 test('reported line numbers survive comment blanking', () => {
 	const html = '<!--\nTitle: Home\n-->\n<!-- wp:group {"style":{"color":{"background":"#abcdef"}}} /-->';
 	assert.match(raw(html)[0], /:4:/, 'blanking must preserve line numbers, not shift them');
@@ -364,4 +408,97 @@ test('rem and px presets are still measured, not rejected as unsupported', () =>
 	assert.deepEqual(checkFluidTypography(ok), []);
 	const px = { settings: { typography: { fluid: true, fontSizes: [{ slug: 'big', size: '32px' }] } } };
 	assert.ok(checkFluidTypography(px).some((p) => p.includes('declares no fluid')), 'px above body scale still needs a range');
+});
+
+// --- what the gate actually opens ---------------------------------------------
+//
+// Every rule above is worthless on a file nobody reads. The collector took one
+// level of each directory and its try/catch swallowed subdirectories as
+// "not markup" — but WordPress registers these recursively
+// (WP_Theme::scandir($dirpath, 'php', -1) for patterns,
+// _get_block_templates_paths()'s RecursiveIteratorIterator for templates and
+// parts), so patterns/sections/hero.php was a live registered pattern the gate
+// had never opened.
+
+test('nested patterns, templates and parts are collected', () => {
+	const root = mkdtempSync(join(tmpdir(), 'contract-collect-'));
+	try {
+		mkdirSync(join(root, 'patterns', 'sections'), { recursive: true });
+		writeFileSync(join(root, 'patterns', 'top.php'), '<!-- wp:paragraph /-->');
+		writeFileSync(join(root, 'patterns', 'sections', 'nested.php'), '<p style="color:#ff0000">x</p>');
+
+		const files = collect(['patterns'], root);
+		assert.deepEqual(
+			files.map((f) => f.file).sort(),
+			['patterns/sections/nested.php', 'patterns/top.php'],
+		);
+		assert.ok(
+			checkRawValues(files).some((p) => p.startsWith('patterns/sections/nested.php:')),
+			'a raw value in a nested pattern must be reported against its real path',
+		);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+// --- which pattern the rules apply to ------------------------------------------
+//
+// Item 4 is a rule about the page-level pattern, and the page-level pattern is
+// whichever one the template wires. Keying the checks to the literal filename
+// patterns/home.php made the rule opt-in: rename the pattern, point the template
+// at the new slug, and the composition checks silently stopped applying to the
+// page actually being served.
+
+function fixtureTheme(root, { pageSlug = 'acme-theme/landing', pageFile = 'patterns/landing.php', pageBody = '' } = {}) {
+	mkdirSync(join(root, 'patterns'), { recursive: true });
+	mkdirSync(join(root, 'templates'), { recursive: true });
+	writeFileSync(join(root, 'style.css'), '/*\nTheme Name: Acme\nText Domain: acme-theme\n*/\n');
+	writeFileSync(join(root, 'theme.json'), JSON.stringify({ version: 3, settings: { typography: { fluid: true, fontSizes: [] } } }));
+	writeFileSync(
+		join(root, 'templates', 'front-page.html'),
+		`<!-- wp:template-part {"slug":"header"} /-->\n<!-- wp:group {"tagName":"main"} -->\n<main><!-- wp:pattern {"slug":"${pageSlug}"} /--></main>\n<!-- /wp:group -->\n<!-- wp:template-part {"slug":"footer"} /-->\n`,
+	);
+	writeFileSync(join(root, 'patterns', '_section-hero.php'), '<?php\n/**\n * Title: Hero\n * Slug: acme-theme/section-hero\n */\n?>\n<!-- wp:paragraph --><p>Hero</p><!-- /wp:paragraph -->\n');
+	mkdirSync(dirname(join(root, pageFile)), { recursive: true });
+	writeFileSync(
+		join(root, pageFile),
+		`<?php\n/**\n * Title: Page\n * Slug: ${pageSlug}\n */\n?>\n<!-- wp:pattern {"slug":"acme-theme/section-hero"} /-->\n${pageBody}`,
+	);
+}
+
+const runChecker = (cwd) => spawnSync(process.execPath, [fileURLToPath(new URL('./verify-contract.mjs', import.meta.url))], { cwd, encoding: 'utf8' });
+
+test('the page-level pattern is found through the template, not by filename', () => {
+	const root = mkdtempSync(join(tmpdir(), 'contract-wiring-'));
+	try {
+		fixtureTheme(root);
+		const clean = runChecker(root);
+		assert.equal(clean.status, 0, clean.stdout + clean.stderr);
+
+		fixtureTheme(root, { pageBody: "<?php echo '<h1>Buy now, half price</h1>'; ?>\n" });
+		const dirty = runChecker(root);
+		assert.equal(dirty.status, 1, 'a wired pattern named anything must still be checked');
+		assert.match(dirty.stderr, /patterns\/landing\.php.*executable PHP/);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test('a symlinked pattern file is scanned, a symlinked directory is not followed', () => {
+	// WordPress reads straight through a symlinked pattern file, so skipping one
+	// would have narrowed the gate at the same moment recursion widened it.
+	const root = mkdtempSync(join(tmpdir(), 'contract-links-'));
+	try {
+		fixtureTheme(root);
+		const outside = join(root, 'outside.php');
+		writeFileSync(outside, '<p style="color:#ff0000">x</p>\n');
+		symlinkSync(outside, join(root, 'patterns', '_linked.php'));
+		symlinkSync(join(root, 'patterns'), join(root, 'patterns', 'loop'));
+
+		const r = runChecker(root);
+		assert.equal(r.status, 1);
+		assert.match(r.stderr, /patterns\/_linked\.php:1: raw hex color/);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
 });
