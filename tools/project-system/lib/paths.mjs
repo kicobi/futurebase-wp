@@ -26,8 +26,10 @@ export function leadsRoot(override) {
 	return join(homedir(), 'Sites', 'leads');
 }
 
+// A lead workspace is a managed tree: the leads root is where the operator
+// pointed, the slug directory under it is ours. See requirePath().
 export function leadDir(slug, override) {
-	return join(leadsRoot(override), slug);
+	return requirePath(leadsRoot(override), slug);
 }
 
 // Template + schema + preset locations inside the tool.
@@ -45,8 +47,9 @@ export const presetsDir = join(TOOL_ROOT, 'presets');
 // a promotion manifest or a secret scan, and a WRITE through a symlinked
 // component lands outside the root entirely.
 //
-// So: walks use lstat and skip symlinks; writes resolve through
-// containedPath() first.
+// So: walks use lstat and skip symlinks; writes resolve through requirePath()
+// first — one resolver, because the alternative was each command deciding, and
+// each command that decided missed at least one of its own writes.
 
 // Is `child` the same as, or inside, `root`? Both must already be real paths.
 export function isInside(root, child) {
@@ -54,63 +57,19 @@ export function isInside(root, child) {
 	return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
 }
 
-// Deepest ancestor of `abs` that exists on disk, with its real path. Needed
-// because the target of a write usually does not exist yet, so realpath() on
-// the full path would fail and tell us nothing about the components that do.
-function deepestExisting(abs) {
-	let cur = abs;
-	for (;;) {
-		try {
-			return { virtual: cur, real: realpathSync(cur) };
-		} catch {
-			const parent = dirname(cur);
-			if (parent === cur) return null;
-			cur = parent;
-		}
-	}
-}
-
-// Absolute path for writing `rel` under `root`, or null when it would escape.
+// Lexically contained path with no symlink in any existing component, including
+// the root and final target. A link that currently points somewhere harmless is
+// still a configuration error in a tree this tool manages, so this does not
+// resolve one just because it happens to stay inside the root.
 //
-// `boundary` is the tree the write must stay inside, and it defaults to `root`
-// only because that is right when the caller was HANDED the root. It is wrong
-// whenever the caller CONSTRUCTED the root from something else: promotion
-// builds `<dest>/.project`, and resolving that through realpath made a
-// symlinked `.project` its own boundary — every write then landed outside the
-// destination while satisfying a containment check, which is a worse failure
-// than no check at all. Pass the tree you actually mean.
-//
-// Checks the string first (cheap, catches `..`), then resolves the existing
-// prefix through symlinks and re-attaches the not-yet-created tail.
-export function containedPath(root, rel, { boundary = root } = {}) {
-	let boundaryReal;
-	let rootReal;
-	try {
-		boundaryReal = realpathSync(resolve(boundary));
-		rootReal = realpathSync(resolve(root));
-	} catch {
-		return null;
-	}
-	// The root itself must be inside the boundary. This is the check that a
-	// symlinked managed directory defeats when the boundary is taken from it.
-	if (!isInside(boundaryReal, rootReal)) return null;
-
-	const abs = resolve(rootReal, rel);
-	if (!isInside(boundaryReal, abs)) return null;
-
-	const anc = deepestExisting(abs);
-	if (!anc || !isInside(boundaryReal, anc.real)) return null;
-
-	const tail = relative(anc.virtual, abs);
-	const resolved = tail ? join(anc.real, tail) : anc.real;
-	return isInside(boundaryReal, resolved) ? resolved : null;
-}
-
-// Lexically contained path with no symlink in any existing component,
-// including the root and final target. Unlike containedPath(), this does not
-// resolve a symlink that happens to stay inside the boundary: promotion writes
-// are building an immutable project record, and an accidental link is a
-// configuration error even when it currently points somewhere harmless.
+// It replaced a resolver that realpath'd the deepest EXISTING ancestor and
+// re-attached the tail. Two ways that was wrong, both found in the field. A
+// symlinked ROOT resolved to itself and so vouched for itself — every write
+// "passed" containment and landed outside the tree the caller meant, which is
+// worse than no check at all. And a DANGLING final symlink has no realpath, so
+// it read as a path that simply did not exist yet: the parent was inside the
+// root, the write was allowed, and the create followed the link out. lstat sees
+// a link whether or not it resolves; realpath cannot.
 //
 // Non-existent trailing components are allowed so callers can safely create a
 // directory tree after this check. Existing non-directory intermediate
@@ -134,4 +93,48 @@ export function symlinkFreePath(root, rel = '.') {
 		}
 	}
 	return target;
+}
+
+// --- the one resolver every managed write goes through -----------------------
+//
+// A write has two halves and they are not equally trusted. The ROOT is where the
+// operator pointed — a cwd, a --project-root, a leads root — and it may perfectly
+// well be a symlink; `~/Sites/client -> /Volumes/work/client` is an ordinary way
+// to keep a checkout. Everything BELOW it is the tool's own construction, and a
+// symlink there is either a mistake or someone else's idea.
+//
+// So resolve the root once through realpath, then require the path under it to
+// be symlink-free. That distinction is the whole reason this could not be left
+// to each command to get right: eleven of them built destinations with a plain
+// join(), the two that did check covered `.project` and missed `.gitignore`,
+// covered promotion and missed archiving — and every one of those gaps wrote
+// outside the tree while reporting success.
+export class ManagedPathError extends Error {
+	constructor(path) {
+		// Not "refusing to write": requirePath() also resolves paths a read-only
+		// command opens, and telling someone running `project status` that a write
+		// was refused sends them looking for a write that never happened.
+		super(`refusing a path that resolves through a symlink: ${path}`);
+		this.name = 'ManagedPathError';
+		this.path = path;
+	}
+}
+
+export function managedRoot(root) {
+	const abs = resolve(root);
+	try {
+		return realpathSync(abs);
+	} catch {
+		return abs; // not created yet — there is nothing to resolve through
+	}
+}
+
+// Throws rather than returning null, so a command that forgets to check cannot
+// carry on with an unchecked path. cli/dispatch.mjs turns it back into the
+// CLI's own vocabulary — an ACCESS_FAILURE, not a stack trace.
+export function requirePath(root, rel = '.') {
+	const base = managedRoot(root);
+	const resolved = symlinkFreePath(base, rel);
+	if (!resolved) throw new ManagedPathError(join(base, rel));
+	return resolved;
 }

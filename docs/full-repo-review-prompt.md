@@ -16,6 +16,10 @@ PRs #65–#71; the ones worth knowing about as prior art are in those
 descriptions. Do not paste that history into the next run — a reviewer told
 what was previously found tends to find it again.
 
+Prompt last refreshed 2026-08-03 against `79e22b3` (CI/release surface added as
+a fourth codebase, contract-enforcement split stated precisely, `.codex/skills`
+and run-artefact directories put out of scope).
+
 When the findings from a run have been fixed, review the fixes with
 [fix-verification-prompt.md](fix-verification-prompt.md) before considering the
 round closed. The first time that was done it found nine defects in the fixes,
@@ -48,10 +52,19 @@ models and different standards:
 
 3. **The scripts in `bin/`** — rename, verify, package, scaffold, demo content,
    migration tests, scorecard, and smoke tests. Several are destructive (`wp site empty`),
-   several rewrite the entire repo in place (`rename-theme.sh`).
+   several rewrite the entire repo in place (`rename-theme.sh`). Two are Node,
+   not shell: `verify-contract.mjs` (with its own test file) and
+   `verify-version-surfaces.mjs`.
 
-Read `CLAUDE.md` first — it states the project's own rules — then
-`docs/`, then `tools/project-system/README.md` and `ARCHITECTURE.md`.
+4. **The CI and release surface** — `.github/workflows/ci.yml` and
+   `scorecard.yml`, `.github/dependabot.yml`, the packaging path
+   (`package-theme.sh` → `test-package.sh` → `.dist/`), and the lint/analysis
+   configs at the root (`phpcs.xml.dist`, `phpstan.neon.dist`,
+   `.pa11yci.json`, `lighthouserc-*.json`, `eslint.config.js`,
+   `.stylelintrc.json`). A check that runs but asserts nothing is a finding.
+
+Read `CLAUDE.md` first — it states the project's own rules — then `AGENTS.md`,
+then `docs/`, then `tools/project-system/README.md` and `ARCHITECTURE.md`.
 
 ## The theme's own contract
 
@@ -60,7 +73,14 @@ Read `CLAUDE.md` first — it states the project's own rules — then
 templates wire, section patterns not page patterns, role-not-format media
 references, one source of truth per block style, fluid typography, text domain
 = theme slug, no ghost `customTemplates` entries). `bin/verify-theme.sh`
-enforces six of the nine; items 2 and 6 rely on review discipline.
+enforces six of the nine — items 3, 4, 5, 7 and 9 by parsing block markup and
+`theme.json` in `bin/verify-contract.mjs`, item 1 in the shell script, item 8
+via `composer phpcs`. Items 2 and 6 rely on review discipline.
+
+`bin/verify-contract.test.mjs` is supposed to feed every check markup that must
+fail it, so a check cannot quietly stop checking. Audit that claim: a check
+whose negative test does not actually exercise it is the failure mode this
+whole arrangement exists to prevent.
 
 **Audit items 2 and 6 by hand — nothing checks them.** Also check whether the
 six "enforced" items are genuinely enforced or merely spot-checked: a check
@@ -129,9 +149,11 @@ correctness. Find every one and report whether an actual assertion backs it.
 
 ## Out of scope — do not spend time here
 
-- `.claude/skills/` — vendored from WordPress/agent-skills, overwritten by an
-  installer, and explicitly not ours to edit.
-- `node_modules/`, `vendor/`, `build/` — dependencies and compiled output.
+- `.claude/skills/` and `.codex/skills/` — vendored from
+  WordPress/agent-skills, overwritten by an installer, and explicitly not ours
+  to edit.
+- `node_modules/`, `vendor/`, `build/`, `.dist/`, `.artifacts/`,
+  `.lighthouseci/` — dependencies, compiled output, and run artefacts.
 - `planning/` — gitignored scratch.
 - Dependency CVEs. Dependabot watches this repo and its advisories are triaged
   on their own cadence, so re-listing them costs your budget and tells us

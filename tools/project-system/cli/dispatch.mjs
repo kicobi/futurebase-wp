@@ -8,7 +8,7 @@ import { parseArgs } from 'node:util';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { EXIT, die } from '../lib/output.mjs';
-import { TOOL_ROOT } from '../lib/paths.mjs';
+import { ManagedPathError, TOOL_ROOT } from '../lib/paths.mjs';
 import { leadInit } from '../commands/lead/init.mjs';
 import { leadInspect } from '../commands/lead/inspect.mjs';
 import { leadPromote } from '../commands/lead/promote.mjs';
@@ -159,7 +159,23 @@ Flags:
 Phase 8 (Workledger / analytics integrations) is out of MVP scope.
 `;
 
+// A refused path is a refusal, not a crash. requirePath() throws so that a
+// command which forgets to check cannot carry on with an unchecked path, and
+// this is the one place that turns the throw back into the CLI's own vocabulary
+// — an ACCESS_FAILURE with a one-line message, in JSON when the caller asked for
+// JSON. Without it every containment refusal reached bin/futurebase.mjs and
+// printed a stack trace under exit 5, which reads as a bug in the tool rather
+// than the tool doing its job.
 export async function main(argv) {
+	try {
+		return await route(argv);
+	} catch (err) {
+		if (err instanceof ManagedPathError) die(err.message, EXIT.ACCESS_FAILURE, { json: argv.includes('--json') });
+		throw err;
+	}
+}
+
+async function route(argv) {
 	let parsed;
 	try {
 		parsed = parseArgs({ args: argv, options: OPTIONS, allowPositionals: true, strict: true });

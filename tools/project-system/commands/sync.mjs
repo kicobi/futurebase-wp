@@ -18,6 +18,7 @@ import { EXIT, die, ok, warn, info, fail, emitJson, c } from '../lib/output.mjs'
 import { findProjectRoot } from '../lib/baseline.mjs';
 import { readYaml, writeYaml } from '../lib/yaml.mjs';
 import { have, isGitRepo, run } from '../lib/proc.mjs';
+import { requirePath } from '../lib/paths.mjs';
 import {
 	CLASS,
 	applyEntry,
@@ -55,7 +56,7 @@ export async function sync(_positional, flags) {
 	const root = findProjectRoot(process.cwd(), flags['project-root']);
 	if (!root) die('not inside an active project (no .project/ found)', EXIT.ACCESS_FAILURE, { json });
 
-	const recordPath = join(root, '.project', 'project.yml');
+	const recordPath = requirePath(root, join('.project', 'project.yml'));
 	if (!existsSync(recordPath)) die(`no project record at ${recordPath}`, EXIT.ACCESS_FAILURE, { json });
 	let record = {};
 	try {
@@ -270,10 +271,27 @@ export async function sync(_positional, flags) {
 		}
 	}
 
+	// A refused path returns false and is reported; anything else — an
+	// unwritable directory, a full disk — used to escape this bare loop as an
+	// exception, abandoning the run with a stack trace and a partially applied
+	// set that nothing recorded. One bad entry is a failed entry, not a failed
+	// sync.
+	//
+	// `applied`, not `ok` — `ok` is the imported success reporter, and shadowing
+	// it inside the loop turns any later ok(…) added here into a TypeError.
+	// The warning is gated on !json for the reason stated above: machine mode
+	// emits exactly one document, and a stray line before it is worse than the
+	// crash it replaced because the exit code still looks soft.
 	const written = [];
 	const failed = [];
 	for (const entry of writable) {
-		if (applyEntry(entry, { projectRoot: root, starter })) written.push(entry.rel);
+		let applied = false;
+		try {
+			applied = applyEntry(entry, { projectRoot: root, starter });
+		} catch (err) {
+			if (!json) warn(`${entry.rel}: ${err.message}`);
+		}
+		if (applied) written.push(entry.rel);
 		else failed.push(entry.rel);
 	}
 

@@ -30,6 +30,7 @@ import { run as lighthouse } from '../modules/lighthouse.mjs';
 import { run as axe } from '../modules/axe.mjs';
 import { run as wordpress } from '../modules/wordpress.mjs';
 import { run as manual } from '../modules/manual.mjs';
+import { requirePath } from '../lib/paths.mjs';
 
 export const REGISTRY = { crawl, screenshots, lighthouse, axe, wordpress, manual };
 
@@ -101,7 +102,7 @@ export async function runCapture(kind, flags) {
 		} catch (err) {
 			const r = { module: name, status: 'failed', reason: String(err.message || err) };
 			results.push(r);
-			writeFileSync(join(runDir, `${name}.error.log`), (err.stack || String(err)) + '\n', 'utf8');
+			writeFileSync(requirePath(runDir, `${name}.error.log`), (err.stack || String(err)) + '\n', 'utf8');
 			if (!json) console.log(`  ${c.red('✗')} ${name.padEnd(12)} failed ${c.dim(`(${r.reason})`)}`);
 		}
 	}

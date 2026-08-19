@@ -12,7 +12,7 @@ import { basename, join, resolve } from 'node:path';
 import { EXIT, die, ok, info, emitJson } from '../../lib/output.mjs';
 import { isValidSlug, slugify } from '../../lib/slug.mjs';
 import { projectPaths } from '../../lib/baseline.mjs';
-import { templatesDir, symlinkFreePath } from '../../lib/paths.mjs';
+import { templatesDir, requirePath } from '../../lib/paths.mjs';
 import { writeYaml } from '../../lib/yaml.mjs';
 import { validateProject } from '../../lib/validate.mjs';
 
@@ -45,8 +45,12 @@ function inferSlug(root) {
 	return slugify(basename(root));
 }
 
-function ensureGitignore(root) {
-	const gi = join(root, '.gitignore');
+// `.gitignore` sits beside .project, not under it, so it was the one write in
+// this command that the local containment helper never covered — and a
+// checkout whose .gitignore is a symlink had this append to the link's target.
+// A guard that protects the directory it was written for and nothing else is
+// how the next write out of the tree gets added.
+function ensureGitignore(gi) {
 	let body = existsSync(gi) ? readFileSync(gi, 'utf8') : '';
 	const missing = GITIGNORE_LINES.filter((l) => !body.split(/\r?\n/).includes(l));
 	if (!missing.length) return;
@@ -59,25 +63,19 @@ export function projectInit(_positional, flags) {
 	const root = resolve(flags['project-root'] || process.cwd());
 	const paths = projectPaths(root);
 
-	// Every write in this command lands under .project, so containment is checked
-	// here once and each path resolved through it.
-	//
-	// projectPaths() builds that path with a plain join, which follows a symlink
-	// like any other traversal. A checkout containing `.project -> ../elsewhere`
-	// — an accidental restore, a hostile archive — therefore made init populate a
-	// directory outside the project it was pointed at, create six files there,
-	// and report success. promote.mjs has resolved destination writes through
-	// symlinkFreePath since the containment work; this command never did.
-	//
-	// Checked before the "already exists" test, because existsSync follows the
-	// link too: a symlinked .project must be refused whether or not --force is
-	// passed, not quietly accepted by one of the two paths.
-	const safePath = (rel) => {
-		const resolved = symlinkFreePath(root, rel);
-		if (!resolved) die(`refusing to write through a symlink: ${join(root, rel)}`, EXIT.ACCESS_FAILURE, { json });
-		return resolved;
-	};
-	safePath('.project');
+	// Containment is projectPaths()' job now — it refuses a symlinked .project
+	// before this command sees a path, which is what makes the check hold for
+	// `--force` too. existsSync follows the link, so the "already exists" test
+	// below would otherwise stop on a symlinked .project by accident rather than
+	// by rule, and not stop at all with --force.
+	const safePath = (rel) => requirePath(root, rel);
+
+	// Every destination this command will use, resolved BEFORE the first write.
+	// `.gitignore` is written last, and refusing it there left the .project
+	// record fully scaffolded on disk under an error that named only the
+	// .gitignore — a half-done command reporting a failure it had already
+	// worked past. Refuse everything up front or refuse nothing.
+	const gitignorePath = safePath('.gitignore');
 
 	if (existsSync(paths.projectDir) && !flags.force) die(`project record already exists: ${paths.projectDir} (use --force to add missing pieces)`, EXIT.ACCESS_FAILURE, { json });
 
@@ -117,7 +115,7 @@ export function projectInit(_positional, flags) {
 	};
 	copyIfAbsent(join(templatesDir, 'active', 'agent-context.md'), safePath(join('.project', 'agent-context.md')));
 	copyIfAbsent(join(templatesDir, 'active', 'PROJECT-RECORD.md'), safePath(join('.project', 'PROJECT-RECORD.md')));
-	ensureGitignore(root);
+	ensureGitignore(gitignorePath);
 
 	if (json) emitJson({ status: 'created', slug, name, type, path: paths.projectDir });
 	ok(`project record created: ${paths.projectDir}`);

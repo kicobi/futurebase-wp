@@ -92,12 +92,21 @@ export function residualText(html) {
 }
 
 export function collectPatternSlugs(files) {
-	const slugs = new Set();
-	for (const { contents } of files) {
-		const m = /^\s*\*\s*Slug:\s*(\S+)\s*$/im.exec(contents);
-		if (m) slugs.add(m[1]);
+	return new Set(patternsBySlug(files).keys());
+}
+
+// Slug → the file that declares it. Item 4 is a rule about the page-level
+// pattern, and the page-level pattern is whichever one the template wires — not
+// whichever one is called home.php. Keying the check to a filename made the rule
+// opt-in: rename the pattern, update the template's reference, and the
+// composition check silently stopped applying to the page being served.
+export function patternsBySlug(files) {
+	const bySlug = new Map();
+	for (const file of files) {
+		const m = /^\s*\*\s*Slug:\s*(\S+)\s*$/im.exec(file.contents);
+		if (m && !bySlug.has(m[1])) bySlug.set(m[1], file);
 	}
-	return slugs;
+	return bySlug;
 }
 
 // --- item 1: tokens first ----------------------------------------------------
@@ -123,7 +132,14 @@ export function scannableSource(source) {
 
 // Tolerated because core's own blocks serialize them and the theme cannot say it
 // otherwise: an image width attribute, and a spacer's height.
-const TOLERATED = [/"width":"\d+px"/, /<div style="height:\s*\d+px"/];
+//
+// Blanked OUT OF the line, not used to exempt the line. `TOLERATED.some(re =>
+// re.test(line))` returned early on the whole line, so one core-serialized value
+// hid every other value beside it — and a block delimiter serializes as a single
+// line, so `{"width":"600px","style":{"color":{"text":"#ff0000"}}}` carried a
+// raw hex straight through the check that exists to catch it. An exemption has
+// to be as wide as the thing it excuses and no wider.
+const TOLERATED = [/"width":"\d+px"/g, /<div style="height:\s*\d+px"/g];
 
 const RAW_VALUE_RULES = [
 	['hex color', /#[0-9a-fA-F]{3,8}\b/],
@@ -132,14 +148,19 @@ const RAW_VALUE_RULES = [
 	['rem value', /\b\d+(?:\.\d+)?rem\b/],
 ];
 
+// Spaces, not deletion: removing the text would join its neighbours into tokens
+// that were never written (`#ff` + `0000`), and the column a value sits at is
+// the only way to read a reported line back against the file.
+const withoutTolerated = (line) => TOLERATED.reduce((acc, re) => acc.replace(re, blankOut), line);
+
 export function checkRawValues(files) {
 	const problems = [];
 	for (const { file, contents } of files) {
 		const lines = scannableSource(contents).split('\n');
 		lines.forEach((line, index) => {
-			if (TOLERATED.some((re) => re.test(line))) return;
+			const scannable = withoutTolerated(line);
 			for (const [label, re] of RAW_VALUE_RULES) {
-				const hit = line.match(re);
+				const hit = scannable.match(re);
 				if (hit) problems.push(`${file}:${index + 1}: raw ${label} "${hit[0]}" — every value resolves to a theme.json preset`);
 			}
 		});
@@ -222,8 +243,38 @@ function missingPattern(slug, knownPatterns, file) {
 
 // --- item 4: page-level patterns compose section patterns --------------------
 
-export function checkPageComposition(php, themeSlug, { file = 'patterns/home.php', knownPatterns = null } = {}) {
+// residualText() cannot see what PHP emits. It strips `<?php echo 'Buy now'; ?>`
+// exactly the way it strips a tag — `<[^>]*>` cannot tell one angle-bracketed
+// span from another — so a page-level pattern carrying hardcoded copy behind an
+// echo left an empty residue and passed item 4 with content on the page.
+//
+// The answer is not a better content parser. A page-level pattern composes
+// section patterns, so nothing executable belongs in it at all and the header
+// docblock is the only PHP it needs. Section patterns are a different job —
+// they carry this theme's translatable strings — and this check is deliberately
+// not applied to them.
+const PHP_SPAN_RE = /<\?(?:php\b|=)?([\s\S]*?)(?:\?>|$)/g;
+
+const withoutPhpComments = (code) =>
+	code
+		.replace(/\/\*[\s\S]*?\*\//g, ' ')
+		.replace(/\/\/[^\n]*/g, ' ')
+		.replace(/#[^\n]*/g, ' ');
+
+export function checkExecutablePhp(source, { file = 'patterns/home.php' } = {}) {
 	const problems = [];
+	const text = String(source);
+	for (const m of text.matchAll(PHP_SPAN_RE)) {
+		const code = withoutPhpComments(m[1] ?? '').trim();
+		if (!code) continue; // a docblock and nothing else: the pattern header
+		const line = text.slice(0, m.index).split('\n').length;
+		problems.push(`${file}:${line}: executable PHP ("${code.slice(0, 40)}") — a page-level pattern composes section patterns, and what PHP echoes is invisible to the content check`);
+	}
+	return problems;
+}
+
+export function checkPageComposition(php, themeSlug, { file = 'patterns/home.php', knownPatterns = null } = {}) {
+	const problems = checkExecutablePhp(php, { file });
 	const { blocks, unbalanced } = parseBlocks(php);
 	for (const u of unbalanced) problems.push(`${file}: ${u}`);
 	if (!blocks.length) {
@@ -352,19 +403,47 @@ function themeSlugFrom(styleCss) {
 	return /^Text Domain:\s*(\S+)\s*$/im.exec(styleCss)?.[1] ?? null;
 }
 
-function collect(dirs, root) {
+// Recursively, because WordPress registers these recursively —
+// WP_Theme::scandir($dirpath, 'php', -1) for patterns and
+// _get_block_templates_paths()'s RecursiveIteratorIterator for templates and
+// parts. A one-level read with a try/catch that swallowed directories meant
+// patterns/sections/hero.php was a live, registered pattern that the gate had
+// never opened: not a check that passed for the wrong reason, a check that was
+// never asked the question.
+export function collect(dirs, root) {
 	const out = [];
+	const walk = (abs, rel) => {
+		let entries;
+		try {
+			entries = readdirSync(abs, { withFileTypes: true });
+		} catch {
+			return; // an unreadable directory is reported by the tools that own it
+		}
+		for (const entry of entries) {
+			const path = join(abs, entry.name);
+			const file = `${rel}/${entry.name}`;
+			if (entry.isDirectory()) {
+				walk(path, file);
+				continue;
+			}
+			// A SYMLINKED pattern file is a live, registered pattern — scandir()
+			// reads straight through it, and so did the one-level collector this
+			// replaced — so it has to be scanned or the fix that widened this gate
+			// would have narrowed it at the same time. Symlinked DIRECTORIES are
+			// not recursed into: a link cycle would not terminate, and readFileSync
+			// on one throws EISDIR into the catch below.
+			if (!entry.isFile() && !entry.isSymbolicLink()) continue;
+			try {
+				out.push({ file, contents: readFileSync(path, 'utf8') });
+			} catch {
+				/* unreadable is not markup — the one-level version tolerated this too */
+			}
+		}
+	};
 	for (const dir of dirs) {
 		const abs = join(root, dir);
 		if (!existsSync(abs)) continue;
-		for (const name of readdirSync(abs)) {
-			const path = join(abs, name);
-			try {
-				out.push({ file: `${dir}/${name}`, contents: readFileSync(path, 'utf8') });
-			} catch {
-				/* directories and unreadable entries are not markup */
-			}
-		}
+		walk(abs, dir);
 	}
 	return out;
 }
@@ -383,14 +462,35 @@ function main() {
 	const frontPage = join(root, 'templates', 'front-page.html');
 	// The pattern registry, so a reference to something that does not exist is
 	// caught here rather than by a section quietly missing from a rendered page.
-	const knownPatterns = collectPatternSlugs(collect(['patterns'], root));
+	const patternFiles = collect(['patterns'], root);
+	const bySlug = patternsBySlug(patternFiles);
+	const knownPatterns = new Set(bySlug.keys());
 
-	if (existsSync(frontPage)) problems.push(...checkTemplateWiring(readFileSync(frontPage, 'utf8'), { knownPatterns }));
-	else problems.push('templates/front-page.html is missing');
+	// Item 4 is checked against the pattern the template actually wires, found
+	// through the template's own reference. patterns/home.php is the convention
+	// and the fallback, not the rule: keying the check to that filename meant a
+	// page-level pattern under any other name — and the hardcoded content or
+	// executable PHP in it — was exempt by naming.
+	let pageLevel = [];
+	if (existsSync(frontPage)) {
+		const html = readFileSync(frontPage, 'utf8');
+		problems.push(...checkTemplateWiring(html, { knownPatterns }));
+		pageLevel = parseBlocks(html)
+			.blocks.filter((b) => b.name === 'core/pattern' && b.attrs.slug)
+			.map((b) => bySlug.get(b.attrs.slug))
+			.filter(Boolean);
+	} else {
+		problems.push('templates/front-page.html is missing');
+	}
 
-	const home = join(root, 'patterns', 'home.php');
-	if (existsSync(home)) problems.push(...checkPageComposition(readFileSync(home, 'utf8'), themeSlug, { knownPatterns }));
-	else problems.push('patterns/home.php is missing');
+	if (!pageLevel.length) {
+		const home = bySlug.get(`${themeSlug}/home`);
+		if (home) pageLevel = [home];
+		else problems.push(`no page-level pattern found — templates/front-page.html references none that exists, and no pattern declares ${themeSlug}/home`);
+	}
+	for (const pattern of pageLevel) {
+		problems.push(...checkPageComposition(pattern.contents, themeSlug, { file: pattern.file, knownPatterns }));
+	}
 
 	const themeJsonPath = join(root, 'theme.json');
 	if (existsSync(themeJsonPath)) {
