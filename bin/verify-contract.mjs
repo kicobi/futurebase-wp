@@ -257,7 +257,7 @@ const URL_ATTRIBUTES_BY_TAG = new Map(Object.entries({
 	video: ['poster', 'src'],
 }).map(([tag, names]) => [tag.toLowerCase(), new Set(names)]));
 const SVG_URL_ATTRIBUTES_BY_TAG = new Map(Object.entries({
-	a: ['href', 'xlink:href'],
+	a: ['href', 'ping', 'xlink:href'],
 	animate: ['href', 'xlink:href'],
 	animateMotion: ['href', 'xlink:href'],
 	animateTransform: ['href', 'xlink:href'],
@@ -274,6 +274,12 @@ const SVG_URL_ATTRIBUTES_BY_TAG = new Map(Object.entries({
 	textPath: ['href', 'xlink:href'],
 	use: ['href', 'xlink:href'],
 }).map(([tag, names]) => [tag.toLowerCase(), new Set(names)]));
+const HTML_FOREIGN_BREAKOUT_TAGS = new Set([
+	'b', 'big', 'blockquote', 'body', 'br', 'center', 'code', 'dd', 'div', 'dl', 'dt',
+	'em', 'embed', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'head', 'hr', 'i', 'img',
+	'li', 'listing', 'menu', 'meta', 'nobr', 'ol', 'p', 'pre', 'ruby', 's', 'small',
+	'span', 'strong', 'strike', 'sub', 'sup', 'table', 'tt', 'u', 'ul', 'var',
+]);
 const GLOBAL_URL_ATTRIBUTE_KEYS = new Set(['itemid', 'itemtype', 'xml:base', 'xmlns', 'xmlns:xlink']);
 const BLOCK_URL_ATTRIBUTE_KEYS = new Set([
 	'attributionsrc', 'href', 'imagesrcset', 'lowsrc', 'poster', 'src', 'srcset',
@@ -521,20 +527,77 @@ function neutralizePhpInJson(json) {
 	return characters.join('');
 }
 
-function phpEnd(source, start) {
-	let index = start + 2;
+function phpComplexInterpolationEnd(source, start) {
+	let index = start + 1;
+	let depth = 1;
 	let quote = null;
 	let blockComment = false;
 	let lineComment = false;
-	while (index < source.length) {
+	while (index < source.length && depth > 0) {
 		if (quote) {
-			if (source[index] === '\\') {
-				index += 2;
-				continue;
-			}
-			if (source[index++] === quote) quote = null;
+			if (source[index] === '\\') index += 2;
+			else if (source[index++] === quote) quote = null;
 			continue;
 		}
+		if (blockComment) {
+			if (source.startsWith('*/', index)) {
+				blockComment = false;
+				index += 2;
+			} else index++;
+			continue;
+		}
+		if (lineComment) {
+			if (source[index] === '\n' || source[index] === '\r') lineComment = false;
+			index++;
+			continue;
+		}
+		if (source.startsWith('/*', index)) {
+			blockComment = true;
+			index += 2;
+			continue;
+		}
+		if (source.startsWith('//', index) || (source[index] === '#' && source[index + 1] !== '[')) {
+			lineComment = true;
+			index += source[index] === '#' ? 1 : 2;
+			continue;
+		}
+		if (source[index] === '"' || source[index] === "'") {
+			quote = source[index++];
+			continue;
+		}
+		if (source[index] === '{') depth++;
+		else if (source[index] === '}') depth--;
+		index++;
+	}
+	return index;
+}
+
+function phpQuotedEnd(source, start) {
+	const quote = source[start];
+	let index = start + 1;
+	while (index < source.length) {
+		if (source[index] === '\\') {
+			index += 2;
+			continue;
+		}
+		if (quote !== "'" && source[index] === '{' && source[index + 1] === '$') {
+			index = phpComplexInterpolationEnd(source, index);
+			continue;
+		}
+		if (quote !== "'" && source[index] === '$' && source[index + 1] === '{') {
+			index = phpComplexInterpolationEnd(source, index + 1);
+			continue;
+		}
+		if (source[index++] === quote) return index;
+	}
+	return source.length;
+}
+
+function phpEnd(source, start) {
+	let index = start + 2;
+	let blockComment = false;
+	let lineComment = false;
+	while (index < source.length) {
 		if (blockComment) {
 			if (source.startsWith('*/', index)) {
 				blockComment = false;
@@ -570,7 +633,7 @@ function phpEnd(source, start) {
 			continue;
 		}
 		if (source[index] === '"' || source[index] === "'" || source[index] === '`') {
-			quote = source[index++];
+			index = phpQuotedEnd(source, index);
 			continue;
 		}
 		index++;
@@ -679,7 +742,12 @@ function markupContexts(source) {
 			attributes.push({ name: attributeName, value, valueStart, valueEnd });
 		}
 		if (end === null) break;
-		const parentNamespace = elementStack.at(-1)?.childNamespace ?? 'html';
+		let parentNamespace = elementStack.at(-1)?.childNamespace ?? 'html';
+		const fontBreakout = name === 'font' && attributes.some((attribute) => ['color', 'face', 'size'].includes(attribute.name));
+		if (parentNamespace === 'svg' && (HTML_FOREIGN_BREAKOUT_TAGS.has(name) || fontBreakout)) {
+			while (elementStack.at(-1)?.childNamespace === 'svg') elementStack.pop();
+			parentNamespace = elementStack.at(-1)?.childNamespace ?? 'html';
+		}
 		const namespace = name === 'svg' ? 'svg' : parentNamespace;
 		const childNamespace = namespace === 'svg' && ['foreignobject', 'desc', 'title'].includes(name) ? 'html' : namespace;
 		const tag = { name, namespace, start, end, attributes };
@@ -710,6 +778,16 @@ function phpStringBody(source, start, end, absoluteStart, quote) {
 		for (let offset = 0; offset < value.length; offset++) map.push(absoluteStart + sourceIndex);
 	};
 	while (index < end) {
+		if (quote !== "'" && source[index] === '{' && source[index + 1] === '$') {
+			append('x', index);
+			index = Math.min(end, phpComplexInterpolationEnd(source, index));
+			continue;
+		}
+		if (quote !== "'" && source[index] === '$' && source[index + 1] === '{') {
+			append('x', index);
+			index = Math.min(end, phpComplexInterpolationEnd(source, index + 1));
+			continue;
+		}
 		if (source[index] !== '\\' || index + 1 >= end) {
 			append(source[index], index++);
 			continue;
@@ -736,7 +814,7 @@ function phpStringBody(source, start, end, absoluteStart, quote) {
 		}
 		const octal = /^[0-7]{1,3}/.exec(source.slice(index + 1));
 		if (octal) {
-			append(String.fromCodePoint(Number.parseInt(octal[0], 8)), escapeStart);
+			append(String.fromCodePoint(Number.parseInt(octal[0], 8) & 0xff), escapeStart);
 			index += 1 + octal[0].length;
 			continue;
 		}
@@ -760,12 +838,9 @@ function phpStringBody(source, start, end, absoluteStart, quote) {
 
 function phpStringToken(source, start, absoluteStart) {
 	const quote = source[start];
-	let end = start + 1;
-	while (end < source.length && source[end] !== quote) {
-		end += source[end] === '\\' && end + 1 < source.length ? 2 : 1;
-	}
-	const body = phpStringBody(source, start + 1, end, absoluteStart, quote);
-	if (source[end] === quote) end++;
+	const end = phpQuotedEnd(source, start);
+	const bodyEnd = source[end - 1] === quote ? end - 1 : end;
+	const body = phpStringBody(source, start + 1, bodyEnd, absoluteStart, quote);
 	return { type: 'string', ...body, start, end };
 }
 
@@ -901,6 +976,7 @@ function phpTokens(source, absoluteStart) {
 }
 
 function renderedEchoExpression(tokens, absoluteFallback) {
+	tokens = collapseNestedPrintf(tokens, absoluteFallback);
 	let text = '';
 	const map = [];
 	let previous = null;
@@ -933,9 +1009,23 @@ function renderedEchoExpression(tokens, absoluteFallback) {
 }
 
 function renderedStaticPhpExpression(tokens, absoluteFallback) {
-	const allowed = tokens.every((token) => token.type === 'string' || token.type === 'static'
-		|| (token.type === 'punctuation' && ['.', '(', ')'].includes(token.value)));
-	return allowed ? renderedEchoExpression(tokens, absoluteFallback) : null;
+	const normalized = [];
+	for (let index = 0; index < tokens.length; index++) {
+		const token = tokens[index];
+		if (token.type === 'string' || token.type === 'static'
+			|| (token.type === 'punctuation' && ['.', '(', ')'].includes(token.value))) {
+			normalized.push(token);
+			continue;
+		}
+		if (token.type === 'punctuation' && ['+', '-'].includes(token.value)
+			&& tokens[index + 1]?.type === 'static'
+			&& (!normalized.length || (normalized.at(-1).type === 'punctuation' && ['.', '('].includes(normalized.at(-1).value)))) {
+			normalized.push({ type: 'static', text: token.value, map: [absoluteFallback], start: token.start, end: token.end });
+			continue;
+		}
+		return null;
+	}
+	return renderedEchoExpression(normalized, absoluteFallback);
 }
 
 function splitPhpArguments(tokens) {
@@ -976,18 +1066,35 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 			index += 2;
 			continue;
 		}
-		const directive = /^%(?:(\d+)\$)?(?:[-+ 0]|'.)*(?:\d+)?(?:\.\d+)?[bcdeEfFgGouxXhHs]/.exec(format.text.slice(index));
+		const directive = /^%(?:(\d+)\$)?((?:[-+ 0]|'.)*)(?:(\d+)|(\*))?(?:\.(?:(\d+)|(\*)))?([bcdeEfFgGouxXhHs])/.exec(format.text.slice(index));
 		if (!directive) {
 			append('%', [format.map[index]], absoluteFallback);
 			index++;
 			continue;
 		}
+		let width = directive[3] ? Number.parseInt(directive[3], 10) : null;
+		if (directive[4]) {
+			const widthValue = values[sequential++];
+			width = widthValue && /^[+-]?\d+$/.test(widthValue.text) ? Number.parseInt(widthValue.text, 10) : null;
+		}
+		let precision = directive[5] ? Number.parseInt(directive[5], 10) : null;
+		if (directive[6]) {
+			const precisionValue = values[sequential++];
+			precision = precisionValue && /^[+-]?\d+$/.test(precisionValue.text) ? Number.parseInt(precisionValue.text, 10) : null;
+		}
 		const valueIndex = directive[1] ? Number.parseInt(directive[1], 10) - 1 : sequential++;
 		const value = values[valueIndex];
-		const specifier = directive[0].at(-1).toLowerCase();
+		const specifier = directive[7].toLowerCase();
 		if (value) {
 			let renderedValue = value.text;
 			if (specifier === 'c' && /^\d+$/.test(renderedValue)) renderedValue = String.fromCodePoint(Number.parseInt(renderedValue, 10));
+			if (specifier === 's' && precision !== null && precision >= 0) renderedValue = renderedValue.slice(0, precision);
+			if (width !== null && Math.abs(width) > renderedValue.length) {
+				const flags = directive[2];
+				const customPad = /'(.)/.exec(flags)?.[1];
+				const padding = (customPad || (flags.includes('0') ? '0' : ' ')).repeat(Math.abs(width) - renderedValue.length);
+				renderedValue = width < 0 || flags.includes('-') ? renderedValue + padding : padding + renderedValue;
+			}
 			append(renderedValue, value.map, format.map[index] ?? absoluteFallback);
 		} else {
 			append(specifier === 's' ? 'x' : '0', [], format.map[index] ?? absoluteFallback);
@@ -995,6 +1102,47 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 		index += directive[0].length;
 	}
 	return { text, map };
+}
+
+function isPhpMemberAccess(tokens, index) {
+	const previous = tokens[index - 1];
+	const beforePrevious = tokens[index - 2];
+	return previous?.type === 'punctuation'
+		&& ((previous.value === '>' && beforePrevious?.type === 'punctuation' && beforePrevious.value === '-')
+			|| (previous.value === ':' && beforePrevious?.type === 'punctuation' && beforePrevious.value === ':'));
+}
+
+function collapseNestedPrintf(tokens, absoluteFallback) {
+	const collapsed = [];
+	for (let index = 0; index < tokens.length;) {
+		const callable = tokens[index].type === 'identifier' && tokens[index].value === 'printf'
+			&& tokens[index + 1]?.type === 'punctuation' && tokens[index + 1].value === '('
+			&& !isPhpMemberAccess(tokens, index);
+		if (!callable) {
+			collapsed.push(tokens[index++]);
+			continue;
+		}
+		let cursor = index + 2;
+		let depth = 1;
+		const expression = [];
+		while (cursor < tokens.length && depth > 0) {
+			const token = tokens[cursor++];
+			if (token.type === 'punctuation' && token.value === '(') depth++;
+			if (token.type === 'punctuation' && token.value === ')') depth--;
+			if (depth > 0) expression.push(token);
+		}
+		const rendered = renderedPrintfExpression(expression, absoluteFallback);
+		const returnValue = String(rendered.text.length);
+		collapsed.push({
+			type: 'static',
+			text: rendered.text + returnValue,
+			map: [...rendered.map, ...Array.from({ length: returnValue.length }, () => absoluteFallback)],
+			start: tokens[index].start,
+			end: tokens[cursor - 1]?.end ?? tokens[index].end,
+		});
+		index = cursor;
+	}
+	return collapsed;
 }
 
 function renderedPhpOutput(php, absoluteStart) {
@@ -1021,11 +1169,7 @@ function renderedPhpOutput(php, absoluteStart) {
 				index += 2;
 				continue;
 			}
-			const previous = tokens[index - 1];
-			const beforePrevious = tokens[index - 2];
-			const memberAccess = previous?.type === 'punctuation'
-				&& ((previous.value === '>' && beforePrevious?.type === 'punctuation' && beforePrevious.value === '-')
-					|| (previous.value === ':' && beforePrevious?.type === 'punctuation' && beforePrevious.value === ':'));
+			const memberAccess = isPhpMemberAccess(tokens, index);
 			const callableOutput = tokens[index].type === 'identifier' && tokens[index].value === 'printf'
 				&& tokens[index + 1]?.type === 'punctuation' && tokens[index + 1].value === '(';
 			const statementOutput = tokens[index].type === 'identifier' && ['echo', 'print'].includes(tokens[index].value);

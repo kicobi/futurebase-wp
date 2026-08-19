@@ -507,6 +507,14 @@ test('standard HTML and SVG URL attributes remain outside CSS-value checks', () 
 	assert.ok(raw('<!-- wp:image {"style":{"width":"600px"}} /-->').some((problem) => problem.includes('600px')), 'the core image width exception applies only at the block root');
 });
 
+test('SVG anchor ping remains a URL-token-list attribute', () => {
+	assert.deepEqual(raw('<svg><a href="/" ping="/telemetry/2rem#fff">link</a></svg>'), []);
+});
+
+test('HTML foreign-content breakout tags pop the SVG namespace', () => {
+	assert.ok(raw('<svg><div><script href="2rem#fff"></script></div></svg>').some((problem) => problem.includes('2rem')));
+});
+
 test('PHP output is reconstructed inside its surrounding CSS and URL context', () => {
 	assert.deepEqual(
 		raw('<style>\n.x { background-image: url(<?php echo get_theme_file_uri( \'assets/2rem.svg\' ); ?>); }\n</style>'),
@@ -538,6 +546,10 @@ CSS; ?>.x{padding:var(--token)}</style>`), [], 'a PHP close tag inside a non-out
 	assert.deepEqual(raw('<style><?php #[Echo(".x{padding:2rem}")] function contract_probe_attribute_name() {} ?>.x{padding:var(--space)}</style>'), [], 'an attribute class named Echo is not an output statement');
 	assert.ok(raw('<style><?php #[Marker] function contract_probe_output() {} echo ".x{padding:2rem}"; ?></style>').some((problem) => problem.includes('2rem')), 'a PHP attribute does not hide a later echo statement');
 	assert.ok(raw('<style><?php contract_probe_label: print ".x{padding:2rem}"; ?></style>').some((problem) => problem.includes('2rem')), 'a statement label is not static member access');
+	assert.ok(
+		raw('<style><?php $a = ["?>" => "x"]; $x = "{$a["?>"]}"; echo ".x{padding:2rem}"; ?></style>').some((problem) => problem.includes('2rem')),
+		'quoted array keys inside complex interpolation do not terminate the PHP span',
+	);
 });
 
 test('PHP numeric bases, print, heredoc, and nowdoc cannot bypass rendered CSS checks', () => {
@@ -555,6 +567,7 @@ CSS; ?></style>`,
 		`<style><?php echo <<<'CSS'
 .x{padding:2rem}
 CSS; ?></style>`,
+		String.raw`<style><?php echo ".x{color:\443fff}"; ?></style>`,
 	]) {
 		assert.ok(raw(markup).length > 0, `every statically rendered PHP form is scanned: ${markup}`);
 	}
@@ -565,6 +578,9 @@ test('printf output is rendered without pulling dynamic URL arguments out of con
 		'<style><?php printf(".x{padding:2rem}"); ?></style>',
 		'<style><?php printf(".x{padding:%s}", "2rem"); ?></style>',
 		'<style><?php printf(".x{padding:%1$s}", "2rem"); ?></style>',
+		'<style><?php printf(".x{padding:%*srem}", 1, "2"); ?></style>',
+		'<style><?php printf(".x{padding:%.1srem}", "2rem"); ?></style>',
+		'<style><?php printf(".x{padding:%srem}", -2); ?></style>',
 	]) {
 		assert.ok(raw(markup).length > 0, `static printf output is scanned: ${markup}`);
 	}
@@ -572,6 +588,13 @@ test('printf output is rendered without pulling dynamic URL arguments out of con
 		raw('<style><?php printf(".x{background:url(%s)}", get_theme_file_uri("assets/2rem.svg")); ?></style>'),
 		[],
 		'a dynamic URL argument remains inside the format string URL context',
+	);
+});
+
+test('printf nested in echo keeps dynamic URL arguments inside url()', () => {
+	assert.deepEqual(
+		raw('<style><?php echo printf(".x{background:url(%s)}", get_theme_file_uri("assets/2rem.svg")); ?></style>'),
+		[],
 	);
 });
 
