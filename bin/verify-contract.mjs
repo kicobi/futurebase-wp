@@ -222,17 +222,48 @@ const COLOR_FUNCTIONS = new Set([
 	'rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch',
 	'color', 'color-mix', 'device-cmyk', 'light-dark', 'contrast-color',
 ]);
-// URL-valued HTML/SVG attributes are content, not CSS. Keep the classification
-// on exact attribute names: checking arbitrary quoted strings made asset names
-// such as `/2rem-#fff.svg` look like design tokens, while substring checks would
-// exempt unrelated attributes such as `data-href`.
-const URL_ATTRIBUTE_KEYS = new Set([
-	'action', 'archive', 'attributionsrc', 'background', 'cite', 'classid',
-	'code', 'codebase', 'data', 'dynsrc',
-	'formaction', 'href', 'imagesrcset', 'itemid', 'itemtype', 'longdesc',
-	'lowsrc', 'manifest', 'object', 'ping', 'poster', 'profile', 'src', 'srcset',
-	'usemap', 'url', 'xlink:href', 'xml:base', 'xmlns', 'xmlns:xlink',
-]);
+// URL-valued HTML/SVG attributes are content, not CSS. Most of these names are
+// element-specific: `data` is a URL on <object>, for example, but ordinary text
+// on <div>. Pairing the name with its element prevents a misspelled or custom
+// attribute from creating a broad raw-value exemption.
+const URL_ATTRIBUTES_BY_TAG = new Map(Object.entries({
+	a: ['href', 'ping'],
+	animate: ['href', 'xlink:href'],
+	animateMotion: ['href', 'xlink:href'],
+	animateTransform: ['href', 'xlink:href'],
+	applet: ['archive', 'code', 'codebase', 'object'],
+	area: ['href', 'ping'],
+	audio: ['src'],
+	base: ['href'],
+	blockquote: ['cite'],
+	body: ['background'],
+	button: ['formaction'],
+	del: ['cite'],
+	embed: ['src'],
+	feimage: ['href', 'xlink:href'],
+	form: ['action'],
+	frame: ['longdesc', 'src'],
+	head: ['profile'],
+	html: ['manifest'],
+	iframe: ['longdesc', 'src'],
+	image: ['href', 'xlink:href'],
+	img: ['attributionsrc', 'dynsrc', 'longdesc', 'lowsrc', 'src', 'srcset', 'usemap'],
+	input: ['formaction', 'src', 'usemap'],
+	ins: ['cite'],
+	link: ['attributionsrc', 'href', 'imagesrcset'],
+	object: ['archive', 'classid', 'codebase', 'data', 'usemap'],
+	q: ['cite'],
+	script: ['attributionsrc', 'href', 'src', 'xlink:href'],
+	set: ['href', 'xlink:href'],
+	source: ['src', 'srcset'],
+	table: ['background'],
+	td: ['background'],
+	th: ['background'],
+	track: ['src'],
+	use: ['href', 'xlink:href'],
+	video: ['poster', 'src'],
+}).map(([tag, names]) => [tag.toLowerCase(), new Set(names)]));
+const GLOBAL_URL_ATTRIBUTE_KEYS = new Set(['itemid', 'itemtype', 'xml:base', 'xmlns', 'xmlns:xlink']);
 const BLOCK_URL_ATTRIBUTE_KEYS = new Set([
 	'attributionsrc', 'href', 'imagesrcset', 'lowsrc', 'poster', 'src', 'srcset',
 	'url', 'usemap', 'xlink:href',
@@ -240,9 +271,10 @@ const BLOCK_URL_ATTRIBUTE_KEYS = new Set([
 
 const isMarkupUrlAttribute = (name, tagName, attributes) => {
 	const lower = name.toLowerCase();
-	if (URL_ATTRIBUTE_KEYS.has(lower) || lower.startsWith('xmlns:')) return true;
+	if (GLOBAL_URL_ATTRIBUTE_KEYS.has(lower) || lower.startsWith('xmlns:')) return true;
+	if (URL_ATTRIBUTES_BY_TAG.get(tagName)?.has(lower)) return true;
 	if (tagName !== 'meta' || lower !== 'content') return false;
-	return attributes.get('http-equiv')?.value?.trim().toLowerCase() === 'refresh';
+	return attributes.get('http-equiv')?.decodedValue?.trim().toLowerCase() === 'refresh';
 };
 
 function cssTokenView(value) {
@@ -406,10 +438,10 @@ function decodedJsonStrings(json, absoluteStart) {
 		}
 		return { value, map };
 	};
-	const parseValue = (inheritedKey = null) => {
+	const parseValue = (inheritedKey = null, relation = 'root', objectDepth = 0) => {
 		skipSpace();
 		if (json[index] === '"') {
-			strings.push({ ...readString(), key: inheritedKey });
+			strings.push({ ...readString(), key: inheritedKey, directProperty: relation === 'property', objectDepth });
 			return;
 		}
 		if (json[index] === '{') {
@@ -419,7 +451,7 @@ function decodedJsonStrings(json, absoluteStart) {
 				const key = readString().value;
 				skipSpace();
 				index++; // colon; full JSON validation has already established it
-				parseValue(key);
+				parseValue(key, 'property', objectDepth + 1);
 				skipSpace();
 				if (json[index] === ',') {
 					index++;
@@ -433,7 +465,7 @@ function decodedJsonStrings(json, absoluteStart) {
 			index++;
 			skipSpace();
 			while (index < json.length && json[index] !== ']') {
-				parseValue(inheritedKey);
+				parseValue(inheritedKey, 'array', objectDepth);
 				skipSpace();
 				if (json[index] === ',') {
 					index++;
@@ -469,8 +501,7 @@ function neutralizePhpInJson(json) {
 			index++;
 			continue;
 		}
-		const close = json.indexOf('?>', index + 2);
-		const end = close === -1 ? json.length : close + 2;
+		const end = phpEnd(json, index);
 		characters.fill(' ', index, end);
 		if (!quoted) characters[index] = '0';
 		index = end;
@@ -478,10 +509,55 @@ function neutralizePhpInJson(json) {
 	return characters.join('');
 }
 
-const phpEnd = (source, start) => {
-	const close = source.indexOf('?>', start + 2);
-	return close === -1 ? source.length : close + 2;
-};
+function phpEnd(source, start) {
+	let index = start + 2;
+	let quote = null;
+	let blockComment = false;
+	let lineComment = false;
+	while (index < source.length) {
+		if (quote) {
+			if (source[index] === '\\') {
+				index += 2;
+				continue;
+			}
+			if (source[index++] === quote) quote = null;
+			continue;
+		}
+		if (blockComment) {
+			if (source.startsWith('*/', index)) {
+				blockComment = false;
+				index += 2;
+			} else {
+				index++;
+			}
+			continue;
+		}
+		// In PHP, a close tag ends a // or # comment too.
+		if (lineComment) {
+			if (source.startsWith('?>', index)) return index + 2;
+			if (source[index] === '\n' || source[index] === '\r') lineComment = false;
+			index++;
+			continue;
+		}
+		if (source.startsWith('?>', index)) return index + 2;
+		if (source.startsWith('/*', index)) {
+			blockComment = true;
+			index += 2;
+			continue;
+		}
+		if (source.startsWith('//', index) || source[index] === '#') {
+			lineComment = true;
+			index += source[index] === '#' ? 1 : 2;
+			continue;
+		}
+		if (source[index] === '"' || source[index] === "'" || source[index] === '`') {
+			quote = source[index++];
+			continue;
+		}
+		index++;
+	}
+	return source.length;
+}
 
 // Parse only the part of HTML needed by this contract: start tags, their exact
 // attributes, and raw-text style bodies. Unlike a `<[^>]*>` expression this
@@ -586,115 +662,210 @@ function markupContexts(source) {
 	return { tags, styles };
 }
 
-function phpStringLiterals(source, absoluteStart) {
-	const literals = [];
-	for (let index = 0; index < source.length;) {
-		if (source[index] !== '"' && source[index] !== "'") {
-			index++;
-			continue;
-		}
-		const literalStart = index;
-		const quote = source[index++];
-		let text = '';
-		const map = [];
-		while (index < source.length && source[index] !== quote) {
-			if (source[index] === '\\' && index + 1 < source.length) {
-				const escaped = source[index + 1];
-				const decoded = quote === '"' && escaped === 'n' ? '\n'
-					: quote === '"' && escaped === 'r' ? '\r'
-						: quote === '"' && escaped === 't' ? '\t' : escaped;
-				text += decoded;
-				map.push(absoluteStart + index);
-				index += 2;
-				continue;
-			}
-			text += source[index];
-			map.push(absoluteStart + index++);
-		}
-		if (source[index] === quote) index++;
-		literals.push({ text, map, start: literalStart, end: index });
-	}
-	return literals;
-}
-
-function phpEchoRanges(php) {
-	const opener = /^<\?(?:php\b)?/i.exec(php)?.[0] ?? '<?';
-	const bodyStart = opener.length;
-	const bodyEnd = php.endsWith('?>') ? php.length - 2 : php.length;
-	if (php.startsWith('<?=')) return [[3, bodyEnd]];
-	const ranges = [];
-	let index = bodyStart;
-	while (index < bodyEnd) {
-		if (php[index] === '"' || php[index] === "'") {
-			const quote = php[index++];
-			while (index < bodyEnd && php[index] !== quote) index += php[index] === '\\' ? 2 : 1;
-			index++;
-			continue;
-		}
-		if (php.startsWith('//', index) || php[index] === '#') {
-			const newline = php.indexOf('\n', index + 1);
-			index = newline === -1 ? bodyEnd : newline + 1;
-			continue;
-		}
-		if (php.startsWith('/*', index)) {
-			const close = php.indexOf('*/', index + 2);
-			index = close === -1 ? bodyEnd : close + 2;
-			continue;
-		}
-		const echo = /^echo\b/i.exec(php.slice(index));
-		if (!echo || /[A-Za-z0-9_]/.test(php[index - 1] || '')) {
-			index++;
-			continue;
-		}
-		const start = index + echo[0].length;
-		let end = start;
-		let quote = null;
-		while (end < bodyEnd) {
-			if (quote) {
-				if (php[end] === '\\') end += 2;
-				else if (php[end++] === quote) quote = null;
-				continue;
-			}
-			if (php[end] === '"' || php[end] === "'") quote = php[end++];
-			else if (php[end] === ';') break;
-			else end++;
-		}
-		ranges.push([start, end]);
-		index = end + 1;
-	}
-	return ranges;
-}
-
-function renderedPhpOutput(php, absoluteStart) {
+function phpStringToken(source, start, absoluteStart) {
+	const quote = source[start];
+	let index = start + 1;
 	let text = '';
 	const map = [];
-	for (const [start, end] of phpEchoRanges(php)) {
-		const expression = php.slice(start, end);
-		const literals = phpStringLiterals(expression, absoluteStart + start);
-		let previousEnd = 0;
-		for (const literal of literals) {
-			const between = expression.slice(previousEnd, literal.start);
-			if (text && !/^\s*\.\s*$/.test(between)) {
-				text += ' ';
-				map.push(literal.map[0] ?? absoluteStart + start);
-			}
-			text += literal.text;
-			map.push(...literal.map);
-			previousEnd = literal.end;
+	const append = (value, sourceIndex) => {
+		text += value;
+		for (let offset = 0; offset < value.length; offset++) map.push(absoluteStart + sourceIndex);
+	};
+	while (index < source.length && source[index] !== quote) {
+		if (source[index] !== '\\' || index + 1 >= source.length) {
+			append(source[index], index++);
+			continue;
 		}
+		const escapeStart = index;
+		const escaped = source[index + 1];
+		if (quote === "'") {
+			if (escaped === "'" || escaped === '\\') {
+				append(escaped, escapeStart);
+				index += 2;
+			} else {
+				append('\\', index++);
+			}
+			continue;
+		}
+		const simple = new Map([
+			['n', '\n'], ['r', '\r'], ['t', '\t'], ['v', '\v'], ['e', '\x1b'],
+			['f', '\f'], ['\\', '\\'], ['$', '$'], ['"', '"'],
+		]);
+		if (simple.has(escaped)) {
+			append(simple.get(escaped), escapeStart);
+			index += 2;
+			continue;
+		}
+		const octal = /^[0-7]{1,3}/.exec(source.slice(index + 1));
+		if (octal) {
+			append(String.fromCodePoint(Number.parseInt(octal[0], 8)), escapeStart);
+			index += 1 + octal[0].length;
+			continue;
+		}
+		const hex = /^x([0-9a-f]{1,2})/i.exec(source.slice(index + 1));
+		if (hex) {
+			append(String.fromCodePoint(Number.parseInt(hex[1], 16)), escapeStart);
+			index += 2 + hex[1].length;
+			continue;
+		}
+		const unicode = /^u\{([0-9a-f]+)\}/i.exec(source.slice(index + 1));
+		if (unicode && Number.parseInt(unicode[1], 16) <= 0x10ffff) {
+			append(String.fromCodePoint(Number.parseInt(unicode[1], 16)), escapeStart);
+			index += 3 + unicode[1].length;
+			continue;
+		}
+		// PHP preserves an unknown escape in a double-quoted string.
+		append('\\', index++);
+	}
+	if (source[index] === quote) index++;
+	return { type: 'string', text, map, start, end: index };
+}
+
+function phpTokens(source, absoluteStart) {
+	const tokens = [];
+	for (let index = 0; index < source.length;) {
+		if (/\s/.test(source[index])) {
+			index++;
+			continue;
+		}
+		if (source.startsWith('//', index) || source[index] === '#') {
+			const relativeNewline = source.slice(index + 1).search(/\r|\n/);
+			index = relativeNewline === -1 ? source.length : index + 2 + relativeNewline;
+			continue;
+		}
+		if (source.startsWith('/*', index)) {
+			const close = source.indexOf('*/', index + 2);
+			index = close === -1 ? source.length : close + 2;
+			continue;
+		}
+		if (source[index] === '"' || source[index] === "'") {
+			const token = phpStringToken(source, index, absoluteStart);
+			tokens.push(token);
+			index = token.end;
+			continue;
+		}
+		if (source[index] === '`') {
+			const quote = source[index++];
+			while (index < source.length && source[index] !== quote) index += source[index] === '\\' ? 2 : 1;
+			if (source[index] === quote) index++;
+			tokens.push({ type: 'dynamic', value: 'backtick' });
+			continue;
+		}
+		const variable = /^\$[A-Za-z_\x80-\uffff][A-Za-z0-9_\x80-\uffff]*/.exec(source.slice(index));
+		if (variable) {
+			tokens.push({ type: 'dynamic', value: variable[0], start: index, end: index + variable[0].length });
+			index += variable[0].length;
+			continue;
+		}
+		const identifier = /^[A-Za-z_\x80-\uffff][A-Za-z0-9_\x80-\uffff]*/.exec(source.slice(index));
+		if (identifier) {
+			tokens.push({ type: 'identifier', value: identifier[0].toLowerCase(), start: index, end: index + identifier[0].length });
+			index += identifier[0].length;
+			continue;
+		}
+		tokens.push({ type: 'punctuation', value: source[index], start: index, end: index + 1 });
+		index++;
+	}
+	return tokens;
+}
+
+function renderedEchoExpression(tokens, absoluteFallback) {
+	let text = '';
+	const map = [];
+	let previous = null;
+	let depth = 0;
+	const depths = new Map();
+	for (const token of tokens) {
+		depths.set(token, depth);
+		if (token.type === 'punctuation' && ['(', '[', '{'].includes(token.value)) depth++;
+		if (token.type === 'punctuation' && [')', ']', '}'].includes(token.value)) depth = Math.max(0, depth - 1);
+	}
+	for (let index = 0; index < tokens.length; index++) {
+		const literal = tokens[index];
+		if (literal.type !== 'string') continue;
+		if (previous) {
+			const between = tokens.slice(previous.index + 1, index);
+			const previousDepth = depths.get(previous.literal);
+			const joins = between.every((token) => token.type === 'punctuation'
+				&& (token.value === '.' || (token.value === ',' && depths.get(token) === 0)))
+				&& depths.get(literal) === previousDepth;
+			if (!joins) {
+				text += ' ';
+				map.push(literal.map[0] ?? absoluteFallback);
+			}
+		}
+		text += literal.text;
+		map.push(...literal.map);
+		previous = { literal, index };
 	}
 	return { text, map };
 }
 
-function decodeAttributeQuotes(view) {
+function renderedPhpOutput(php, absoluteStart) {
+	const opener = /^<\?(?:php\b)?/i.exec(php)?.[0] ?? '<?';
+	const bodyStart = php.startsWith('<?=') ? 3 : opener.length;
+	const bodyEnd = php.endsWith('?>') ? php.length - 2 : php.length;
+	const body = php.slice(bodyStart, bodyEnd);
+	const tokens = phpTokens(body, absoluteStart + bodyStart);
+	const expressions = [];
+	if (php.startsWith('<?=')) {
+		expressions.push(tokens);
+	} else {
+		for (let index = 0; index < tokens.length;) {
+			if (tokens[index].type !== 'identifier' || tokens[index].value !== 'echo') {
+				index++;
+				continue;
+			}
+			const expression = [];
+			let depth = 0;
+			index++;
+			while (index < tokens.length) {
+				const token = tokens[index];
+				if (token.type === 'punctuation' && ['(', '[', '{'].includes(token.value)) depth++;
+				if (token.type === 'punctuation' && [')', ']', '}'].includes(token.value)) depth = Math.max(0, depth - 1);
+				if (token.type === 'punctuation' && token.value === ';' && depth === 0) break;
+				expression.push(token);
+				index++;
+			}
+			expressions.push(expression);
+			if (tokens[index]?.value === ';') index++;
+		}
+	}
+	let text = '';
+	const map = [];
+	for (const expression of expressions) {
+		const rendered = renderedEchoExpression(expression, absoluteStart + bodyStart);
+		text += rendered.text;
+		map.push(...rendered.map);
+	}
+	return { text, map };
+}
+
+const HTML_NAMED_CHARACTERS = new Map([
+	['amp', '&'], ['apos', "'"], ['bsol', '\\'], ['colon', ':'], ['comma', ','],
+	['equals', '='], ['gt', '>'], ['lpar', '('], ['lt', '<'], ['minus', '-'],
+	['nbsp', '\u00a0'], ['NewLine', '\n'], ['num', '#'], ['percnt', '%'],
+	['period', '.'], ['plus', '+'], ['quot', '"'], ['rpar', ')'], ['semi', ';'],
+	['sol', '/'], ['Tab', '\t'],
+]);
+
+function decodeHtmlReferences(view) {
 	let text = '';
 	const map = [];
 	for (let index = 0; index < view.text.length;) {
 		if (view.text[index] === '&') {
-			const entity = /^&(?:(quot)|(#0*34)|(#x0*22)|(apos)|(#0*39)|(#x0*27));/i.exec(view.text.slice(index));
-			if (entity) {
-				text += entity[1] || entity[2] || entity[3] ? '"' : "'";
-				map.push(view.map[index]);
+			const entity = /^&(?:#([0-9]+)|#x([0-9a-f]+)|([A-Za-z][A-Za-z0-9]+));/i.exec(view.text.slice(index));
+			let decoded = null;
+			if (entity?.[1] || entity?.[2]) {
+				const point = Number.parseInt(entity[1] || entity[2], entity[1] ? 10 : 16);
+				decoded = point > 0 && point <= 0x10ffff && !(point >= 0xd800 && point <= 0xdfff)
+					? String.fromCodePoint(point) : '\ufffd';
+			} else if (entity?.[3] && HTML_NAMED_CHARACTERS.has(entity[3])) {
+				decoded = HTML_NAMED_CHARACTERS.get(entity[3]);
+			}
+			if (decoded !== null) {
+				text += decoded;
+				for (let offset = 0; offset < decoded.length; offset++) map.push(view.map[index]);
 				index += entity[0].length;
 				continue;
 			}
@@ -729,7 +900,61 @@ function renderedCssView(source, absoluteStart, { attribute = false } = {}) {
 		index = end;
 	}
 	const view = { text, map };
-	return attribute ? decodeAttributeQuotes(view) : view;
+	return attribute ? decodeHtmlReferences(view) : view;
+}
+
+function cssDeclarations(css) {
+	const declarations = [];
+	let start = 0;
+	let quote = null;
+	let depth = 0;
+	let comment = false;
+	for (let index = 0; index <= css.length; index++) {
+		if (comment) {
+			if (css.startsWith('*/', index)) {
+				comment = false;
+				index++;
+			}
+			continue;
+		}
+		if (quote) {
+			if (css[index] === '\\') index++;
+			else if (css[index] === quote) quote = null;
+			continue;
+		}
+		if (css.startsWith('/*', index)) {
+			comment = true;
+			index++;
+			continue;
+		}
+		if (css[index] === '"' || css[index] === "'") {
+			quote = css[index];
+			continue;
+		}
+		if (css[index] === '(') depth++;
+		else if (css[index] === ')') depth = Math.max(0, depth - 1);
+		if ((css[index] !== ';' || depth !== 0) && index !== css.length) continue;
+		const end = index;
+		const segment = css.slice(start, end);
+		const colon = segment.indexOf(':');
+		if (colon !== -1) {
+			declarations.push({
+				start,
+				end,
+				property: segment.slice(0, colon).trim().toLowerCase(),
+				value: segment.slice(colon + 1).trim(),
+			});
+		}
+		start = index + 1;
+	}
+	return declarations;
+}
+
+function withoutGeneratedDeclaration(css, property, valuePattern) {
+	const candidates = cssDeclarations(css).filter((declaration) => declaration.property === property);
+	if (candidates.length !== 1 || !valuePattern.test(candidates[0].value)) return css;
+	const declaration = candidates[0];
+	return css.slice(0, declaration.start) + blankOut(css.slice(declaration.start, declaration.end)) + css.slice(declaration.end);
 }
 
 export function checkRawValues(files) {
@@ -765,7 +990,7 @@ export function checkRawValues(files) {
 			}
 			const name = match[2].includes('/') ? match[2] : `core/${match[2]}`;
 			for (const decoded of decodedJsonStrings(normalized, jsonStart)) {
-				if (name === 'core/image' && decoded.key === 'width' && /^\d+px$/.test(decoded.value)) continue;
+				if (name === 'core/image' && decoded.directProperty && decoded.objectDepth === 1 && decoded.key === 'width' && /^\d+px$/.test(decoded.value)) continue;
 				if (BLOCK_URL_ATTRIBUTE_KEYS.has(decoded.key?.toLowerCase())) continue;
 				for (const hit of rawValueHits(decoded.value)) {
 					const absoluteIndex = decoded.map[hit.index] ?? jsonStart;
@@ -788,24 +1013,27 @@ export function checkRawValues(files) {
 		for (const tag of contexts.tags) {
 			const attributes = new Map();
 			for (const attribute of tag.attributes) {
+				const directView = attribute.value === null ? null : decodeHtmlReferences({
+					text: attribute.value,
+					map: Array.from({ length: attribute.value.length }, (_, index) => attribute.valueStart + index),
+				});
+				attribute.decodedView = directView;
+				attribute.decodedValue = directView?.text ?? null;
 				if (!attributes.has(attribute.name)) attributes.set(attribute.name, attribute);
 			}
-			const classes = attributes.get('class')?.value?.split(/\s+/).filter(Boolean) ?? [];
+			const classes = attributes.get('class')?.decodedValue?.split(/\s+/).filter(Boolean) ?? [];
 			for (const attribute of tag.attributes) {
 				if (attribute.value === null || isMarkupUrlAttribute(attribute.name, tag.name, attributes)) continue;
 				if (attribute.name !== 'style') {
-					addHits({
-						text: attribute.value,
-						map: [...attribute.value].map((_, index) => attribute.valueStart + index),
-					});
+					addHits(attribute.decodedView);
 					continue;
 				}
 				let css = attribute.value;
 				if (classes.includes('wp-block-cover')) {
-					css = css.replace(/min-height:\s*\d+(?:\.\d+)?(?:px|rem|em|vh|vw)\b/gi, blankOut);
+					css = withoutGeneratedDeclaration(css, 'min-height', /^\d+(?:\.\d+)?(?:px|rem|em|vh|vw)$/i);
 				}
 				if (tag.name === 'div' && classes.includes('wp-block-spacer')) {
-					css = css.replace(/height:\s*\d+(?:\.\d+)?px\b/gi, blankOut);
+					css = withoutGeneratedDeclaration(css, 'height', /^\d+(?:\.\d+)?px$/i);
 				}
 				addHits(renderedCssView(css, attribute.valueStart, { attribute: true }));
 			}
