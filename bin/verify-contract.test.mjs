@@ -327,6 +327,32 @@ test('every raw value form is caught on a delimiter line', () => {
 	}
 });
 
+test('JSON-escaped CSS url functions hide URL contents but not adjacent raw values', () => {
+	const attributes = JSON.stringify({ style: { css: '.x{background:u\\72l("/assets/2rem-#fff.svg");padding:3px}' } });
+	const markup = `<!-- wp:group ${attributes} /-->`;
+	const parsed = parseBlocks(markup);
+	assert.deepEqual(parsed.unbalanced, []);
+	assert.equal(parsed.blocks[0].malformed, undefined, 'the fixture must exercise valid Gutenberg JSON');
+	const problems = raw(markup);
+	assert.equal(problems.filter((problem) => problem.includes('raw length')).length, 1);
+	assert.match(problems[0], /raw length "3px"/);
+	assert.ok(problems.every((problem) => !problem.includes('2rem') && !problem.includes('#fff')));
+});
+
+test('CSS url masking requires function-token adjacency and spans complete values', () => {
+	assert.ok(raw('<style>:root{--probe:url (2rem)}</style>').some((problem) => problem.includes('2rem')));
+	assert.deepEqual(raw('<style>.x{background:url(\n"/assets/2rem-#fff.svg"\n)}</style>'), []);
+	assert.deepEqual(raw('<style>.x{background:url/**/("/assets/2rem-#fff.svg")}</style>'), []);
+});
+
+test('decoded CSS escapes form dimensions in block JSON and across source lines', () => {
+	const attributes = JSON.stringify({ style: { css: '.x{padding:2r\\65 m}' } });
+	const markup = `<!-- wp:group ${attributes} /-->`;
+	assert.equal(parseBlocks(markup).blocks[0].malformed, undefined);
+	assert.ok(raw(markup).some((problem) => problem.includes('raw length')));
+	assert.ok(raw('<style>.x{padding:2r\\65\nm}</style>').some((problem) => problem.includes('raw length')));
+});
+
 test('a file-header comment is not scanned', () => {
 	// This is what the line-prefix exclusion was protecting, and why it could not
 	// simply be deleted: templates and parts open with an HTML comment.
@@ -686,7 +712,10 @@ test('length-like substrings inside identifiers and URLs are not raw CSS dimensi
 		'url("/docs/2rem/layout.svg")',
 		String.raw`u\72l(/docs/2rem.svg)`,
 	]) {
-		assert.deepEqual(raw(`<!-- wp:group {"style":{"css":"${value.replaceAll('"', '\\"')}"}} /-->`), [], value);
+		const attributes = JSON.stringify({ style: { css: value } });
+		const markup = `<!-- wp:group ${attributes} /-->`;
+		assert.equal(parseBlocks(markup).blocks[0].malformed, undefined, value);
+		assert.deepEqual(raw(markup), [], value);
 	}
 });
 

@@ -124,10 +124,13 @@ export function patternsBySlug(files) {
 // comments at the top of templates/front-page.html and parts/footer.html, and a
 // line-prefix test cannot tell those from a block.
 const blankOut = (match) => match.replace(/[^\n]/g, ' ');
+const removePreservingNewlines = (match) => match.replace(/[^\n]/g, '');
 
 export function scannableSource(source) {
 	return String(source)
-		.replace(/\/\*[\s\S]*?\*\//g, blankOut)
+		// CSS removes comments before tokenization. Preserve their newlines for
+		// diagnostics, but do not turn `url/**/(` into the distinct `url (` form.
+		.replace(/\/\*[\s\S]*?\*\//g, removePreservingNewlines)
 		.replace(/<!--(?!\s*\/?wp:)[\s\S]*?-->/g, blankOut);
 }
 
@@ -240,8 +243,7 @@ function withoutCssUrls(value) {
 			continue;
 		}
 		const identifier = consumeIdentifier(text, index);
-		let open = identifier.end;
-		while (/\s/.test(text[open] || '')) open++;
+		const open = identifier.end;
 		if (identifier.value.toLowerCase() !== 'url' || text[open] !== '(') {
 			index = identifier.end;
 			continue;
@@ -254,14 +256,17 @@ function withoutCssUrls(value) {
 	return result + text.slice(cursor);
 }
 
-function rawLengthHit(text) {
+function rawLengthHits(text) {
+	const hits = [];
 	let index = 0;
 	while (index < text.length) {
 		if (wouldStartNumber(text, index)) {
 			const numberEnd = consumeNumber(text, index);
 			if (wouldStartIdentifier(text, numberEnd)) {
 				const unit = consumeIdentifier(text, numberEnd);
-				if (CSS_LENGTH_UNIT_SET.has(unit.value.toLowerCase())) return text.slice(index, unit.end);
+				if (CSS_LENGTH_UNIT_SET.has(unit.value.toLowerCase())) {
+					hits.push({ index, value: text.slice(index, unit.end) });
+				}
 				index = unit.end;
 				continue;
 			}
@@ -274,7 +279,7 @@ function rawLengthHit(text) {
 		}
 		index++;
 	}
-	return null;
+	return hits;
 }
 
 const RAW_VALUE_RULES = [
@@ -289,17 +294,16 @@ function rawValueHits(value) {
 	const text = withoutCssUrls(value);
 	const hits = [];
 	for (const [label, re] of RAW_VALUE_RULES) {
-		const hit = text.match(re);
-		if (hit) hits.push({ label, value: hit[0] });
+		const global = new RegExp(re.source, `${re.flags.replaceAll('g', '')}g`);
+		for (const hit of text.matchAll(global)) hits.push({ label, value: hit[0], index: hit.index });
 	}
-	const length = rawLengthHit(text);
-	if (length) hits.push({ label: 'length', value: length });
-	return hits;
+	for (const hit of rawLengthHits(text)) hits.push({ label: 'length', ...hit });
+	return hits.sort((left, right) => left.index - right.index);
 }
 
-// Spaces, not deletion: removing the text would join its neighbours into tokens
-// that were never written (`#ff` + `0000`), and the column a value sits at is
-// the only way to read a reported line back against the file.
+// Spaces, not deletion: removing tolerated generated text would join its
+// neighbours into tokens that were never written (`#ff` + `0000`) and make
+// diagnostics harder to match back to the source.
 const withoutTolerated = (line) => {
 	let result = TOLERATED.reduce((acc, re) => acc.replace(re, blankOut), line);
 	// core/cover serializes its numeric minHeight + minHeightUnit attributes as
@@ -314,13 +318,48 @@ const withoutTolerated = (line) => {
 export function checkRawValues(files) {
 	const problems = [];
 	for (const { file, contents } of files) {
-		const lines = scannableSource(contents).split('\n');
-		lines.forEach((line, index) => {
-			const scannable = withoutTolerated(line);
-			for (const hit of rawValueHits(scannable)) {
-				problems.push(`${file}:${index + 1}: raw ${hit.label} "${hit.value}" — every value resolves to a theme.json preset`);
+		const source = String(contents);
+		const maskedRanges = [];
+		for (const match of source.matchAll(BLOCK_RE)) {
+			const json = match[4];
+			if (!json) continue;
+			let attrs;
+			try {
+				attrs = JSON.parse(json);
+			} catch {
+				continue;
 			}
-		});
+			const name = match[2].includes('/') ? match[2] : `core/${match[2]}`;
+			const line = source.slice(0, match.index).split('\n').length;
+			const walk = (value, key = '') => {
+				if (typeof value === 'string') {
+					if (name === 'core/image' && key === 'width' && /^\d+px$/.test(value)) return;
+					for (const hit of rawValueHits(value)) {
+						problems.push(`${file}:${line}: raw ${hit.label} "${hit.value}" — every value resolves to a theme.json preset`);
+					}
+					return;
+				}
+				if (Array.isArray(value)) {
+					value.forEach((child) => walk(child));
+					return;
+				}
+				if (!value || typeof value !== 'object') return;
+				for (const [childKey, child] of Object.entries(value)) walk(child, childKey);
+			};
+			walk(attrs);
+			const jsonOffset = match[0].indexOf(json);
+			maskedRanges.push([match.index + jsonOffset, match.index + jsonOffset + json.length]);
+		}
+
+		let sourceWithoutBlockJson = source;
+		for (const [start, end] of maskedRanges.reverse()) {
+			sourceWithoutBlockJson = sourceWithoutBlockJson.slice(0, start) + blankOut(sourceWithoutBlockJson.slice(start, end)) + sourceWithoutBlockJson.slice(end);
+		}
+		const scannable = withoutTolerated(scannableSource(sourceWithoutBlockJson));
+		for (const hit of rawValueHits(scannable)) {
+			const line = scannable.slice(0, hit.index).split('\n').length;
+			problems.push(`${file}:${line}: raw ${hit.label} "${hit.value}" — every value resolves to a theme.json preset`);
+		}
 	}
 	return problems;
 }

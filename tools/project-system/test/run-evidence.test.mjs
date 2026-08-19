@@ -660,6 +660,16 @@ test('fragment credentials and off-base origins cannot leak or support a client 
 		}
 		assert.doesNotMatch(readFileSync(caseStudyReport, 'utf8'), sentinel);
 
+		setTarget(baselineDir, 'https://example.test/', '/preview#/callback?access_token=BaselineSecret987', 9);
+		setTarget(finalDir, 'https://example.test/', '/preview#public', 0);
+		const samePublicIdentity = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--allow-mismatch', '--json'], { encoding: 'utf8' });
+		assert.equal(samePublicIdentity.status, EXIT.OK, samePublicIdentity.stderr || samePublicIdentity.stdout);
+		assert.doesNotMatch(samePublicIdentity.stdout + samePublicIdentity.stderr, sentinel);
+		assert.ok(JSON.parse(samePublicIdentity.stdout).blocking.length > 0);
+		const fragmentClient = readFileSync(join(root, '.project', 'reports', 'comparison-2026-08-01T100000Z-client.md'), 'utf8');
+		assert.doesNotMatch(fragmentClient, /Broken internal links: 9 → 0/);
+		assert.match(fragmentClient, /figures are withheld/);
+
 		setTarget(baselineDir, 'https://example.test/', 'https://one.test/preview?token=SameSecret987', 9);
 		setTarget(finalDir, 'https://example.test/', 'https://two.test/preview?token=SameSecret987', 0);
 		const offBase = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--json'], { encoding: 'utf8' });

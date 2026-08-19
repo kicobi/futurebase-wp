@@ -63,6 +63,26 @@ test('a differing base origin is disclosed, not blocked', () => {
 	assert.match(limitations[0], /new-domain\.com/);
 });
 
+test('adding or removing a declared base blocks target identity', () => {
+	const relative = [{ name: 'home', url: '/preview' }];
+	for (const [baseline, final] of [
+		[run({ target: { base_url: null, pages: relative } }), run({ target: { base_url: 'https://example.com', pages: relative } })],
+		[run({ target: { base_url: 'https://example.com', pages: relative } }), run({ target: { base_url: null, pages: relative } })],
+	]) {
+		const { blocking } = compareTargets(baseline, final);
+		assert.ok(blocking.some((reason) => reason.includes('base URL')), 'a one-sided base cannot be treated as a declared origin move');
+	}
+	assert.ok(
+		compareTargets(run({ target: { base_url: null, pages: relative } }), run({ target: { base_url: null, pages: relative } })).blocking.length > 0,
+		'relative pages have no verifiable identity without a base',
+	);
+	assert.deepEqual(
+		compareTargets(run({ target: { base_url: null, pages: [] } }), run({ target: { base_url: null, pages: [] } })).blocking,
+		[],
+		'new-site snapshots with no base and no capture pages remain valid',
+	);
+});
+
 test('scheme and port changes count as base-origin differences', () => {
 	for (const baseUrl of ['http://example.com', 'https://example.com:8443']) {
 		const { limitations, blocking } = compareTargets(run(), run({ target: {
@@ -145,6 +165,15 @@ test('fragments do not affect comparison identity', () => {
 	const baseline = run({ target: { pages: [{ name: 'home', url: 'https://example.com/about/#team' }] } });
 	const final = run({ target: { pages: [{ name: 'home', url: 'https://example.com/about/#contact' }] } });
 	assert.deepEqual(compareTargets(baseline, final).blocking, []);
+});
+
+test('secret-bearing fragments block even when the public page identity is unchanged', () => {
+	const baseline = run({ target: { pages: [{ name: 'home', url: 'https://example.com/preview#/callback?access_token=BaselineSecret987' }] } });
+	const final = run({ target: { pages: [{ name: 'home', url: 'https://example.com/preview#public' }] } });
+	const { blocking } = compareTargets(baseline, final);
+	assert.equal(blocking.length, 1);
+	assert.match(blocking[0], /credential|secret/i);
+	assert.doesNotMatch(blocking[0], /BaselineSecret987/);
 });
 
 test('a differing module set is disclosed', () => {

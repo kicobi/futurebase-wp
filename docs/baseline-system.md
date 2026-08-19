@@ -129,10 +129,12 @@ Overall run status is derived from module results:
 - all failures → `failed` (exit 5).
 
 Any failed module prevents that run from closing the lifecycle evidence gate.
-Before/after page identity uses normalized pathname plus the exact query
-string; fragments are ignored. A same-host path or query change blocks
-comparison unless the operator explicitly records the exception with
-`--allow-mismatch`.
+Before/after page identity uses the declared base origin plus normalized
+pathname and the exact query string. Ordinary fragments do not select a server
+resource and are ignored, but a credential-bearing fragment blocks comparison.
+A same-origin path or query change, an off-base page origin, a malformed base,
+or a one-sided base declaration blocks comparison unless the operator explicitly
+records the exception with `--allow-mismatch`.
 
 ## Privacy
 

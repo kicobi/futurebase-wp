@@ -56,9 +56,9 @@ const baseIdentity = (url) => {
 const pageIdentity = (url, base) => {
 	if (!base.valid) return { valid: false, key: null, onBase: false };
 	try {
-		const parsed = new URL(url, base.origin ? `${base.origin}/` : 'https://relative.invalid/');
+		const parsed = base.origin ? new URL(url, `${base.origin}/`) : new URL(url);
 		if (!['http:', 'https:'].includes(parsed.protocol)) return { valid: false, key: null, onBase: false };
-		const onBase = parsed.origin === (base.origin || 'https://relative.invalid');
+		const onBase = base.origin !== null && parsed.origin === base.origin;
 		const originKey = onBase ? '<base-origin>' : parsed.origin;
 		return {
 			valid: true,
@@ -109,6 +109,8 @@ export function compareTargets(baselineSummary, finalSummary) {
 	const fBase = baseIdentity(f.base_url);
 	if (!bBase.valid || !fBase.valid) {
 		blocking.push('one or both base URLs are malformed or unsafe — target identity cannot be verified');
+	} else if ((bBase.origin === null) !== (fBase.origin === null)) {
+		blocking.push('one run declares a base URL and the other does not — target identity cannot be verified');
 	} else if (bBase.origin !== fBase.origin) {
 		limitations.push(`base URL origin differs (baseline: ${bBase.origin ?? 'none'} · final: ${fBase.origin ?? 'none'}) — expected for a redesign that moves domain, but confirm it is deliberate`);
 	}
@@ -130,10 +132,10 @@ export function compareTargets(baselineSummary, finalSummary) {
 	// nothing reported, and case-study will happily publish the difference as an
 	// improvement.
 	//
-// On a declared origin move the paths are expected to change too, and that is
-// already disclosed above — blocking there would break the redesign workflow
-// this tool exists for. An off-base origin receives no such exemption: it is a
-// different capture target even when the declared base itself moved.
+	// On a declared origin move the paths are expected to change too, and that is
+	// already disclosed above — blocking there would break the redesign workflow
+	// this tool exists for. An off-base origin receives no such exemption: it is a
+	// different capture target even when the declared base itself moved.
 	const bByName = new Map((b.pages ?? []).map((p) => [p.name, p.url]));
 	if (bBase.valid && fBase.valid) {
 		const blockingMoves = [];
@@ -147,15 +149,23 @@ export function compareTargets(baselineSummary, finalSummary) {
 				blockingMoves.push(`${p.name}: one or both targets are malformed or unsafe`);
 				continue;
 			}
+			const secretBearing = targetUrlHasSecret(was, { baseUrl: bBase.origin }) || targetUrlHasSecret(p.url, { baseUrl: fBase.origin });
+			if (secretBearing) {
+				const beforeDisplay = safePageUrl(was, b.base_url);
+				const afterDisplay = safePageUrl(p.url, f.base_url);
+				blockingMoves.push(
+					beforeDisplay === afterDisplay
+						? `${p.name}: secret-bearing target differs or cannot support a public comparison`
+						: `${p.name}: secret-bearing target differs (${beforeDisplay} → ${afterDisplay}) and cannot support a public comparison`,
+				);
+				continue;
+			}
 			if (beforeIdentity.key === afterIdentity.key) continue;
 
-			const secretBearing = targetUrlHasSecret(was, { baseUrl: bBase.origin }) || targetUrlHasSecret(p.url, { baseUrl: fBase.origin });
 			const beforeDisplay = safePageUrl(was, b.base_url);
 			const afterDisplay = safePageUrl(p.url, f.base_url);
-			const detail = secretBearing && beforeDisplay === afterDisplay
-				? `${p.name}: secret-bearing target differs`
-				: `${p.name}: ${beforeDisplay} → ${afterDisplay}`;
-			const followsDeclaredMove = beforeIdentity.onBase && afterIdentity.onBase && bBase.origin !== fBase.origin;
+			const detail = `${p.name}: ${beforeDisplay} → ${afterDisplay}`;
+			const followsDeclaredMove = Boolean(bBase.origin && fBase.origin) && beforeIdentity.onBase && afterIdentity.onBase && bBase.origin !== fBase.origin;
 			(followsDeclaredMove ? allowedMoves : blockingMoves).push(detail);
 		}
 		if (blockingMoves.length) {
