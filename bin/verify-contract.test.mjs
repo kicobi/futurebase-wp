@@ -555,6 +555,18 @@ test('PHP-emitted quotes can terminate an SVG font attribute before a conditiona
 	assert.ok(problems.some((problem) => problem.includes('#fff')));
 });
 
+test('SVG font reconstruction follows HTML unquoted values and PHP-emitted tag boundaries', () => {
+	const unquoted = `<svg><font data-x=a<?php echo '"'; ?> color><script href="2rem#fff"></script></font></svg>`;
+	const problems = raw(unquoted);
+	assert.ok(problems.some((problem) => problem.includes('2rem')));
+	assert.ok(problems.some((problem) => problem.includes('#fff')));
+	assert.deepEqual(
+		raw(`<svg><font <?php echo '>'; ?><script href="2rem#fff"></script></font></svg>`),
+		[],
+		'a PHP-emitted tag close resumes before the child start tag, which remains SVG',
+	);
+});
+
 test('PHP output is reconstructed inside its surrounding CSS and URL context', () => {
 	assert.deepEqual(
 		raw('<style>\n.x { background-image: url(<?php echo get_theme_file_uri( \'assets/2rem.svg\' ); ?>); }\n</style>'),
@@ -712,11 +724,46 @@ test('PHP hex and octal byte escapes keep byte counts through nested formatting'
 	}
 });
 
+test('heredoc and nowdoc output removes terminal newlines and closing indentation', () => {
+	for (const opener of ["<<<'TXT'", '<<<TXT']) {
+		const terminal = `<style><?php printf("%srem", ${opener}
+2
+TXT); ?></style>`;
+		assert.ok(raw(terminal).some((problem) => problem.includes('2rem')), opener);
+		const indented = `<style><?php printf("%srem", ${opener}
+    2
+    TXT); ?></style>`;
+		assert.ok(raw(indented).some((problem) => problem.includes('2rem')), `${opener} indentation`);
+	}
+});
+
 test('printf %c output keeps PHP byte counts through nested formatting', () => {
 	assert.ok(
 		raw('<style><?php printf("%.*s", printf("%c;%c;%c;%c;", 233, 233, 233, 233), ";;;;2remfoo"); ?></style>')
 			.some((problem) => problem.includes('2rem')),
 	);
+});
+
+test('printf %c coerces signed strings and large integers to one PHP byte', () => {
+	for (const markup of [
+		'<style><?php printf("%crem", "-206x"); ?></style>',
+		'<style><?php printf("%crem", 9223372036854775602); ?></style>',
+	]) {
+		assert.ok(raw(markup).some((problem) => problem.includes('2rem')), markup);
+	}
+});
+
+test('numeric printf conversions cannot hide adjacent CSS units', () => {
+	assert.ok(
+		raw('<style><?php printf("%drem", "2x"); ?></style>')
+			.some((problem) => problem.includes('rem')),
+	);
+});
+
+test('printf leading padding preserves the formatted value source line', () => {
+	const problems = raw(`<style><?php printf("%10s", "
+2rem"); ?></style>`);
+	assert.ok(problems.some((problem) => /:2:.*2rem/.test(problem)), problems.join('\n'));
 });
 
 test('HTML character references are decoded before context and CSS checks', () => {

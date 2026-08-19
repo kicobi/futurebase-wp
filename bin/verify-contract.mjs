@@ -674,28 +674,62 @@ function startTagAttributeNames(source) {
 }
 
 function renderedStartTag(source, start) {
-	let cursor = start;
-	while (cursor < source.length) {
-		const phpStart = source.indexOf('<?', cursor);
-		const candidate = source.indexOf('>', cursor);
-		if (candidate === -1) return { text: renderedCssView(source.slice(start), start).text, sourceEnd: source.length };
-		if (phpStart !== -1 && phpStart < candidate) {
-			cursor = phpEnd(source, phpStart);
+	const view = renderedCssView(source.slice(start), start);
+	let cursor = /^<\s*[A-Za-z][A-Za-z0-9:-]*/.exec(view.text)?.[0].length ?? view.text.length;
+	let state = 'before-name';
+	let quote = null;
+	while (cursor < view.text.length) {
+		const char = view.text[cursor];
+		if (state === 'quoted-value') {
+			if (char === quote) state = 'after-name';
+			cursor++;
 			continue;
 		}
-		const rendered = renderedCssView(source.slice(start, candidate + 1), start).text;
-		let quote = null;
-		for (let index = 0; index < rendered.length; index++) {
-			if (quote) {
-				if (rendered[index] === quote) quote = null;
+		if (state === 'unquoted-value') {
+			if (/[\t\n\f\r ]/.test(char)) state = 'before-name';
+			else if (char === '>') break;
+			cursor++;
+			continue;
+		}
+		if (state === 'before-value') {
+			if (/[\t\n\f\r ]/.test(char)) {
+				cursor++;
 				continue;
 			}
-			if (rendered[index] === '"' || rendered[index] === "'") quote = rendered[index];
-			else if (rendered[index] === '>') return { text: rendered.slice(0, index + 1), sourceEnd: candidate + 1 };
+			if (char === '"' || char === "'") {
+				quote = char;
+				state = 'quoted-value';
+				cursor++;
+				continue;
+			}
+			if (char === '>') break;
+			state = 'unquoted-value';
+			continue;
 		}
-		cursor = candidate + 1;
+		if (state === 'name') {
+			if (/[\t\n\f\r ]/.test(char)) state = 'after-name';
+			else if (char === '=') state = 'before-value';
+			else if (char === '>') break;
+			cursor++;
+			continue;
+		}
+		if (/[\t\n\f\r ]/.test(char) || (state === 'before-name' && char === '/')) {
+			cursor++;
+			continue;
+		}
+		if (char === '>') break;
+		if (state === 'after-name' && char === '=') {
+			state = 'before-value';
+			cursor++;
+			continue;
+		}
+		state = 'name';
 	}
-	return { text: renderedCssView(source.slice(start), start).text, sourceEnd: source.length };
+	if (view.text[cursor] !== '>') return { text: view.text, sourceEnd: source.length };
+	return {
+		text: view.text.slice(0, cursor + 1),
+		sourceEnd: view.resumeMap[cursor] ?? source.length,
+	};
 }
 
 function markupContexts(source) {
@@ -738,12 +772,13 @@ function markupContexts(source) {
 		}
 		const name = nameMatch[0].toLowerCase();
 		const reconstructedStartTag = name === 'font' ? renderedStartTag(source, start) : null;
+		const parseLimit = reconstructedStartTag?.sourceEnd ?? source.length;
 		const attributes = [];
 		let cursor = start + 1 + nameMatch[0].length;
 		let end = null;
 		let selfClosing = false;
-		while (cursor < source.length) {
-			while (/\s/.test(source[cursor] || '')) cursor++;
+		while (cursor < parseLimit) {
+			while (cursor < parseLimit && /\s/.test(source[cursor] || '')) cursor++;
 			if (source.startsWith('/>', cursor)) {
 				end = cursor + 2;
 				selfClosing = true;
@@ -758,23 +793,23 @@ function markupContexts(source) {
 				continue;
 			}
 			const attributeStart = cursor;
-			while (cursor < source.length && !/[\s=/>]/.test(source[cursor])) cursor++;
+			while (cursor < parseLimit && !/[\s=/>]/.test(source[cursor])) cursor++;
 			if (cursor === attributeStart) {
 				cursor++;
 				continue;
 			}
 			const attributeName = source.slice(attributeStart, cursor).toLowerCase();
-			while (/\s/.test(source[cursor] || '')) cursor++;
+			while (cursor < parseLimit && /\s/.test(source[cursor] || '')) cursor++;
 			let value = null;
 			let valueStart = null;
 			let valueEnd = null;
 			if (source[cursor] === '=') {
 				cursor++;
-				while (/\s/.test(source[cursor] || '')) cursor++;
+				while (cursor < parseLimit && /\s/.test(source[cursor] || '')) cursor++;
 				const quote = source[cursor] === '"' || source[cursor] === "'" ? source[cursor++] : null;
 				valueStart = cursor;
 				if (quote) {
-					while (cursor < source.length) {
+					while (cursor < parseLimit) {
 						if (source.startsWith('<?', cursor)) {
 							cursor = phpEnd(source, cursor);
 							continue;
@@ -785,7 +820,7 @@ function markupContexts(source) {
 					valueEnd = cursor;
 					if (source[cursor] === quote) cursor++;
 				} else {
-					while (cursor < source.length && !/[\s>]/.test(source[cursor])) {
+					while (cursor < parseLimit && !/[\s>]/.test(source[cursor])) {
 						if (source.startsWith('<?', cursor)) cursor = phpEnd(source, cursor);
 						else cursor++;
 					}
@@ -795,7 +830,10 @@ function markupContexts(source) {
 			}
 			attributes.push({ name: attributeName, value, valueStart, valueEnd });
 		}
-		if (reconstructedStartTag) end = reconstructedStartTag.sourceEnd;
+		if (reconstructedStartTag) {
+			end = reconstructedStartTag.sourceEnd;
+			selfClosing = /\/\s*>$/.test(reconstructedStartTag.text);
+		}
 		if (end === null) break;
 		let parentNamespace = elementStack.at(-1)?.childNamespace ?? 'html';
 		const renderedAttributeNames = reconstructedStartTag
@@ -867,13 +905,14 @@ function decodedPhpBytes(bytes, byteMap = [], fallback = 0) {
 	return { text, map, bytes, byteMap };
 }
 
-function phpStringBody(source, start, end, absoluteStart, quote) {
+function phpStringBody(source, start, end, absoluteStart, quote, sourcePositions = null) {
 	let index = start;
 	const bytes = [];
 	const byteMap = [];
 	const appendBytes = (value, sourceIndex) => {
 		bytes.push(...value);
-		byteMap.push(...Array.from({ length: value.length }, () => absoluteStart + sourceIndex));
+		const position = sourcePositions?.[sourceIndex] ?? absoluteStart + sourceIndex;
+		byteMap.push(...Array.from({ length: value.length }, () => position));
 	};
 	const appendText = (value, sourceIndex) => {
 		appendBytes(Buffer.from(value, 'utf8'), sourceIndex);
@@ -937,7 +976,7 @@ function phpStringBody(source, start, end, absoluteStart, quote) {
 		// PHP preserves an unknown escape in a double-quoted string.
 		appendText('\\', index++);
 	}
-	return decodedPhpBytes(Buffer.from(bytes), byteMap, absoluteStart + start);
+	return decodedPhpBytes(Buffer.from(bytes), byteMap, sourcePositions?.[start] ?? absoluteStart + start);
 }
 
 function phpStringToken(source, start, absoluteStart) {
@@ -946,6 +985,44 @@ function phpStringToken(source, start, absoluteStart) {
 	const bodyEnd = source[end - 1] === quote ? end - 1 : end;
 	const body = phpStringBody(source, start + 1, bodyEnd, absoluteStart, quote);
 	return { type: 'string', ...body, start, end };
+}
+
+function normalizedHeredocBody(source, bodyStart, closingStart, closingText, absoluteStart) {
+	let bodyEnd = closingStart;
+	if (source[bodyEnd - 1] === '\n') {
+		bodyEnd--;
+		if (source[bodyEnd - 1] === '\r') bodyEnd--;
+	} else if (source[bodyEnd - 1] === '\r') {
+		bodyEnd--;
+	}
+	const indentation = /^[ \t]*/.exec(closingText)?.[0] ?? '';
+	let text = '';
+	const map = [];
+	let cursor = bodyStart;
+	while (cursor < bodyEnd) {
+		const lineStart = cursor;
+		while (cursor < bodyEnd && source[cursor] !== '\r' && source[cursor] !== '\n') cursor++;
+		const contentEnd = cursor;
+		let contentStart = lineStart;
+		if (indentation && source.startsWith(indentation, lineStart)) {
+			contentStart += indentation.length;
+		} else if (indentation && /^[ \t]*$/.test(source.slice(lineStart, contentEnd))) {
+			contentStart = Math.min(contentEnd, lineStart + indentation.length);
+		}
+		for (let index = contentStart; index < contentEnd; index++) {
+			text += source[index];
+			map.push(absoluteStart + index);
+		}
+		if (cursor < bodyEnd) {
+			text += source[cursor];
+			map.push(absoluteStart + cursor++);
+			if (text.endsWith('\r') && source[cursor] === '\n' && cursor < bodyEnd) {
+				text += source[cursor];
+				map.push(absoluteStart + cursor++);
+			}
+		}
+	}
+	return { text, map };
 }
 
 function phpHeredocToken(source, start, absoluteStart) {
@@ -960,14 +1037,13 @@ function phpHeredocToken(source, start, absoluteStart) {
 	const closingStart = match.index;
 	const end = closingStart + match[0].length;
 	const nowdoc = header[1] === "'";
+	const normalized = normalizedHeredocBody(source, bodyStart, closingStart, match[0], absoluteStart);
 	let body;
 	if (nowdoc) {
-		const text = source.slice(bodyStart, closingStart);
-		const sourceMap = Array.from({ length: text.length }, (_, offset) => absoluteStart + bodyStart + offset);
-		const encoded = encodedPhpText(text, sourceMap, absoluteStart + bodyStart);
-		body = { text, map: sourceMap, ...encoded };
+		const encoded = encodedPhpText(normalized.text, normalized.map, absoluteStart + bodyStart);
+		body = { ...normalized, ...encoded };
 	} else {
-		body = phpStringBody(source, bodyStart, closingStart, absoluteStart, '"');
+		body = phpStringBody(normalized.text, 0, normalized.text.length, 0, '"', normalized.map);
 	}
 	return { type: 'string', ...body, start, end };
 }
@@ -1190,6 +1266,33 @@ function splitPhpArguments(tokens) {
 	return argumentsList;
 }
 
+function phpIntegerValue(text) {
+	const numeric = /^[\t\n\r\f\v ]*([+-]?(?:(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?))/i.exec(text)?.[1];
+	if (!numeric) return null;
+	if (/^[+-]?\d+$/.test(numeric)) {
+		try {
+			return BigInt(numeric);
+		} catch {
+			return null;
+		}
+	}
+	const number = Number(numeric);
+	return Number.isFinite(number) && Number.isSafeInteger(Math.trunc(number))
+		? BigInt(Math.trunc(number))
+		: null;
+}
+
+function phpIntegerFormat(value, specifier) {
+	if (specifier === 'd') return value.toString(10);
+	const unsigned = BigInt.asUintN(64, value);
+	if (specifier === 'u') return unsigned.toString(10);
+	if (specifier === 'b') return unsigned.toString(2);
+	if (specifier === 'o') return unsigned.toString(8);
+	if (specifier === 'x') return unsigned.toString(16);
+	if (specifier === 'X') return unsigned.toString(16).toUpperCase();
+	return null;
+}
+
 function renderedPrintfExpression(tokens, absoluteFallback) {
 	const argumentsList = splitPhpArguments(tokens);
 	const format = renderedStaticPhpExpression(argumentsList.shift() ?? [], absoluteFallback);
@@ -1240,23 +1343,57 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 		}
 		const valueIndex = directive[1] ? Number.parseInt(directive[1], 10) - 1 : sequential++;
 		const value = values[valueIndex];
-		const specifier = directive[9].toLowerCase();
+		const rawSpecifier = directive[9];
+		const specifier = rawSpecifier.toLowerCase();
 		if (value?.known) {
 			let renderedBytes = value.bytes;
-			if (specifier === 'c' && /^\d+$/.test(value.text)) renderedBytes = Buffer.from([Number.parseInt(value.text, 10) & 0xff]);
+			let renderedByteMap = [...value.byteMap];
+			const integer = phpIntegerValue(value.text);
+			if (specifier === 'c') {
+				if (integer === null) {
+					returnKnown = false;
+					renderedBytes = Buffer.from(';');
+				} else {
+					renderedBytes = Buffer.from([Number(BigInt.asUintN(8, integer))]);
+				}
+				renderedByteMap = [value.byteMap[0] ?? format.byteMap[index] ?? absoluteFallback];
+			} else if (['b', 'd', 'o', 'u', 'x'].includes(specifier)) {
+				const formattedInteger = integer === null ? null : phpIntegerFormat(integer, rawSpecifier);
+				if (formattedInteger === null) {
+					returnKnown = false;
+					renderedBytes = Buffer.from('0');
+					renderedByteMap = [format.byteMap[index] ?? absoluteFallback];
+				} else {
+					renderedBytes = Buffer.from(formattedInteger);
+					renderedByteMap = Array.from({ length: renderedBytes.length }, () => value.byteMap[0] ?? absoluteFallback);
+				}
+			} else if (!['s'].includes(specifier)) {
+				// Float conversions depend on PHP-specific coercion, locale and exponent
+				// formatting. A numeric placeholder keeps adjacent CSS units visible,
+				// while an unknown return count prevents unsafe nested inference.
+				returnKnown = false;
+				renderedBytes = Buffer.from('0');
+				renderedByteMap = [format.byteMap[index] ?? absoluteFallback];
+			}
 			if (specifier === 's' && precision !== null && precision >= 0) {
 				renderedBytes = renderedBytes.subarray(0, precision);
+				renderedByteMap = renderedByteMap.slice(0, precision);
 			}
 			if (width !== null && Math.abs(width) > renderedBytes.length) {
 				const flags = directive[2];
 				const customPad = /'(.)/.exec(flags)?.[1];
 				const pad = customPad ? customPad.charCodeAt(0) : (flags.includes('0') ? 0x30 : 0x20);
 				const padding = Buffer.alloc(Math.abs(width) - renderedBytes.length, pad);
-				renderedBytes = width < 0 || flags.includes('-')
-					? Buffer.concat([renderedBytes, padding])
-					: Buffer.concat([padding, renderedBytes]);
+				const paddingMap = Array.from({ length: padding.length }, () => format.byteMap[index] ?? absoluteFallback);
+				if (width < 0 || flags.includes('-')) {
+					renderedBytes = Buffer.concat([renderedBytes, padding]);
+					renderedByteMap = [...renderedByteMap, ...paddingMap];
+				} else {
+					renderedBytes = Buffer.concat([padding, renderedBytes]);
+					renderedByteMap = [...paddingMap, ...renderedByteMap];
+				}
 			}
-			append(renderedBytes, value.byteMap, format.byteMap[index] ?? absoluteFallback);
+			append(renderedBytes, renderedByteMap, format.byteMap[index] ?? absoluteFallback);
 		} else {
 			returnKnown = false;
 			append(Buffer.from(';'), [], format.byteMap[index] ?? absoluteFallback);
@@ -1451,11 +1588,14 @@ function decodeHtmlReferences(view) {
 function renderedCssView(source, absoluteStart, { attribute = false } = {}) {
 	let text = '';
 	const map = [];
+	const resumeMap = [];
 	let index = 0;
 	const appendDirect = (end) => {
 		while (index < end) {
 			text += source[index];
-			map.push(absoluteStart + index++);
+			map.push(absoluteStart + index);
+			resumeMap.push(absoluteStart + index + 1);
+			index++;
 		}
 	};
 	while (index < source.length) {
@@ -1469,9 +1609,10 @@ function renderedCssView(source, absoluteStart, { attribute = false } = {}) {
 		const rendered = renderedPhpOutput(source.slice(phpStart, end), absoluteStart + phpStart);
 		text += rendered.text;
 		map.push(...rendered.map);
+		resumeMap.push(...Array.from({ length: rendered.text.length }, () => absoluteStart + end));
 		index = end;
 	}
-	const view = { text, map };
+	const view = { text, map, resumeMap };
 	return attribute ? decodeHtmlReferences(view) : view;
 }
 
