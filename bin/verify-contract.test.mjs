@@ -397,6 +397,15 @@ test('style elements and PHP-produced inline CSS are scanned in CSS context', ()
 		raw('<div style="<?php echo \'padding:2rem\'; ?>"></div>').some((problem) => problem.includes('2rem')),
 		'CSS emitted by a PHP string inside a style attribute remains contract-visible',
 	);
+	assert.ok(
+		raw('<style nonce="<?php echo esc_attr( $nonce ); ?>">\n.x { padding: 2rem; }\n</style>').some((problem) => /:2:.*2rem/.test(problem)),
+		'a PHP close tag inside an opening attribute must not terminate the style tag',
+	);
+	assert.deepEqual(
+		raw('<style itemscope itemid=".x{padding:2rem}"\n>.x{padding:2rem}</style>'),
+		['patterns/_probe.php:2: raw length "2rem" — every value resolves to a theme.json preset'],
+		'the body offset must not collide with identical text in a URL-valued opening attribute',
+	);
 });
 
 test('malformed block attributes fail closed instead of masking their raw values', () => {
@@ -411,6 +420,13 @@ test('malformed block attributes fail closed instead of masking their raw values
 		raw(dynamic).every((problem) => !problem.includes('malformed block attributes')),
 		'a PHP pattern may render a typed attribute into otherwise valid block JSON',
 	);
+	const dynamicWithRaw = '<!-- wp:navigation {"ref":<?php echo (int) $nav->ID; ?>,"style":{"spacing":{"padding":"2rem"}}} /-->';
+	assert.ok(raw(dynamicWithRaw).some((problem) => problem.includes('2rem')), 'a dynamic scalar must not hide adjacent static values');
+	const dynamicAndMalformed = '<!-- wp:navigation {"ref":<?php echo (int) $nav->ID; ?>,"style":{"spacing":{"padding":"2rem"}},} /-->';
+	assert.ok(raw(dynamicAndMalformed).some((problem) => problem.includes('malformed block attributes')), 'PHP must not excuse unrelated malformed JSON');
+	const dynamicAfterUnicode = '<!-- wp:navigation {"label":"😀","ref":<?php echo (int) $nav->ID; ?>,"style":{"spacing":{"padding":"2rem"}}} /-->';
+	assert.ok(raw(dynamicAfterUnicode).some((problem) => problem.includes('2rem')), 'PHP neutralization preserves UTF-16 source offsets after non-BMP text');
+	assert.ok(raw(dynamicAfterUnicode).every((problem) => !problem.includes('malformed block attributes')));
 });
 
 test('the cover min-height exemption requires the exact class token', () => {
@@ -419,6 +435,7 @@ test('the cover min-height exemption requires the exact class token', () => {
 		'<div class="wp-block-cover-extra" style="min-height:2rem"></div>',
 		'<div class="not-wp-block-cover" style="min-height:2rem"></div>',
 		'<div data-class="wp-block-cover" style="min-height:2rem"></div>',
+		'<div data-template=\' class="wp-block-cover" \' style="min-height:2rem"></div>',
 	]) {
 		assert.ok(raw(markup).some((problem) => problem.includes('2rem')), markup);
 	}
@@ -430,6 +447,13 @@ test('escaped CSS hash-token colors are rejected in markup, block CSS, and theme
 	const block = `<!-- wp:group ${JSON.stringify({ style: { css: `.x{color:${escaped}}` } })} /-->`;
 	assert.ok(raw(block).some((problem) => problem.includes('hex color')));
 	assert.ok(checkThemeStyleValues({ styles: { color: { text: escaped } } }).some((problem) => problem.includes('hex color')));
+	for (const css of [
+		'#\\66\r\nff',
+		'2r\\65\r\nm',
+		'r\\67\r\nb(1 2 3)',
+	]) {
+		assert.ok(raw(`<style>.x{--probe:${css}}</style>`).length > 0, `CRLF-normalized CSS escape must be scanned: ${JSON.stringify(css)}`);
+	}
 });
 
 test('standard HTML and SVG URL attributes remain outside CSS-value checks', () => {
@@ -440,10 +464,24 @@ test('standard HTML and SVG URL attributes remain outside CSS-value checks', () 
 		'<img src=/assets/2rem-#fff.svg>',
 		'<a href=#fff>Map target</a>',
 		'<img src=2rem.png>',
+		'<img lowsrc="/assets/2rem.jpg">',
 	]) {
 		assert.deepEqual(raw(markup), [], markup);
 	}
 	assert.ok(raw('<div data-href="#fff"></div>').some((problem) => problem.includes('hex color')), 'URL classification must use an exact attribute name');
+	const urlArray = '<!-- wp:acme/card {"url":["/assets/2rem.svg","#fff"]} /-->';
+	assert.deepEqual(raw(urlArray), [], 'array items inherit their URL-valued block attribute key');
+});
+
+test('PHP output is reconstructed inside its surrounding CSS and URL context', () => {
+	assert.deepEqual(
+		raw('<style>\n.x { background-image: url(<?php echo get_theme_file_uri( \'assets/2rem.svg\' ); ?>); }\n</style>'),
+		[],
+		'a PHP URL fragment is still inside url(), not standalone CSS',
+	);
+	assert.deepEqual(raw('<style><?php $example = \'2rem\'; ?>.x{padding:var(--token)}</style>'), [], 'a non-output PHP string emits no CSS');
+	assert.deepEqual(raw('<div><?php $example = \'2rem\'; ?></div>'), [], 'PHP outside a CSS context is not CSS');
+	assert.ok(raw('<div style="<?php echo \'padding:\' . \'2rem\'; ?>"></div>').some((problem) => problem.includes('2rem')), 'concatenated emitted strings are scanned as their rendered CSS');
 });
 
 test('a file-header comment is not scanned', () => {

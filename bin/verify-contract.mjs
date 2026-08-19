@@ -112,8 +112,9 @@ export function patternsBySlug(files) {
 
 // --- item 1: tokens first ----------------------------------------------------
 
-// Commentary, blanked so line numbers survive. Everything else is scanned —
-// including block delimiters, which is the whole point.
+// Commentary is blanked so line numbers survive. Block delimiters, HTML
+// attributes, <style> bodies and PHP-emitted CSS are then parsed in their own
+// contexts; visible prose and unrelated PHP strings are not CSS values.
 //
 // The bash gate this replaces skipped every line beginning `<!--`. That is
 // exactly how Gutenberg serializes a block delimiter, so
@@ -129,17 +130,6 @@ export function scannableSource(source) {
 	return String(source)
 		.replace(/<!--(?!\s*\/?wp:)[\s\S]*?-->/g, blankOut);
 }
-
-// Tolerated because core's own blocks serialize them and the theme cannot say it
-// otherwise: an image width attribute, and a spacer's height.
-//
-// Blanked OUT OF the line, not used to exempt the line. `TOLERATED.some(re =>
-// re.test(line))` returned early on the whole line, so one core-serialized value
-// hid every other value beside it — and a block delimiter serializes as a single
-// line, so `{"width":"600px","style":{"color":{"text":"#ff0000"}}}` carried a
-// raw hex straight through the check that exists to catch it. An exemption has
-// to be as wide as the thing it excuses and no wider.
-const TOLERATED = [/"width":"\d+px"/g, /<div style="height:\s*\d+px"/g];
 
 // CSS Values & Units Level 4 length units, kept in one table so every scanner
 // consumes the same closure. `fr` is a flex fraction, not a <length>.
@@ -237,29 +227,45 @@ const COLOR_FUNCTIONS = new Set([
 // such as `/2rem-#fff.svg` look like design tokens, while substring checks would
 // exempt unrelated attributes such as `data-href`.
 const URL_ATTRIBUTE_KEYS = new Set([
-	'action', 'archive', 'background', 'cite', 'classid', 'codebase', 'data',
+	'action', 'archive', 'attributionsrc', 'background', 'cite', 'classid',
+	'code', 'codebase', 'data', 'dynsrc',
 	'formaction', 'href', 'imagesrcset', 'itemid', 'itemtype', 'longdesc',
-	'manifest', 'ping', 'poster', 'profile', 'src', 'srcset', 'usemap', 'url',
-	'xlink:href', 'xmlns', 'xmlns:xlink',
+	'lowsrc', 'manifest', 'object', 'ping', 'poster', 'profile', 'src', 'srcset',
+	'usemap', 'url', 'xlink:href', 'xml:base', 'xmlns', 'xmlns:xlink',
 ]);
 const BLOCK_URL_ATTRIBUTE_KEYS = new Set([
-	'href', 'imagesrcset', 'poster', 'src', 'srcset', 'url', 'usemap', 'xlink:href',
+	'attributionsrc', 'href', 'imagesrcset', 'lowsrc', 'poster', 'src', 'srcset',
+	'url', 'usemap', 'xlink:href',
 ]);
 
-const previousNonSpace = (text, index) => {
-	let cursor = index - 1;
-	while (cursor >= 0 && /\s/.test(text[cursor])) cursor--;
-	return text[cursor];
+const isMarkupUrlAttribute = (name, tagName, attributes) => {
+	const lower = name.toLowerCase();
+	if (URL_ATTRIBUTE_KEYS.has(lower) || lower.startsWith('xmlns:')) return true;
+	if (tagName !== 'meta' || lower !== 'content') return false;
+	return attributes.get('http-equiv')?.value?.trim().toLowerCase() === 'refresh';
 };
 
-function cssTokenView(value, { markup = false } = {}) {
+function cssTokenView(value) {
 	const source = String(value);
 	let text = '';
 	const map = [];
 	let quote = null;
-	let attributeQuote = null;
 	for (let index = 0; index < source.length;) {
 		const char = source[index];
+		// CSS input preprocessing turns CRLF into one LF, and lone CR/form-feed
+		// into LF. Doing it here keeps every escape consumer on the same token
+		// stream while the map still points diagnostics at the physical source.
+		if (char === '\r') {
+			text += '\n';
+			map.push(index);
+			index += source[index + 1] === '\n' ? 2 : 1;
+			continue;
+		}
+		if (char === '\f') {
+			text += '\n';
+			map.push(index++);
+			continue;
+		}
 		if (quote) {
 			text += char;
 			map.push(index);
@@ -271,27 +277,6 @@ function cssTokenView(value, { markup = false } = {}) {
 			}
 			if (char === quote) quote = null;
 			index++;
-			continue;
-		}
-		if (markup && attributeQuote && char === '&') {
-			const entity = /^&(?:(quot)|(#0*34)|(#x0*22)|(apos)|(#0*39)|(#x0*27));/i.exec(source.slice(index));
-			if (entity) {
-				text += entity[1] || entity[2] || entity[3] ? '"' : "'";
-				map.push(index);
-				index += entity[0].length;
-				continue;
-			}
-		}
-		if (markup && attributeQuote && char === attributeQuote) {
-			attributeQuote = null;
-			text += char;
-			map.push(index++);
-			continue;
-		}
-		if (markup && !attributeQuote && (char === '"' || char === "'") && previousNonSpace(source, index) === '=') {
-			attributeQuote = char;
-			text += char;
-			map.push(index++);
 			continue;
 		}
 		if (char === '"' || char === "'") {
@@ -324,11 +309,9 @@ function consumeString(text, start) {
 	return index;
 }
 
-function rawValueHits(value, { markup = false } = {}) {
-	const { source, text, map } = cssTokenView(value, { markup });
+function rawValueHits(value) {
+	const { source, text, map } = cssTokenView(value);
 	const hits = [];
-	let attributeQuote = null;
-	let ignoredAttribute = false;
 	const sourceSlice = (start, end) => {
 		if (end <= start || map[start] === undefined) return '';
 		return source.slice(map[start], (map[end - 1] ?? map[start]) + 1);
@@ -338,40 +321,11 @@ function rawValueHits(value, { markup = false } = {}) {
 	let index = 0;
 	while (index < text.length) {
 		const char = text[index];
-		if (markup && attributeQuote) {
-			const entityQuote = source[map[index]] === '&';
-			if (char === attributeQuote && !entityQuote) {
-				attributeQuote = null;
-				ignoredAttribute = false;
-				index++;
-				continue;
-			}
-			if (ignoredAttribute) {
-				index++;
-				continue;
-			}
-			if ((char === '"' || char === "'") && (char !== attributeQuote || entityQuote)) {
-				index = consumeString(text, index);
-				continue;
-			}
-		} else if (markup && (char === '"' || char === "'") && previousNonSpace(text, index) === '=') {
-			attributeQuote = char;
-			const attribute = /([A-Za-z_:][A-Za-z0-9:._-]*)\s*=\s*$/.exec(text.slice(0, index));
-			ignoredAttribute = URL_ATTRIBUTE_KEYS.has(attribute?.[1]?.toLowerCase());
-			index++;
-			continue;
-		} else if (char === '"' || char === "'") {
+		if (char === '"' || char === "'") {
 			index = consumeString(text, index);
 			continue;
 		}
 
-		if (markup && !attributeQuote && !/\s/.test(char) && char !== '>' && previousNonSpace(text, index) === '=') {
-			const attribute = /([A-Za-z_:][A-Za-z0-9:._-]*)\s*=\s*$/.exec(text.slice(0, index));
-			if (URL_ATTRIBUTE_KEYS.has(attribute?.[1]?.toLowerCase())) {
-				while (index < text.length && !/[\s>]/.test(text[index])) index++;
-				continue;
-			}
-		}
 		if (char === '#') {
 			let end = index + 1;
 			let decoded = '';
@@ -427,23 +381,17 @@ function rawValueHits(value, { markup = false } = {}) {
 
 function decodedJsonStrings(json, absoluteStart) {
 	const strings = [];
-	for (let index = 0; index < json.length;) {
-		if (json[index] !== '"') {
-			index++;
-			continue;
-		}
+	let index = 0;
+	const skipSpace = () => {
+		while (/\s/.test(json[index] || '')) index++;
+	};
+	const readString = () => {
 		const start = index++;
 		while (index < json.length) {
-			if (json[index] === '\\') {
-				index += 2;
-				continue;
-			}
-			if (json[index++] === '"') break;
+			if (json[index] === '\\') index += 2;
+			else if (json[index++] === '"') break;
 		}
 		const raw = json.slice(start, index);
-		let after = index;
-		while (/\s/.test(json[after] || '')) after++;
-		if (json[after] === ':') continue;
 		const value = JSON.parse(raw);
 		const map = [];
 		for (let rawIndex = 1; rawIndex < raw.length - 1;) {
@@ -456,59 +404,332 @@ function decodedJsonStrings(json, absoluteStart) {
 			else rawIndex += 2;
 			map.push(absoluteStart + start + escapeStart);
 		}
-		const before = json.slice(0, start);
-		const keyMatch = /("(?:\\.|[^"\\])*")\s*:\s*$/.exec(before);
-		strings.push({ value, map, key: keyMatch ? JSON.parse(keyMatch[1]) : null });
-	}
+		return { value, map };
+	};
+	const parseValue = (inheritedKey = null) => {
+		skipSpace();
+		if (json[index] === '"') {
+			strings.push({ ...readString(), key: inheritedKey });
+			return;
+		}
+		if (json[index] === '{') {
+			index++;
+			skipSpace();
+			while (index < json.length && json[index] !== '}') {
+				const key = readString().value;
+				skipSpace();
+				index++; // colon; full JSON validation has already established it
+				parseValue(key);
+				skipSpace();
+				if (json[index] === ',') {
+					index++;
+					skipSpace();
+				}
+			}
+			index++;
+			return;
+		}
+		if (json[index] === '[') {
+			index++;
+			skipSpace();
+			while (index < json.length && json[index] !== ']') {
+				parseValue(inheritedKey);
+				skipSpace();
+				if (json[index] === ',') {
+					index++;
+					skipSpace();
+				}
+			}
+			index++;
+			return;
+		}
+		while (index < json.length && !/[,}\]]/.test(json[index])) index++;
+	};
+	parseValue();
 	return strings;
 }
 
-// Spaces, not deletion: removing tolerated generated text would join its
-// neighbours into tokens that were never written (`#ff` + `0000`) and make
-// diagnostics harder to match back to the source.
-const withoutTolerated = (source) => {
-	let result = TOLERATED.reduce((acc, re) => acc.replace(re, blankOut), source);
-	// core/cover serializes its numeric minHeight + minHeightUnit attributes as
-	// an inline min-height. Like image width and spacer height, no token-valued
-	// block attribute exists; keep the exemption bounded to that exact tag.
-	result = result.replace(/<[^>]*>/g, (tag) => {
-		const classAttribute = /(?:^|[\s<])class\s*=\s*(["'])([\s\S]*?)\1/i.exec(tag);
-		const classes = classAttribute?.[2]?.split(/\s+/).filter(Boolean) ?? [];
-		if (!classes.includes('wp-block-cover')) return tag;
-		return tag.replace(/min-height:\s*\d+(?:\.\d+)?(?:px|rem|em|vh|vw)\b/gi, blankOut);
-	});
-	return result;
+function neutralizePhpInJson(json) {
+	// Indices throughout the parser are UTF-16 code-unit offsets. split('') keeps
+	// those offsets stable across non-BMP text; a code-point spread would shorten
+	// the array before a later PHP span and neutralize the wrong characters.
+	const characters = json.split('');
+	let quoted = false;
+	for (let index = 0; index < json.length;) {
+		if (json[index] === '\\' && quoted) {
+			index += 2;
+			continue;
+		}
+		if (json[index] === '"') {
+			quoted = !quoted;
+			index++;
+			continue;
+		}
+		if (json[index] !== '<' || json[index + 1] !== '?') {
+			index++;
+			continue;
+		}
+		const close = json.indexOf('?>', index + 2);
+		const end = close === -1 ? json.length : close + 2;
+		characters.fill(' ', index, end);
+		if (!quoted) characters[index] = '0';
+		index = end;
+	}
+	return characters.join('');
+}
+
+const phpEnd = (source, start) => {
+	const close = source.indexOf('?>', start + 2);
+	return close === -1 ? source.length : close + 2;
 };
 
-function quotedStrings(source, absoluteStart) {
-	const strings = [];
+// Parse only the part of HTML needed by this contract: start tags, their exact
+// attributes, and raw-text style bodies. Unlike a `<[^>]*>` expression this
+// keeps `>` inside quotes and PHP spans inside the opening tag, so an attribute
+// cannot impersonate `class=` and a PHP close tag cannot truncate `<style>`.
+function markupContexts(source) {
+	const tags = [];
+	const styles = [];
+	let index = 0;
+	while (index < source.length) {
+		const start = source.indexOf('<', index);
+		if (start === -1) break;
+		if (source.startsWith('<!--', start)) {
+			const close = source.indexOf('-->', start + 4);
+			index = close === -1 ? source.length : close + 3;
+			continue;
+		}
+		if (source.startsWith('<?', start)) {
+			index = phpEnd(source, start);
+			continue;
+		}
+		if (source[start + 1] === '/' || source[start + 1] === '!') {
+			const close = source.indexOf('>', start + 2);
+			index = close === -1 ? source.length : close + 1;
+			continue;
+		}
+		const nameMatch = /^[A-Za-z][A-Za-z0-9:-]*/.exec(source.slice(start + 1));
+		if (!nameMatch) {
+			index = start + 1;
+			continue;
+		}
+		const name = nameMatch[0].toLowerCase();
+		const attributes = [];
+		let cursor = start + 1 + nameMatch[0].length;
+		let end = null;
+		while (cursor < source.length) {
+			while (/\s/.test(source[cursor] || '')) cursor++;
+			if (source.startsWith('/>', cursor)) {
+				end = cursor + 2;
+				break;
+			}
+			if (source[cursor] === '>') {
+				end = cursor + 1;
+				break;
+			}
+			if (source.startsWith('<?', cursor)) {
+				cursor = phpEnd(source, cursor);
+				continue;
+			}
+			const attributeStart = cursor;
+			while (cursor < source.length && !/[\s=/>]/.test(source[cursor])) cursor++;
+			if (cursor === attributeStart) {
+				cursor++;
+				continue;
+			}
+			const attributeName = source.slice(attributeStart, cursor).toLowerCase();
+			while (/\s/.test(source[cursor] || '')) cursor++;
+			let value = null;
+			let valueStart = null;
+			let valueEnd = null;
+			if (source[cursor] === '=') {
+				cursor++;
+				while (/\s/.test(source[cursor] || '')) cursor++;
+				const quote = source[cursor] === '"' || source[cursor] === "'" ? source[cursor++] : null;
+				valueStart = cursor;
+				if (quote) {
+					while (cursor < source.length) {
+						if (source.startsWith('<?', cursor)) {
+							cursor = phpEnd(source, cursor);
+							continue;
+						}
+						if (source[cursor] === quote) break;
+						cursor++;
+					}
+					valueEnd = cursor;
+					if (source[cursor] === quote) cursor++;
+				} else {
+					while (cursor < source.length && !/[\s>]/.test(source[cursor])) {
+						if (source.startsWith('<?', cursor)) cursor = phpEnd(source, cursor);
+						else cursor++;
+					}
+					valueEnd = cursor;
+				}
+				value = source.slice(valueStart, valueEnd);
+			}
+			attributes.push({ name: attributeName, value, valueStart, valueEnd });
+		}
+		if (end === null) break;
+		const tag = { name, start, end, attributes };
+		tags.push(tag);
+		if (name !== 'style') {
+			index = end;
+			continue;
+		}
+		const closePattern = /<\/style\s*>/gi;
+		closePattern.lastIndex = end;
+		const close = closePattern.exec(source);
+		const bodyEnd = close?.index ?? source.length;
+		styles.push({ start: end, end: bodyEnd });
+		index = close ? close.index + close[0].length : source.length;
+	}
+	return { tags, styles };
+}
+
+function phpStringLiterals(source, absoluteStart) {
+	const literals = [];
 	for (let index = 0; index < source.length;) {
 		if (source[index] !== '"' && source[index] !== "'") {
 			index++;
 			continue;
 		}
+		const literalStart = index;
 		const quote = source[index++];
-		const start = index;
-		while (index < source.length) {
+		let text = '';
+		const map = [];
+		while (index < source.length && source[index] !== quote) {
 			if (source[index] === '\\' && index + 1 < source.length) {
+				const escaped = source[index + 1];
+				const decoded = quote === '"' && escaped === 'n' ? '\n'
+					: quote === '"' && escaped === 'r' ? '\r'
+						: quote === '"' && escaped === 't' ? '\t' : escaped;
+				text += decoded;
+				map.push(absoluteStart + index);
 				index += 2;
 				continue;
 			}
-			if (source[index] === quote) break;
-			index++;
+			text += source[index];
+			map.push(absoluteStart + index++);
 		}
-		strings.push({ value: source.slice(start, index), start: absoluteStart + start });
 		if (source[index] === quote) index++;
+		literals.push({ text, map, start: literalStart, end: index });
 	}
-	return strings;
+	return literals;
 }
 
-function phpCssStrings(source, absoluteStart) {
-	const strings = [];
-	for (const php of source.matchAll(/<\?(?:php\b|=)?[\s\S]*?(?:\?>|$)/gi)) {
-		strings.push(...quotedStrings(php[0], absoluteStart + php.index));
+function phpEchoRanges(php) {
+	const opener = /^<\?(?:php\b)?/i.exec(php)?.[0] ?? '<?';
+	const bodyStart = opener.length;
+	const bodyEnd = php.endsWith('?>') ? php.length - 2 : php.length;
+	if (php.startsWith('<?=')) return [[3, bodyEnd]];
+	const ranges = [];
+	let index = bodyStart;
+	while (index < bodyEnd) {
+		if (php[index] === '"' || php[index] === "'") {
+			const quote = php[index++];
+			while (index < bodyEnd && php[index] !== quote) index += php[index] === '\\' ? 2 : 1;
+			index++;
+			continue;
+		}
+		if (php.startsWith('//', index) || php[index] === '#') {
+			const newline = php.indexOf('\n', index + 1);
+			index = newline === -1 ? bodyEnd : newline + 1;
+			continue;
+		}
+		if (php.startsWith('/*', index)) {
+			const close = php.indexOf('*/', index + 2);
+			index = close === -1 ? bodyEnd : close + 2;
+			continue;
+		}
+		const echo = /^echo\b/i.exec(php.slice(index));
+		if (!echo || /[A-Za-z0-9_]/.test(php[index - 1] || '')) {
+			index++;
+			continue;
+		}
+		const start = index + echo[0].length;
+		let end = start;
+		let quote = null;
+		while (end < bodyEnd) {
+			if (quote) {
+				if (php[end] === '\\') end += 2;
+				else if (php[end++] === quote) quote = null;
+				continue;
+			}
+			if (php[end] === '"' || php[end] === "'") quote = php[end++];
+			else if (php[end] === ';') break;
+			else end++;
+		}
+		ranges.push([start, end]);
+		index = end + 1;
 	}
-	return strings;
+	return ranges;
+}
+
+function renderedPhpOutput(php, absoluteStart) {
+	let text = '';
+	const map = [];
+	for (const [start, end] of phpEchoRanges(php)) {
+		const expression = php.slice(start, end);
+		const literals = phpStringLiterals(expression, absoluteStart + start);
+		let previousEnd = 0;
+		for (const literal of literals) {
+			const between = expression.slice(previousEnd, literal.start);
+			if (text && !/^\s*\.\s*$/.test(between)) {
+				text += ' ';
+				map.push(literal.map[0] ?? absoluteStart + start);
+			}
+			text += literal.text;
+			map.push(...literal.map);
+			previousEnd = literal.end;
+		}
+	}
+	return { text, map };
+}
+
+function decodeAttributeQuotes(view) {
+	let text = '';
+	const map = [];
+	for (let index = 0; index < view.text.length;) {
+		if (view.text[index] === '&') {
+			const entity = /^&(?:(quot)|(#0*34)|(#x0*22)|(apos)|(#0*39)|(#x0*27));/i.exec(view.text.slice(index));
+			if (entity) {
+				text += entity[1] || entity[2] || entity[3] ? '"' : "'";
+				map.push(view.map[index]);
+				index += entity[0].length;
+				continue;
+			}
+		}
+		text += view.text[index];
+		map.push(view.map[index++]);
+	}
+	return { text, map };
+}
+
+function renderedCssView(source, absoluteStart, { attribute = false } = {}) {
+	let text = '';
+	const map = [];
+	let index = 0;
+	const appendDirect = (end) => {
+		while (index < end) {
+			text += source[index];
+			map.push(absoluteStart + index++);
+		}
+	};
+	while (index < source.length) {
+		const phpStart = source.indexOf('<?', index);
+		if (phpStart === -1) {
+			appendDirect(source.length);
+			break;
+		}
+		appendDirect(phpStart);
+		const end = phpEnd(source, phpStart);
+		const rendered = renderedPhpOutput(source.slice(phpStart, end), absoluteStart + phpStart);
+		text += rendered.text;
+		map.push(...rendered.map);
+		index = end;
+	}
+	const view = { text, map };
+	return attribute ? decodeAttributeQuotes(view) : view;
 }
 
 export function checkRawValues(files) {
@@ -516,28 +737,36 @@ export function checkRawValues(files) {
 	for (const { file, contents } of files) {
 		const source = String(contents);
 		const maskedRanges = [];
+		const addHits = (view) => {
+			for (const hit of rawValueHits(view.text)) {
+				const absoluteIndex = view.map[hit.index] ?? 0;
+				const line = source.slice(0, absoluteIndex).split('\n').length;
+				problems.push(`${file}:${line}: raw ${hit.label} "${hit.value}" — every value resolves to a theme.json preset`);
+			}
+		};
 		for (const match of source.matchAll(BLOCK_RE)) {
 			const json = match[4];
 			if (!json) continue;
 			const jsonOffset = match[0].indexOf(json);
 			const jsonStart = match.index + jsonOffset;
+			let normalized = json;
 			try {
-				JSON.parse(json);
+				JSON.parse(normalized);
 			} catch {
-				// PHP patterns can emit a typed scalar into otherwise valid block JSON
-				// (for example a navigation ref). The source is not a JSON document until
-				// WordPress renders it, so leave it visible to the conservative markup
-				// scan instead of calling the delimiter malformed or masking its contents.
-				if (/<\?(?:php\b|=)/i.test(json)) continue;
-				const line = source.slice(0, jsonStart).split('\n').length;
-				problems.push(`${file}:${line}: malformed block attributes — raw values cannot be verified`);
-				maskedRanges.push([jsonStart, jsonStart + json.length]);
-				continue;
+				normalized = neutralizePhpInJson(json);
+				try {
+					JSON.parse(normalized);
+				} catch {
+					const line = source.slice(0, jsonStart).split('\n').length;
+					problems.push(`${file}:${line}: malformed block attributes — raw values cannot be verified`);
+					maskedRanges.push([jsonStart, jsonStart + json.length]);
+					continue;
+				}
 			}
 			const name = match[2].includes('/') ? match[2] : `core/${match[2]}`;
-			for (const decoded of decodedJsonStrings(json, jsonStart)) {
+			for (const decoded of decodedJsonStrings(normalized, jsonStart)) {
 				if (name === 'core/image' && decoded.key === 'width' && /^\d+px$/.test(decoded.value)) continue;
-				if (BLOCK_URL_ATTRIBUTE_KEYS.has(decoded.key)) continue;
+				if (BLOCK_URL_ATTRIBUTE_KEYS.has(decoded.key?.toLowerCase())) continue;
 				for (const hit of rawValueHits(decoded.value)) {
 					const absoluteIndex = decoded.map[hit.index] ?? jsonStart;
 					const line = source.slice(0, absoluteIndex).split('\n').length;
@@ -551,43 +780,35 @@ export function checkRawValues(files) {
 		for (const [start, end] of maskedRanges.reverse()) {
 			sourceWithoutBlockJson = sourceWithoutBlockJson.slice(0, start) + blankOut(sourceWithoutBlockJson.slice(start, end)) + sourceWithoutBlockJson.slice(end);
 		}
-		let scannable = withoutTolerated(scannableSource(sourceWithoutBlockJson));
-		const contextHits = [];
-		const addContextHits = (value, absoluteStart) => {
-			for (const hit of rawValueHits(value)) contextHits.push({ ...hit, index: absoluteStart + hit.index });
-			for (const string of phpCssStrings(value, absoluteStart)) {
-				for (const hit of rawValueHits(string.value)) contextHits.push({ ...hit, index: string.start + hit.index });
+		const scannable = scannableSource(sourceWithoutBlockJson);
+		const contexts = markupContexts(scannable);
+		for (const style of contexts.styles) {
+			addHits(renderedCssView(scannable.slice(style.start, style.end), style.start));
+		}
+		for (const tag of contexts.tags) {
+			const attributes = new Map();
+			for (const attribute of tag.attributes) {
+				if (!attributes.has(attribute.name)) attributes.set(attribute.name, attribute);
 			}
-		};
-
-		// CSS has its own string and function rules. Scanning a <style> body as
-		// generic markup made a selector quote after `=` look like an HTML attribute
-		// and allowed `url(` inside that selector string to hide later declarations.
-		const cssRanges = [];
-		for (const style of scannable.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi)) {
-			const body = style[1];
-			const bodyStart = style.index + style[0].indexOf(body);
-			addContextHits(body, bodyStart);
-			cssRanges.push([bodyStart, bodyStart + body.length]);
-		}
-
-		// PHP may assemble an inline declaration inside a style attribute. Scan its
-		// string fragments as CSS as well as scanning the surrounding decoded
-		// attribute normally; otherwise the PHP quote hides the emitted value.
-		for (const style of scannable.matchAll(/(?:^|[\s<])style\s*=\s*(["'])([\s\S]*?)\1/gi)) {
-			const value = style[2];
-			const valueStart = style.index + style[0].indexOf(value);
-			for (const string of phpCssStrings(value, valueStart)) {
-				for (const hit of rawValueHits(string.value)) contextHits.push({ ...hit, index: string.start + hit.index });
+			const classes = attributes.get('class')?.value?.split(/\s+/).filter(Boolean) ?? [];
+			for (const attribute of tag.attributes) {
+				if (attribute.value === null || isMarkupUrlAttribute(attribute.name, tag.name, attributes)) continue;
+				if (attribute.name !== 'style') {
+					addHits({
+						text: attribute.value,
+						map: [...attribute.value].map((_, index) => attribute.valueStart + index),
+					});
+					continue;
+				}
+				let css = attribute.value;
+				if (classes.includes('wp-block-cover')) {
+					css = css.replace(/min-height:\s*\d+(?:\.\d+)?(?:px|rem|em|vh|vw)\b/gi, blankOut);
+				}
+				if (tag.name === 'div' && classes.includes('wp-block-spacer')) {
+					css = css.replace(/height:\s*\d+(?:\.\d+)?px\b/gi, blankOut);
+				}
+				addHits(renderedCssView(css, attribute.valueStart, { attribute: true }));
 			}
-		}
-
-		for (const [start, end] of cssRanges.reverse()) {
-			scannable = scannable.slice(0, start) + blankOut(scannable.slice(start, end)) + scannable.slice(end);
-		}
-		for (const hit of [...contextHits, ...rawValueHits(scannable, { markup: true })].sort((left, right) => left.index - right.index)) {
-			const line = scannable.slice(0, hit.index).split('\n').length;
-			problems.push(`${file}:${line}: raw ${hit.label} "${hit.value}" — every value resolves to a theme.json preset`);
 		}
 	}
 	return problems;
