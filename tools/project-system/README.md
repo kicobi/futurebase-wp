@@ -39,7 +39,7 @@ package.json            # deps: ajv, ajv-formats, js-yaml
 
 ```bash
 cd tools/project-system
-npm install
+npm ci --ignore-scripts
 
 # create an isolated lead workspace under ~/Sites/leads/<slug>/
 node bin/futurebase.mjs lead init "Acme Client" --type redesign

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { INSTALL_COMMAND, isDependencyImportFailure } from '../bin/bootstrap.mjs';
 
 const TOOL_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const FUTUREBASE_CLI = join(TOOL_ROOT, 'bin', 'futurebase.mjs');
@@ -57,3 +58,34 @@ test('legacy --starter-path preserves JSON output while warning on stderr', () =
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+test('dependency import failures map to the deterministic nested install command', () => {
+	assert.equal(INSTALL_COMMAND, 'npm ci --prefix tools/project-system --ignore-scripts');
+	assert.equal(isDependencyImportFailure({ code: 'ERR_MODULE_NOT_FOUND', message: 'missing' }), true);
+	assert.equal(isDependencyImportFailure(new SyntaxError("The requested module 'js-yaml' does not provide an export named 'default'")), true);
+	assert.equal(isDependencyImportFailure(new Error('ordinary command failure')), false);
+});
+
+for (const [name, dispatch] of [
+	['missing', "import 'futurebase-test-package-that-does-not-exist';\n"],
+	['incompatible', "import { definitelyMissingExport } from 'node:fs';\nvoid definitelyMissingExport;\n"],
+]) {
+	test(`CLI catches ${name} dependency imports without a module stack trace`, () => {
+		const dir = mkdtempSync(join(tmpdir(), 'futurebase-bootstrap-'));
+		try {
+			mkdirSync(join(dir, 'bin'), { recursive: true });
+			mkdirSync(join(dir, 'cli'), { recursive: true });
+			writeFileSync(join(dir, 'bin', 'futurebase.mjs'), readFileSync(FUTUREBASE_CLI, 'utf8'));
+			writeFileSync(join(dir, 'bin', 'bootstrap.mjs'), readFileSync(join(TOOL_ROOT, 'bin', 'bootstrap.mjs'), 'utf8'));
+			writeFileSync(join(dir, 'cli', 'dispatch.mjs'), dispatch);
+
+			const result = spawnSync(process.execPath, [join(dir, 'bin', 'futurebase.mjs'), '--version'], { encoding: 'utf8' });
+			assert.equal(result.status, 3, result.stderr || result.stdout);
+			assert.match(result.stderr, /project-system dependencies are missing or incompatible/);
+			assert.match(result.stderr, /npm ci --prefix tools\/project-system --ignore-scripts/);
+			assert.doesNotMatch(result.stderr, /ERR_MODULE_NOT_FOUND|SyntaxError:|at async/);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+}

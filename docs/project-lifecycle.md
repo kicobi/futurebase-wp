@@ -86,6 +86,8 @@ duplicating rename/scaffold logic.
   unless `--confirm` is passed. Agents must not self-authorize.
 - **Composer** — required for every real promotion, including the offline clone
   seam. Its preflight runs before any repository or destination is created.
+- **npm** — required for every real promotion and checked at the same preflight
+  boundary, before any repository or destination is created.
 
 ### Steps
 1. **Validate** the lead workspace. Abort on error — lead untouched.
@@ -101,16 +103,19 @@ duplicating rename/scaffold logic.
    --no-interaction --quiet`, then require `composer validate
    --no-check-publish` to pass. The quiet update emits no untagged-package
    notice; non-quiet validation may emit the harmless notice twice.
-5. **Scaffold `.project/`** and **copy the dossier** per the manifest below.
-6. **Wire agent instructions** — write `.project/agent-context.md`; the repo's
+5. **Install the nested lifecycle CLI** with `npm ci --prefix
+   tools/project-system --ignore-scripts`. This lockfile-based step is named
+   `project-system-deps` in recovery output and reruns safely with `--resume`.
+6. **Scaffold `.project/`** and **copy the dossier** per the manifest below.
+7. **Wire agent instructions** — write `.project/agent-context.md`; the repo's
    reusable root `CLAUDE.md` / `AGENTS.md` (from the template) reference it via a
    managed `<!-- project-system:active -->` section. **Root files are not
    replaced.**
-7. **Stamp** `starter.template_commit` (from the *created repo's* template
+8. **Stamp** `starter.template_commit` (from the *created repo's* template
    provenance, not merely local `futurebase` HEAD) and `promoted_at`; set
    `stage: active`.
-8. **One promotion commit** in the new repo.
-9. **On full success only**, update the lead's structured promotion metadata
+9. **One promotion commit** in the new repo.
+10. **On full success only**, update the lead's structured promotion metadata
    (`status: promoted`, `promoted_to: <remote>`). The lead workspace is **never
    deleted or moved automatically**, and is byte-for-byte unchanged until this
    step.
@@ -127,7 +132,7 @@ Three classes:
   cruft, `.env*`.
 
 ### Partial failure & recovery
-Each step is checkpointed; the lead is unchanged until step 9.
+Each step is checkpointed; the lead is unchanged until step 10.
 - *Remote creation fails* → stop; nothing else runs.
 - *Remote identity/receipt creation fails* → stop; delete the incomplete remote
   before retrying. Without a complete receipt it cannot be adopted safely.
@@ -146,6 +151,9 @@ Each step is checkpointed; the lead is unchanged until step 9.
   discard; lead untouched.
 - *Composer reconciliation fails* → the destination checkpoint remains, the
   lead stays unchanged, and `--resume` reruns update and validation.
+- *Project-system dependency installation fails* → the destination checkpoint
+  remains, the lead stays unchanged, and `--resume` reruns the deterministic
+  `project-system-deps` step.
 - *Dossier copy fails* → partial `.project/` flagged; copy is idempotent, safe to
   re-run, or discard the project dir.
 - *Commit fails* → project on disk, uncommitted; re-run the commit step. Lead

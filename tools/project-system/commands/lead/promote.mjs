@@ -654,6 +654,10 @@ export async function leadPromote(positional, flags) {
 
 	if (!have('git')) die('git is required for promotion', EXIT.MISSING_DEP, { json });
 	if (!usingSeam && !have('gh')) die('gh (GitHub CLI) is required for promotion', EXIT.MISSING_DEP, { json });
+	// npm is needed twice: rename uses the root package and the promoted CLI has
+	// its own deterministic dependency closure. Check it before a remote or
+	// destination can be created so a missing executable cannot strand either.
+	if (!have('npm')) die('npm is required for promotion', EXIT.MISSING_DEP, { json });
 	// Composer reconciliation runs after rename regardless of how the clone was
 	// created. Unlike the gh preflight, this must never be gated by usingSeam.
 	if (!have('composer')) die('composer is required for promotion', EXIT.MISSING_DEP, { json });
@@ -856,6 +860,16 @@ export async function leadPromote(positional, flags) {
 		recover('composer-lock', `composer validate failed:\n${composerValidate.stderr || composerValidate.stdout}`, EXIT.MODULE_FAILURE);
 	}
 
+	// The lifecycle CLI is a nested package by design; root npm installation
+	// does not install it. Make every promoted repository immediately runnable,
+	// using its committed lockfile and no package lifecycle scripts. Re-running
+	// this whole named step on --resume is deterministic.
+	info('Installing project-system dependencies …');
+	const projectSystemDeps = run('npm', ['ci', '--prefix', 'tools/project-system', '--ignore-scripts'], { cwd: dest });
+	if (!projectSystemDeps.ok) {
+		recover('project-system-deps', `npm ci --prefix tools/project-system --ignore-scripts failed:\n${projectSystemDeps.stderr || projectSystemDeps.stdout}`, EXIT.MODULE_FAILURE);
+	}
+
 	// Step 4: scaffold .project/ and copy the dossier per the manifest.
 	//
 	// `.project` is a path we construct, not one we were handed, so refuse it
@@ -998,7 +1012,8 @@ export async function leadPromote(positional, flags) {
 	console.log('');
 	console.log('Next:');
 	console.log(`  1. cd ${dest}`);
-	console.log('  2. npm install && composer install && npm run env:start');
-	console.log(usingSeam ? '  3. add your GitHub remote and push when ready' : '  3. git push   # promotion commit is local until you push');
+	console.log('  2. npm install && npm ci --prefix tools/project-system --ignore-scripts && composer install');
+	console.log('  3. npm run env:start');
+	console.log(usingSeam ? '  4. add your GitHub remote and push when ready' : '  4. git push   # promotion commit is local until you push');
 	process.exit(EXIT.OK);
 }
