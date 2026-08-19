@@ -837,14 +837,14 @@ function markupContexts(source) {
 			if (closingName) {
 				if (elementStack.at(-1)?.childNamespace === 'svg' && ['br', 'p'].includes(closingName)) {
 					while (elementStack.at(-1)?.childNamespace === 'svg') elementStack.pop();
+				} else if (elementStack.at(-1)?.name === closingName) {
+					elementStack.pop();
 				} else {
-					const matching = elementStack.findLastIndex((entry) => entry.name === closingName);
-					const matchingEntry = matching === -1 ? null : elementStack[matching];
-					const crossesOpenHtmlDescendant = matching !== -1
-						&& matching < elementStack.length - 1
-						&& matchingEntry.namespace === 'svg'
-						&& elementStack.at(-1)?.childNamespace === 'html';
-					if (matching !== -1 && !crossesOpenHtmlDescendant) elementStack.splice(matching);
+					// URL-valued SVG attributes are exempt only while well-nested markup
+					// proves the foreign-content namespace. HTML's recovery rules for a
+					// mismatched end tag can cross integration points and nested SVG, so
+					// discard the proof and fail closed for everything that follows.
+					elementStack.length = 0;
 				}
 			}
 			const close = source.indexOf('>', start + 2);
@@ -1399,7 +1399,7 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 			index += 2;
 			continue;
 		}
-		const directive = /^%(?:(\d+)\$)?((?:[-+ 0]|'.)*)(?:(\d+)|(\*)(?:(\d+)\$)?)?(?:\.(?:(\d+)|(\*)(?:(\d+)\$)?))?([bcdeEfFgGouxXhHs])/.exec(formatText.slice(index));
+		const directive = /^%(?:(\d+)\$)?((?:[-+ 0]|'.)*)(?:(\d+)|(\*)(?:(\d+)\$)?)?(?:\.(?:(\d+)|(\*)(?:(\d+)\$)?)?)?([bcdeEfFgGouxXhHs])/.exec(formatText.slice(index));
 		if (!directive) {
 			append(Buffer.from('%'), [format.byteMap[index]], absoluteFallback);
 			index++;
@@ -1485,11 +1485,20 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 			renderedByteMap = [value?.byteMap[0] ?? format.byteMap[index] ?? absoluteFallback];
 			renderedExact = false;
 		} else if (specifier === 's' && precision !== null && precision >= 0) {
-			renderedBytes = renderedBytes.subarray(0, precision);
-			renderedByteMap = renderedByteMap.slice(0, precision);
+			if (!renderedExact && precision > 0) {
+				// The unknown string may begin with a digit. Keep that possible
+				// boundary visible beside a CSS unit after precision truncation.
+				renderedBytes = Buffer.from('0');
+				renderedByteMap = [value?.byteMap[0] ?? format.byteMap[index] ?? absoluteFallback];
+			} else {
+				renderedBytes = renderedBytes.subarray(0, precision);
+				renderedByteMap = renderedByteMap.slice(0, precision);
+				if (precision === 0) renderedExact = true;
+			}
 		} else if (['b', 'o', 'x'].includes(specifier) && precision !== null) {
 			renderedBytes = Buffer.alloc(0);
 			renderedByteMap = [];
+			renderedExact = true;
 		}
 		const leftAligned = width !== null && (width < 0 || ordinaryFlags.includes('-'));
 		const widthCanBeModeled = specifier !== 'c' && !(leftAligned && !renderedExact);

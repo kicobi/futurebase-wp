@@ -520,6 +520,9 @@ test('mismatched foreign-content end tags cannot escape an HTML integration poin
 		'<svg><foreignObject><div></foreignObject><script href="2rem#fff"></script>',
 		'<svg><g></p><script href="2rem#fff"></script>',
 		'<svg><g></br><script href="2rem#fff"></script>',
+		'<svg><foreignObject></svg></foreignObject><script href="2rem#fff"></script>',
+		'<svg><desc></svg></desc><script href="2rem#fff"></script>',
+		'<svg><foreignObject><div><svg><g></foreignObject></div><script href="2rem#fff"></script>',
 	]) {
 		const problems = raw(markup);
 		assert.ok(problems.some((problem) => problem.includes('2rem')), markup);
@@ -859,6 +862,29 @@ test('printf precision and width behavior remains conversion-specific', () => {
 	assert.deepEqual(raw('<style><?php printf("%.0brem", 2); ?></style>'), []);
 	assert.ok(raw('<style><?php printf("%-03.0brem", 2); ?></style>').some((problem) => problem.includes('000rem')));
 	assert.ok(raw('<style><?php printf("%-5crem", 50); ?></style>').some((problem) => problem.includes('2rem')));
+});
+
+test('known printf precision preserves raw-value boundaries for dynamic strings', () => {
+	assert.ok(
+		raw('<style><?php $value = "2x"; printf("%.1srem", $value); ?></style>')
+			.some((problem) => problem.includes('rem')),
+	);
+});
+
+test('deterministic integer precision preserves padding for dynamic values', () => {
+	for (const format of ['%-05.1brem', '%-05.1orem', '%-05.1xrem', "%'05.1Xrem"]) {
+		const markup = `<style><?php $value = 2; printf("${format}", $value); ?></style>`;
+		assert.ok(raw(markup).some((problem) => problem.includes('00000rem')), markup);
+	}
+});
+
+test('printf accepts PHP bare-dot precision directives', () => {
+	for (const markup of [
+		'<style><?php printf("%.drem", 2); ?></style>',
+		'<style><?php printf("%.brem", 2); ?></style>',
+	]) {
+		assert.ok(raw(markup).some((problem) => problem.includes('rem')), markup);
+	}
 });
 
 test('printf custom padding is distinct from alignment flags', () => {
