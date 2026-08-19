@@ -232,7 +232,19 @@ const COLOR_FUNCTIONS = new Set([
 	'rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch',
 	'color', 'color-mix', 'device-cmyk', 'light-dark', 'contrast-color',
 ]);
-const URL_ATTRIBUTE_KEYS = new Set(['action', 'cite', 'data', 'formaction', 'href', 'manifest', 'ping', 'poster', 'src', 'srcset', 'url']);
+// URL-valued HTML/SVG attributes are content, not CSS. Keep the classification
+// on exact attribute names: checking arbitrary quoted strings made asset names
+// such as `/2rem-#fff.svg` look like design tokens, while substring checks would
+// exempt unrelated attributes such as `data-href`.
+const URL_ATTRIBUTE_KEYS = new Set([
+	'action', 'archive', 'background', 'cite', 'classid', 'codebase', 'data',
+	'formaction', 'href', 'imagesrcset', 'itemid', 'itemtype', 'longdesc',
+	'manifest', 'ping', 'poster', 'profile', 'src', 'srcset', 'usemap', 'url',
+	'xlink:href', 'xmlns', 'xmlns:xlink',
+]);
+const BLOCK_URL_ATTRIBUTE_KEYS = new Set([
+	'href', 'imagesrcset', 'poster', 'src', 'srcset', 'url', 'usemap', 'xlink:href',
+]);
 
 const previousNonSpace = (text, index) => {
 	let cursor = index - 1;
@@ -353,11 +365,29 @@ function rawValueHits(value, { markup = false } = {}) {
 			continue;
 		}
 
+		if (markup && !attributeQuote && !/\s/.test(char) && char !== '>' && previousNonSpace(text, index) === '=') {
+			const attribute = /([A-Za-z_:][A-Za-z0-9:._-]*)\s*=\s*$/.exec(text.slice(0, index));
+			if (URL_ATTRIBUTE_KEYS.has(attribute?.[1]?.toLowerCase())) {
+				while (index < text.length && !/[\s>]/.test(text[index])) index++;
+				continue;
+			}
+		}
 		if (char === '#') {
-			const color = /^#[0-9a-f]{3,8}\b/i.exec(text.slice(index));
-			if (color) {
-				add('hex color', index, index + color[0].length);
-				index += color[0].length;
+			let end = index + 1;
+			let decoded = '';
+			while (end < text.length) {
+				if (isNameChar(text[end])) {
+					decoded += text[end++];
+					continue;
+				}
+				if (!isValidEscape(text, end)) break;
+				const escape = consumeEscape(text, end);
+				decoded += escape.value;
+				end = escape.end;
+			}
+			if (/^(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(decoded)) {
+				add('hex color', index, end);
+				index = end;
 				continue;
 			}
 		}
@@ -442,11 +472,44 @@ const withoutTolerated = (source) => {
 	// an inline min-height. Like image width and spacer height, no token-valued
 	// block attribute exists; keep the exemption bounded to that exact tag.
 	result = result.replace(/<[^>]*>/g, (tag) => {
-		if (!/\bclass\s*=\s*["'][^"']*\bwp-block-cover\b/i.test(tag)) return tag;
+		const classAttribute = /(?:^|[\s<])class\s*=\s*(["'])([\s\S]*?)\1/i.exec(tag);
+		const classes = classAttribute?.[2]?.split(/\s+/).filter(Boolean) ?? [];
+		if (!classes.includes('wp-block-cover')) return tag;
 		return tag.replace(/min-height:\s*\d+(?:\.\d+)?(?:px|rem|em|vh|vw)\b/gi, blankOut);
 	});
 	return result;
 };
+
+function quotedStrings(source, absoluteStart) {
+	const strings = [];
+	for (let index = 0; index < source.length;) {
+		if (source[index] !== '"' && source[index] !== "'") {
+			index++;
+			continue;
+		}
+		const quote = source[index++];
+		const start = index;
+		while (index < source.length) {
+			if (source[index] === '\\' && index + 1 < source.length) {
+				index += 2;
+				continue;
+			}
+			if (source[index] === quote) break;
+			index++;
+		}
+		strings.push({ value: source.slice(start, index), start: absoluteStart + start });
+		if (source[index] === quote) index++;
+	}
+	return strings;
+}
+
+function phpCssStrings(source, absoluteStart) {
+	const strings = [];
+	for (const php of source.matchAll(/<\?(?:php\b|=)?[\s\S]*?(?:\?>|$)/gi)) {
+		strings.push(...quotedStrings(php[0], absoluteStart + php.index));
+	}
+	return strings;
+}
 
 export function checkRawValues(files) {
 	const problems = [];
@@ -456,18 +519,25 @@ export function checkRawValues(files) {
 		for (const match of source.matchAll(BLOCK_RE)) {
 			const json = match[4];
 			if (!json) continue;
-			let attrs;
+			const jsonOffset = match[0].indexOf(json);
+			const jsonStart = match.index + jsonOffset;
 			try {
-				attrs = JSON.parse(json);
+				JSON.parse(json);
 			} catch {
+				// PHP patterns can emit a typed scalar into otherwise valid block JSON
+				// (for example a navigation ref). The source is not a JSON document until
+				// WordPress renders it, so leave it visible to the conservative markup
+				// scan instead of calling the delimiter malformed or masking its contents.
+				if (/<\?(?:php\b|=)/i.test(json)) continue;
+				const line = source.slice(0, jsonStart).split('\n').length;
+				problems.push(`${file}:${line}: malformed block attributes — raw values cannot be verified`);
+				maskedRanges.push([jsonStart, jsonStart + json.length]);
 				continue;
 			}
 			const name = match[2].includes('/') ? match[2] : `core/${match[2]}`;
-			const jsonOffset = match[0].indexOf(json);
-			const jsonStart = match.index + jsonOffset;
 			for (const decoded of decodedJsonStrings(json, jsonStart)) {
 				if (name === 'core/image' && decoded.key === 'width' && /^\d+px$/.test(decoded.value)) continue;
-				if (URL_ATTRIBUTE_KEYS.has(decoded.key)) continue;
+				if (BLOCK_URL_ATTRIBUTE_KEYS.has(decoded.key)) continue;
 				for (const hit of rawValueHits(decoded.value)) {
 					const absoluteIndex = decoded.map[hit.index] ?? jsonStart;
 					const line = source.slice(0, absoluteIndex).split('\n').length;
@@ -481,8 +551,41 @@ export function checkRawValues(files) {
 		for (const [start, end] of maskedRanges.reverse()) {
 			sourceWithoutBlockJson = sourceWithoutBlockJson.slice(0, start) + blankOut(sourceWithoutBlockJson.slice(start, end)) + sourceWithoutBlockJson.slice(end);
 		}
-		const scannable = withoutTolerated(scannableSource(sourceWithoutBlockJson));
-		for (const hit of rawValueHits(scannable, { markup: true })) {
+		let scannable = withoutTolerated(scannableSource(sourceWithoutBlockJson));
+		const contextHits = [];
+		const addContextHits = (value, absoluteStart) => {
+			for (const hit of rawValueHits(value)) contextHits.push({ ...hit, index: absoluteStart + hit.index });
+			for (const string of phpCssStrings(value, absoluteStart)) {
+				for (const hit of rawValueHits(string.value)) contextHits.push({ ...hit, index: string.start + hit.index });
+			}
+		};
+
+		// CSS has its own string and function rules. Scanning a <style> body as
+		// generic markup made a selector quote after `=` look like an HTML attribute
+		// and allowed `url(` inside that selector string to hide later declarations.
+		const cssRanges = [];
+		for (const style of scannable.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi)) {
+			const body = style[1];
+			const bodyStart = style.index + style[0].indexOf(body);
+			addContextHits(body, bodyStart);
+			cssRanges.push([bodyStart, bodyStart + body.length]);
+		}
+
+		// PHP may assemble an inline declaration inside a style attribute. Scan its
+		// string fragments as CSS as well as scanning the surrounding decoded
+		// attribute normally; otherwise the PHP quote hides the emitted value.
+		for (const style of scannable.matchAll(/(?:^|[\s<])style\s*=\s*(["'])([\s\S]*?)\1/gi)) {
+			const value = style[2];
+			const valueStart = style.index + style[0].indexOf(value);
+			for (const string of phpCssStrings(value, valueStart)) {
+				for (const hit of rawValueHits(string.value)) contextHits.push({ ...hit, index: string.start + hit.index });
+			}
+		}
+
+		for (const [start, end] of cssRanges.reverse()) {
+			scannable = scannable.slice(0, start) + blankOut(scannable.slice(start, end)) + scannable.slice(end);
+		}
+		for (const hit of [...contextHits, ...rawValueHits(scannable, { markup: true })].sort((left, right) => left.index - right.index)) {
 			const line = scannable.slice(0, hit.index).split('\n').length;
 			problems.push(`${file}:${line}: raw ${hit.label} "${hit.value}" — every value resolves to a theme.json preset`);
 		}

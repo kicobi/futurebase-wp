@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
-import { parseBlocks, collect, collectPatternSlugs, checkRawValues, checkTemplateWiring, checkPageComposition, checkFluidTypography, checkCustomTemplates, checkThemePaths } from './verify-contract.mjs';
+import { parseBlocks, collect, collectPatternSlugs, checkRawValues, checkThemeStyleValues, checkTemplateWiring, checkPageComposition, checkFluidTypography, checkCustomTemplates, checkThemePaths } from './verify-contract.mjs';
 
 // A slug this theme is not. These fixtures test the SHAPE the contract
 // requires, not this particular theme, and using the real slug made them look
@@ -386,6 +386,64 @@ test('HTML and block URL attributes are not mistaken for CSS values', () => {
 	const image = `<!-- wp:image ${JSON.stringify({ url: '/assets/2rem-#fff.svg', alt: '' })} /-->`;
 	assert.equal(parseBlocks(image).blocks[0].malformed, undefined);
 	assert.deepEqual(raw(image), []);
+});
+
+test('style elements and PHP-produced inline CSS are scanned in CSS context', () => {
+	assert.ok(
+		raw('<style>[data-label="url("]{padding:2rem}</style>').some((problem) => problem.includes('2rem')),
+		'a valid selector string must not make url( consume the following declaration',
+	);
+	assert.ok(
+		raw('<div style="<?php echo \'padding:2rem\'; ?>"></div>').some((problem) => problem.includes('2rem')),
+		'CSS emitted by a PHP string inside a style attribute remains contract-visible',
+	);
+});
+
+test('malformed block attributes fail closed instead of masking their raw values', () => {
+	const markup = '<!-- wp:group {"style":{"spacing":{"padding":"2rem",}}} /-->';
+	assert.equal(parseBlocks(markup).blocks[0].malformed, true, 'the fixture must reach the malformed-JSON path');
+	assert.ok(
+		raw(markup).some((problem) => problem.includes('malformed block attributes')),
+		'an unparseable delimiter cannot be omitted from the contract result',
+	);
+	const dynamic = '<!-- wp:navigation {"ref":<?php echo (int) $nav->ID; ?>,"overlayMenu":"never"} /-->';
+	assert.ok(
+		raw(dynamic).every((problem) => !problem.includes('malformed block attributes')),
+		'a PHP pattern may render a typed attribute into otherwise valid block JSON',
+	);
+});
+
+test('the cover min-height exemption requires the exact class token', () => {
+	assert.deepEqual(raw('<div class="wp-block-cover" style="min-height:50vh"></div>'), []);
+	for (const markup of [
+		'<div class="wp-block-cover-extra" style="min-height:2rem"></div>',
+		'<div class="not-wp-block-cover" style="min-height:2rem"></div>',
+		'<div data-class="wp-block-cover" style="min-height:2rem"></div>',
+	]) {
+		assert.ok(raw(markup).some((problem) => problem.includes('2rem')), markup);
+	}
+});
+
+test('escaped CSS hash-token colors are rejected in markup, block CSS, and theme styles', () => {
+	const escaped = String.raw`#\66 ff`;
+	assert.ok(raw(`<style>.x{color:${escaped}}</style>`).some((problem) => problem.includes('hex color')));
+	const block = `<!-- wp:group ${JSON.stringify({ style: { css: `.x{color:${escaped}}` } })} /-->`;
+	assert.ok(raw(block).some((problem) => problem.includes('hex color')));
+	assert.ok(checkThemeStyleValues({ styles: { color: { text: escaped } } }).some((problem) => problem.includes('hex color')));
+});
+
+test('standard HTML and SVG URL attributes remain outside CSS-value checks', () => {
+	for (const markup of [
+		'<img src="diagram.png" usemap="#fff"><map name="fff"></map>',
+		'<svg><use xlink:href="/sprite.svg#fff"></use></svg>',
+		'<link rel="preload" imagesrcset="/assets/2rem.png 1x">',
+		'<img src=/assets/2rem-#fff.svg>',
+		'<a href=#fff>Map target</a>',
+		'<img src=2rem.png>',
+	]) {
+		assert.deepEqual(raw(markup), [], markup);
+	}
+	assert.ok(raw('<div data-href="#fff"></div>').some((problem) => problem.includes('hex color')), 'URL classification must use an exact attribute name');
 });
 
 test('a file-header comment is not scanned', () => {
