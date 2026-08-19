@@ -8,6 +8,7 @@ import { EXIT, die, ok, info, emitJson } from '../../lib/output.mjs';
 import { findProjectRoot, projectPaths } from '../../lib/baseline.mjs';
 import { readYaml, writeYaml } from '../../lib/yaml.mjs';
 import { validateBaselineConfig } from '../../lib/validate.mjs';
+import { normalizeCaptureConfig } from '../../lib/targets.mjs';
 
 const DEFAULT_PAGES = {
 	redesign: [
@@ -51,7 +52,7 @@ export function baselineInit(_positional, flags) {
 	if (existsSync(paths.configPath) && !flags.force) die(`baseline config already exists: ${paths.configPath} (use --force to overwrite)`, EXIT.ACCESS_FAILURE, { json });
 
 	const pages = parsePages(flags);
-	const config = {
+	let config = {
 		schema_version: 1,
 		kind: 'baseline-config',
 		mode: type,
@@ -60,6 +61,11 @@ export function baselineInit(_positional, flags) {
 		modules: type === 'new' ? ['manual'] : ['crawl', 'screenshots', 'lighthouse', 'axe', 'manual'],
 		viewports: DEFAULT_VIEWPORTS,
 	};
+	try {
+		config = normalizeCaptureConfig(config);
+	} catch (error) {
+		die(error.message, EXIT.INVALID_CONFIG, { json });
+	}
 	// mark first page critical if none is
 	if (config.pages.length && !config.pages.some((p) => p.critical)) config.pages[0].critical = true;
 

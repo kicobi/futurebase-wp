@@ -4,6 +4,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { sanitizeCaptureConfig } from './targets.mjs';
 
 const esc = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
 const kb = (bytes) => (bytes == null ? '—' : `${(bytes / 1024).toFixed(0)} KB`);
@@ -48,6 +49,7 @@ const EVIDENCE = [
 ];
 
 export function generateReport({ runDir, reportsDir, summary, results, config, projectName, kind = 'baseline', runId }) {
+	config = sanitizeCaptureConfig(config);
 	const head = headlines(runDir, results);
 	if (!runId) throw new Error('generateReport requires a validated runId');
 	const evidence = EVIDENCE.filter(([p]) => existsSync(join(runDir, p)));

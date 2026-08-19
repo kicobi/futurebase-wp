@@ -25,7 +25,11 @@ export function finalReport(_positional, flags) {
 	} catch (err) {
 		die(`cannot report final run ${runId}: ${err.message}`, EXIT.INVALID_CONFIG, { json });
 	}
-	const config = existsSync(paths.configPath) ? loadConfig(paths.configPath) : { mode: summary.project_type, base_url: null };
+	const config = summary.target
+		? { mode: summary.project_type, base_url: summary.target.base_url, pages: summary.target.pages, viewports: summary.target.viewports, modules: summary.target.modules }
+		: existsSync(paths.configPath)
+			? loadConfig(paths.configPath)
+			: { mode: summary.project_type, base_url: null };
 	let projectName = root.split('/').pop();
 	try {
 		projectName = readYaml(join(paths.projectDir, 'project.yml'))?.project?.name || projectName;
