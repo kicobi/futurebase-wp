@@ -646,26 +646,57 @@ function phpEnd(source, start) {
 // keeps `>` inside quotes and PHP spans inside the opening tag, so an attribute
 // cannot impersonate `class=` and a PHP close tag cannot truncate `<style>`.
 function tokenizeStartTag(source) {
-	const names = [];
-	let cursor = /^<\s*[A-Za-z][A-Za-z0-9:-]*/.exec(source)?.[0].length ?? source.length;
+	const opener = /^<\s*([A-Za-z][A-Za-z0-9:-]*)/.exec(source);
+	if (!opener) return { attributes: [], names: [], endIndex: source.length, selfClosing: false, complete: false };
+	const attributes = [];
+	let cursor = opener[0].length;
 	let state = 'before-name';
 	let quote = null;
-	let currentName = '';
-	let selfClosing = false;
-	const commitName = () => {
-		if (currentName) names.push(currentName.toLowerCase());
-		currentName = '';
+	let current = null;
+	const beginAttribute = () => {
+		current = { name: '', value: null, valueStart: null, valueEnd: null };
+		state = 'name';
+	};
+	const commitAttribute = () => {
+		if (!current) return;
+		attributes.push({ ...current, name: current.name.toLowerCase() });
+		current = null;
+	};
+	const result = (endIndex, selfClosing, complete = true) => {
+		commitAttribute();
+		return {
+			attributes,
+			names: attributes.map((attribute) => attribute.name),
+			endIndex,
+			selfClosing,
+			complete,
+		};
 	};
 	while (cursor < source.length) {
 		const char = source[cursor];
 		if (state === 'quoted-value') {
-			if (char === quote) state = 'after-quoted-value';
+			if (char === quote) {
+				current.valueEnd = cursor;
+				current.value = source.slice(current.valueStart, current.valueEnd);
+				state = 'after-quoted-value';
+			}
 			cursor++;
 			continue;
 		}
 		if (state === 'unquoted-value') {
-			if (/[\t\n\f\r ]/.test(char)) state = 'before-name';
-			else if (char === '>') return { names, endIndex: cursor, selfClosing, complete: true };
+			if (/[\t\n\f\r ]/.test(char)) {
+				current.valueEnd = cursor;
+				current.value = source.slice(current.valueStart, current.valueEnd);
+				commitAttribute();
+				state = 'before-name';
+				cursor++;
+				continue;
+			}
+			if (char === '>') {
+				current.valueEnd = cursor;
+				current.value = source.slice(current.valueStart, current.valueEnd);
+				return result(cursor, false);
+			}
 			cursor++;
 			continue;
 		}
@@ -676,38 +707,42 @@ function tokenizeStartTag(source) {
 			}
 			if (char === '"' || char === "'") {
 				quote = char;
+				current.valueStart = cursor + 1;
 				state = 'quoted-value';
 				cursor++;
 				continue;
 			}
-			if (char === '>') return { names, endIndex: cursor, selfClosing, complete: true };
+			if (char === '>') {
+				current.valueStart = cursor;
+				current.valueEnd = cursor;
+				current.value = '';
+				return result(cursor, false);
+			}
+			current.valueStart = cursor;
 			state = 'unquoted-value';
 			continue;
 		}
 		if (state === 'name') {
 			if (/[\t\n\f\r ]/.test(char)) {
-				commitName();
 				state = 'after-name';
 				cursor++;
 				continue;
 			}
 			if (char === '/') {
-				commitName();
+				commitAttribute();
 				state = 'self-closing';
 				cursor++;
 				continue;
 			}
 			if (char === '=') {
-				commitName();
 				state = 'before-value';
 				cursor++;
 				continue;
 			}
 			if (char === '>') {
-				commitName();
-				return { names, endIndex: cursor, selfClosing, complete: true };
+				return result(cursor, false);
 			}
-			currentName += char;
+			current.name += char === '\0' ? '\ufffd' : char;
 			cursor++;
 			continue;
 		}
@@ -717,6 +752,7 @@ function tokenizeStartTag(source) {
 				continue;
 			}
 			if (char === '/') {
+				commitAttribute();
 				state = 'self-closing';
 				cursor++;
 				continue;
@@ -726,28 +762,31 @@ function tokenizeStartTag(source) {
 				cursor++;
 				continue;
 			}
-			if (char === '>') return { names, endIndex: cursor, selfClosing, complete: true };
-			state = 'name';
+			if (char === '>') return result(cursor, false);
+			commitAttribute();
+			state = 'before-name';
 			continue;
 		}
 		if (state === 'after-quoted-value') {
 			if (/[\t\n\f\r ]/.test(char)) {
+				commitAttribute();
 				state = 'before-name';
 				cursor++;
 				continue;
 			}
 			if (char === '/') {
+				commitAttribute();
 				state = 'self-closing';
 				cursor++;
 				continue;
 			}
-			if (char === '>') return { names, endIndex: cursor, selfClosing, complete: true };
+			if (char === '>') return result(cursor, false);
+			commitAttribute();
 			state = 'before-name';
 			continue;
 		}
 		if (state === 'self-closing') {
-			if (char === '>') return { names, endIndex: cursor, selfClosing: true, complete: true };
-			selfClosing = false;
+			if (char === '>') return result(cursor, true);
 			state = 'before-name';
 			continue;
 		}
@@ -760,25 +799,19 @@ function tokenizeStartTag(source) {
 			cursor++;
 			continue;
 		}
-		if (char === '>') return { names, endIndex: cursor, selfClosing, complete: true };
-		state = 'name';
+		if (char === '>') return result(cursor, false);
+		beginAttribute();
+		if (char === '=') {
+			current.name = '=';
+			cursor++;
+		}
 		continue;
 	}
-	commitName();
-	return { names, endIndex: source.length, selfClosing: false, complete: false };
-}
-
-const startTagAttributeNames = (source) => tokenizeStartTag(source).names;
-
-function renderedStartTag(source, start) {
-	const view = renderedCssView(source.slice(start), start);
-	const token = tokenizeStartTag(view.text);
-	if (!token.complete) return { text: view.text, sourceEnd: source.length, complete: false };
-	return {
-		text: view.text.slice(0, token.endIndex + 1),
-		sourceEnd: view.resumeMap[token.endIndex] ?? source.length,
-		complete: true,
-	};
+	if (current?.valueStart !== null && current.valueEnd === null) {
+		current.valueEnd = source.length;
+		current.value = source.slice(current.valueStart);
+	}
+	return result(source.length, false, false);
 }
 
 function markupContexts(source) {
@@ -820,76 +853,18 @@ function markupContexts(source) {
 			continue;
 		}
 		const name = nameMatch[0].toLowerCase();
-		const reconstructedStartTag = name === 'font' ? renderedStartTag(source, start) : null;
-		const parseLimit = reconstructedStartTag?.sourceEnd ?? source.length;
-		const attributes = [];
-		let cursor = start + 1 + nameMatch[0].length;
-		let end = null;
-		let selfClosing = false;
-		while (cursor < parseLimit) {
-			while (cursor < parseLimit && /\s/.test(source[cursor] || '')) cursor++;
-			if (source.startsWith('/>', cursor)) {
-				end = cursor + 2;
-				selfClosing = true;
-				break;
-			}
-			if (source[cursor] === '>') {
-				end = cursor + 1;
-				break;
-			}
-			if (source.startsWith('<?', cursor)) {
-				cursor = phpEnd(source, cursor);
-				continue;
-			}
-			const attributeStart = cursor;
-			while (cursor < parseLimit && !/[\s=/>]/.test(source[cursor])) cursor++;
-			if (cursor === attributeStart) {
-				cursor++;
-				continue;
-			}
-			const attributeName = source.slice(attributeStart, cursor).toLowerCase();
-			while (cursor < parseLimit && /\s/.test(source[cursor] || '')) cursor++;
-			let value = null;
-			let valueStart = null;
-			let valueEnd = null;
-			if (source[cursor] === '=') {
-				cursor++;
-				while (cursor < parseLimit && /\s/.test(source[cursor] || '')) cursor++;
-				const quote = source[cursor] === '"' || source[cursor] === "'" ? source[cursor++] : null;
-				valueStart = cursor;
-				if (quote) {
-					while (cursor < parseLimit) {
-						if (source.startsWith('<?', cursor)) {
-							cursor = phpEnd(source, cursor);
-							continue;
-						}
-						if (source[cursor] === quote) break;
-						cursor++;
-					}
-					valueEnd = cursor;
-					if (source[cursor] === quote) cursor++;
-				} else {
-					while (cursor < parseLimit && !/[\s>]/.test(source[cursor])) {
-						if (source.startsWith('<?', cursor)) cursor = phpEnd(source, cursor);
-						else cursor++;
-					}
-					valueEnd = cursor;
-				}
-				value = source.slice(valueStart, valueEnd);
-			}
-			attributes.push({ name: attributeName, value, valueStart, valueEnd });
-		}
-		if (reconstructedStartTag) {
-			end = reconstructedStartTag.sourceEnd;
-			selfClosing = /\/\s*>$/.test(reconstructedStartTag.text);
-		}
-		if (end === null) break;
+		const token = tokenizeStartTag(source.slice(start));
+		if (!token.complete) break;
+		const end = start + token.endIndex + 1;
+		const selfClosing = token.selfClosing;
+		const attributes = token.attributes.map((attribute) => ({
+			...attribute,
+			valueStart: attribute.valueStart === null ? null : start + attribute.valueStart,
+			valueEnd: attribute.valueEnd === null ? null : start + attribute.valueEnd,
+		}));
 		let parentNamespace = elementStack.at(-1)?.childNamespace ?? 'html';
-		const renderedAttributeNames = reconstructedStartTag
-			? startTagAttributeNames(reconstructedStartTag.text)
-			: [];
 		const fontBreakout = name === 'font'
-			&& renderedAttributeNames.some((attributeName) => ['color', 'face', 'size'].includes(attributeName));
+			&& token.names.some((attributeName) => ['color', 'face', 'size'].includes(attributeName));
 		if (parentNamespace === 'svg' && (HTML_FOREIGN_BREAKOUT_TAGS.has(name) || fontBreakout)) {
 			while (elementStack.at(-1)?.childNamespace === 'svg') elementStack.pop();
 			parentNamespace = elementStack.at(-1)?.childNamespace ?? 'html';
@@ -899,7 +874,8 @@ function markupContexts(source) {
 		const tag = { name, namespace, start, end, attributes };
 		tags.push(tag);
 		if (name !== 'style') {
-			if (!selfClosing && !(namespace === 'html' && voidHtmlElements.has(name))) {
+			const selfClosingApplies = selfClosing && namespace !== 'html';
+			if (!selfClosingApplies && !(namespace === 'html' && voidHtmlElements.has(name))) {
 				elementStack.push({ name, childNamespace });
 			}
 			index = end;
@@ -1119,35 +1095,43 @@ function phpNumberToken(source, start, absoluteStart) {
 		for (const digit of digits.toLowerCase()) {
 			integer = integer * BigInt(radix) + BigInt('0123456789abcdef'.indexOf(digit));
 		}
-		const text = integer.toString();
+		const numericText = integer.toString();
+		const numericKind = integer <= 0x7fffffffffffffffn ? 'int-literal' : 'float-literal';
+		const text = numericKind === 'float-literal' ? '0.0' : numericText;
 		const map = Array.from({ length: text.length }, () => absoluteStart + start);
 		const encoded = encodedPhpText(text, map, absoluteStart + start);
 		return {
 			type: 'static',
 			text,
+			numericText,
+			displayExact: numericKind !== 'float-literal',
 			map,
 			...encoded,
-			numericKind: 'int-literal',
+			numericKind,
 			start,
 			end: start + based[0].length,
 		};
 	}
 	const decimal = /^(?:\d[\d_]*(?:\.[\d_]*)?|\.\d[\d_]*)(?:[eE][+-]?[\d_]+)?/.exec(input);
 	if (!decimal) return null;
-	const text = decimal[0].replaceAll('_', '');
-	const map = [];
-	for (let offset = 0; offset < decimal[0].length; offset++) {
-		if (decimal[0][offset] !== '_') map.push(absoluteStart + start + offset);
-	}
+	const numericText = decimal[0].replaceAll('_', '');
 	let numericKind = 'float-literal';
-	if (/^\d+$/.test(text)) {
+	let oversizedInteger = false;
+	if (/^\d+$/.test(numericText)) {
 		try {
-			numericKind = BigInt(text) <= 0x7fffffffffffffffn ? 'int-literal' : 'float-literal';
+			oversizedInteger = BigInt(numericText) > 0x7fffffffffffffffn;
+			numericKind = oversizedInteger ? 'float-literal' : 'int-literal';
 		} catch {
 			numericKind = 'float-literal';
 		}
 	}
-	return { type: 'static', text, map, ...encodedPhpText(text, map, absoluteStart + start), numericKind, start, end: start + decimal[0].length };
+	const text = oversizedInteger ? '0.0' : numericText;
+	const map = [];
+	for (let offset = 0; offset < decimal[0].length; offset++) {
+		if (decimal[0][offset] !== '_' && !oversizedInteger) map.push(absoluteStart + start + offset);
+	}
+	if (oversizedInteger) map.push(...Array.from({ length: text.length }, () => absoluteStart + start));
+	return { type: 'static', text, numericText, displayExact: !oversizedInteger, map, ...encodedPhpText(text, map, absoluteStart + start), numericKind, start, end: start + decimal[0].length };
 }
 
 function phpTokens(source, absoluteStart) {
@@ -1290,7 +1274,8 @@ function renderedStaticPhpExpression(tokens, absoluteFallback) {
 		if (token.type === 'punctuation' && ['+', '-'].includes(token.value)
 			&& collapsed.tokens[index + 1]?.type === 'static'
 			&& (!normalized.length || (normalized.at(-1).type === 'punctuation' && ['.', '('].includes(normalized.at(-1).value)))) {
-			normalized.push({ type: 'static', text: token.value, map: [absoluteFallback], bytes: Buffer.from(token.value), byteMap: [absoluteFallback], unarySign: true, start: token.start, end: token.end });
+			const signSource = absoluteFallback + (token.start ?? 0);
+			normalized.push({ type: 'static', text: token.value, map: [signSource], bytes: Buffer.from(token.value), byteMap: [signSource], unarySign: true, start: token.start, end: token.end });
 			continue;
 		}
 		known = false;
@@ -1298,14 +1283,23 @@ function renderedStaticPhpExpression(tokens, absoluteFallback) {
 	const value = renderedEchoValue(normalized, absoluteFallback);
 	const literalTokens = normalized.filter((token) => token.type === 'string' || token.type === 'static');
 	let origin = 'computed';
+	let coercionText = value.text;
+	const displayExact = literalTokens.every((token) => token.displayExact !== false);
 	if (literalTokens.length === 1) {
 		origin = literalTokens[0].numericKind ?? (literalTokens[0].type === 'string' ? 'string' : 'computed');
+		coercionText = literalTokens[0].numericText ?? value.text;
 	} else if (literalTokens.length === 2 && literalTokens[0].unarySign && literalTokens[1].numericKind) {
 		origin = literalTokens[1].numericKind;
+		coercionText = literalTokens[0].text + (literalTokens[1].numericText ?? literalTokens[1].text);
+	} else if (literalTokens.length > 1
+		&& normalized.some((token) => token.type === 'punctuation' && token.value === '.')) {
+		origin = 'string';
 	}
 	return {
 		known,
 		origin,
+		coercionText,
+		displayExact,
 		text: value.text,
 		map: value.map,
 		bytes: value.bytes,
@@ -1419,10 +1413,12 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 		const specifier = rawSpecifier.toLowerCase();
 		const flags = directive[2];
 		const numericSpecifier = ['b', 'c', 'd', 'e', 'f', 'g', 'h', 'o', 'u', 'x'].includes(specifier);
+		let renderedBytes;
+		let renderedByteMap;
 		if (value?.known) {
-			let renderedBytes = value.bytes;
-			let renderedByteMap = [...value.byteMap];
-			const integer = phpIntegerValue(value.text, value.origin);
+			renderedBytes = value.bytes;
+			renderedByteMap = [...value.byteMap];
+			const integer = phpIntegerValue(value.coercionText, value.origin);
 			if (specifier === 'c') {
 				if (integer === null) {
 					returnKnown = false;
@@ -1443,43 +1439,48 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 				}
 			} else if (!['s'].includes(specifier)) {
 				// Float conversions depend on PHP-specific coercion, locale and exponent
-				// formatting. A numeric placeholder keeps adjacent CSS units visible,
-				// while an unknown return count prevents unsafe nested inference.
+				// formatting. A decimal placeholder preserves a token boundary next to
+				// CSS units, while an unknown return count prevents unsafe inference.
 				returnKnown = false;
-				renderedBytes = Buffer.from('0');
-				renderedByteMap = [format.byteMap[index] ?? absoluteFallback];
+				renderedBytes = Buffer.from('0.0');
+				renderedByteMap = Array.from({ length: renderedBytes.length }, () => format.byteMap[index] ?? absoluteFallback);
 			}
-			const signedSpecifier = specifier === 'd' || ['e', 'f', 'g', 'h'].includes(specifier);
-			if (signedSpecifier && flags.includes('+') && renderedBytes[0] !== 0x2d && renderedBytes[0] !== 0x2b) {
-				renderedBytes = Buffer.concat([Buffer.from('+'), renderedBytes]);
-				renderedByteMap = [format.byteMap[index] ?? absoluteFallback, ...renderedByteMap];
-			}
-			if (specifier === 's' && precision !== null && precision >= 0) {
-				renderedBytes = renderedBytes.subarray(0, precision);
-				renderedByteMap = renderedByteMap.slice(0, precision);
-			}
-			if (width !== null && Math.abs(width) > renderedBytes.length) {
-				const customPad = /'(.)/.exec(flags)?.[1];
-				const pad = customPad ? customPad.charCodeAt(0) : (flags.includes('0') ? 0x30 : 0x20);
-				const padding = Buffer.alloc(Math.abs(width) - renderedBytes.length, pad);
-				const paddingMap = Array.from({ length: padding.length }, () => format.byteMap[index] ?? absoluteFallback);
-				if (width < 0 || flags.includes('-')) {
-					renderedBytes = Buffer.concat([renderedBytes, padding]);
-					renderedByteMap = [...renderedByteMap, ...paddingMap];
-				} else if (pad === 0x30 && (renderedBytes[0] === 0x2d || renderedBytes[0] === 0x2b)) {
-					renderedBytes = Buffer.concat([renderedBytes.subarray(0, 1), padding, renderedBytes.subarray(1)]);
-					renderedByteMap = [renderedByteMap[0], ...paddingMap, ...renderedByteMap.slice(1)];
-				} else {
-					renderedBytes = Buffer.concat([padding, renderedBytes]);
-					renderedByteMap = [...paddingMap, ...renderedByteMap];
-				}
-			}
-			append(renderedBytes, renderedByteMap, format.byteMap[index] ?? absoluteFallback);
+			if (specifier === 's' && !value.displayExact) returnKnown = false;
 		} else {
 			returnKnown = false;
-			const placeholder = numericSpecifier ? '0' : ';';
-			append(Buffer.from(placeholder), [], format.byteMap[index] ?? absoluteFallback);
+			const floatSpecifier = ['e', 'f', 'g', 'h'].includes(specifier);
+			const placeholder = floatSpecifier ? '0.0' : (numericSpecifier ? '0' : ';');
+			renderedBytes = Buffer.from(placeholder);
+			renderedByteMap = Array.from({ length: renderedBytes.length }, () => format.byteMap[index] ?? absoluteFallback);
 		}
+		const signedSpecifier = specifier === 'd' || ['e', 'f', 'g', 'h'].includes(specifier);
+		if (signedSpecifier && flags.includes('+') && renderedBytes[0] !== 0x2d && renderedBytes[0] !== 0x2b) {
+			renderedBytes = Buffer.concat([Buffer.from('+'), renderedBytes]);
+			renderedByteMap = [format.byteMap[index] ?? absoluteFallback, ...renderedByteMap];
+		}
+		if (specifier === 's' && precision !== null && precision >= 0) {
+			renderedBytes = renderedBytes.subarray(0, precision);
+			renderedByteMap = renderedByteMap.slice(0, precision);
+		}
+		if (width !== null && Math.abs(width) > renderedBytes.length) {
+			const customPad = /'(.)/.exec(flags)?.[1];
+			const leftAligned = width < 0 || flags.includes('-');
+			const zeroPad = flags.includes('0') && !(numericSpecifier && leftAligned);
+			const pad = customPad ? customPad.charCodeAt(0) : (zeroPad ? 0x30 : 0x20);
+			const padding = Buffer.alloc(Math.abs(width) - renderedBytes.length, pad);
+			const paddingMap = Array.from({ length: padding.length }, () => format.byteMap[index] ?? absoluteFallback);
+			if (leftAligned) {
+				renderedBytes = Buffer.concat([renderedBytes, padding]);
+				renderedByteMap = [...renderedByteMap, ...paddingMap];
+			} else if (pad === 0x30 && (renderedBytes[0] === 0x2d || renderedBytes[0] === 0x2b)) {
+				renderedBytes = Buffer.concat([renderedBytes.subarray(0, 1), padding, renderedBytes.subarray(1)]);
+				renderedByteMap = [renderedByteMap[0], ...paddingMap, ...renderedByteMap.slice(1)];
+			} else {
+				renderedBytes = Buffer.concat([padding, renderedBytes]);
+				renderedByteMap = [...paddingMap, ...renderedByteMap];
+			}
+		}
+		append(renderedBytes, renderedByteMap, format.byteMap[index] ?? absoluteFallback);
 		index += directive[0].length;
 	}
 	const formatted = decodedPhpBytes(Buffer.from(bytes), byteMap, absoluteFallback);

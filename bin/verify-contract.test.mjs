@@ -585,6 +585,22 @@ test('post-quoted SVG font attribute syntax follows HTML reconsume rules', () =>
 	);
 });
 
+test('post-quoted equals signs remain part of HTML attribute names', () => {
+	const font = raw('<svg><font data-x="x"<?php echo \'= color\'; ?>><script href="2rem#fff"></script></font></svg>');
+	assert.ok(font.some((problem) => problem.includes('2rem')));
+	assert.ok(font.some((problem) => problem.includes('#fff')));
+
+	const script = raw('<svg><script data-x="x"<?php echo \'=href="2rem#fff"\'; ?>></script></svg>');
+	assert.ok(script.some((problem) => problem.includes('2rem')));
+	assert.ok(script.some((problem) => problem.includes('#fff')));
+});
+
+test('self-closing syntax is ignored after an SVG font breakout enters HTML', () => {
+	const problems = raw('<svg><font <?php echo \'color/>\'; ?><svg></font><script href="2rem#fff"></script></svg>');
+	assert.ok(problems.some((problem) => problem.includes('2rem')));
+	assert.ok(problems.some((problem) => problem.includes('#fff')));
+});
+
 test('PHP output is reconstructed inside its surrounding CSS and URL context', () => {
 	assert.deepEqual(
 		raw('<style>\n.x { background-image: url(<?php echo get_theme_file_uri( \'assets/2rem.svg\' ); ?>); }\n</style>'),
@@ -640,6 +656,15 @@ CSS; ?></style>`,
 		String.raw`<style><?php echo ".x{color:\443fff}"; ?></style>`,
 	]) {
 		assert.ok(raw(markup).length > 0, `every statically rendered PHP form is scanned: ${markup}`);
+	}
+});
+
+test('oversized integer literals retain a float boundary when echoed', () => {
+	for (const markup of [
+		'<style><?php echo "a", 9223372036854775808, "rem"; ?></style>',
+		'<style><?php echo "a", 0xffffffffffffffff, "rem"; ?></style>',
+	]) {
+		assert.ok(raw(markup).length > 0, markup);
 	}
 });
 
@@ -785,6 +810,16 @@ test('unknown numeric printf arguments fail closed beside CSS units', () => {
 	}
 });
 
+test('numeric placeholders preserve raw-value token boundaries', () => {
+	for (const markup of [
+		'<style><?php $value = 2; printf("a%5drem", $value); ?></style>',
+		'<style><?php printf("a%frem", 2); ?></style>',
+		'<style><?php echo printf("a%f", 2) . "rem"; ?></style>',
+	]) {
+		assert.ok(raw(markup).length > 0, markup);
+	}
+});
+
 test('printf signs and zero padding preserve PHP token boundaries', () => {
 	assert.ok(raw('<style><?php printf("a%+drem", 2); ?></style>').some((problem) => problem.includes('+2rem')));
 	assert.ok(raw('<style><?php printf("%05drem", -2); ?></style>').some((problem) => problem.includes('-0002rem')));
@@ -799,6 +834,25 @@ test('integer printf coercion follows PHP 8.4 signed 64-bit bounds', () => {
 		raw('<style><?php printf("%drem", "9223372036854775808"); ?></style>')
 			.some((problem) => problem.includes('9223372036854775807rem')),
 	);
+});
+
+test('integer printf coercion preserves based-literal and concatenated-string origins', () => {
+	for (const markup of [
+		'<style><?php printf("a%20drem", 0xffffffffffffffff); ?></style>',
+		'<style><?php printf("a%20drem", "1844674407370955161" . "6"); ?></style>',
+	]) {
+		assert.ok(raw(markup).length > 0, markup);
+	}
+});
+
+test('left-aligned numeric printf ignores zero padding', () => {
+	assert.deepEqual(raw('<style><?php printf("%-05drem", -2); ?></style>'), []);
+});
+
+test('unary printf operand diagnostics retain the sign source line', () => {
+	const problems = raw(`<style><?php printf("%05drem",
+-2); ?></style>`);
+	assert.ok(problems.some((problem) => /:2:.*-0002rem/.test(problem)), problems.join('\n'));
 });
 
 test('printf leading padding preserves the formatted value source line', () => {
