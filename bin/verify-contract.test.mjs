@@ -871,11 +871,48 @@ test('known printf precision preserves raw-value boundaries for dynamic strings'
 	);
 });
 
+test('dynamic printf strings preserve raw-value boundaries without effective precision', () => {
+	for (const format of ['%srem', '%.srem']) {
+		const markup = `<style><?php $value = "2"; printf("${format}", $value); ?></style>`;
+		assert.ok(raw(markup).some((problem) => problem.includes('rem')), markup);
+	}
+});
+
+test('dynamic positive-precision strings preserve possible custom padding', () => {
+	assert.ok(
+		raw('<style><?php $value = ""; printf("%\'#1.1sfff", $value); ?></style>')
+			.some((problem) => problem.includes('hex color')),
+	);
+	assert.ok(
+		raw('<style><?php $value = ""; printf("%\'r-1.1sgb(1 2 3)", $value); ?></style>')
+			.some((problem) => problem.includes('color function')),
+	);
+});
+
 test('deterministic integer precision preserves padding for dynamic values', () => {
 	for (const format of ['%-05.1brem', '%-05.1orem', '%-05.1xrem', "%'05.1Xrem"]) {
 		const markup = `<style><?php $value = 2; printf("${format}", $value); ?></style>`;
 		assert.ok(raw(markup).some((problem) => problem.includes('00000rem')), markup);
 	}
+});
+
+test('dynamic printf width preserves padding that can form raw values', () => {
+	for (const specifier of ['b', 'o', 'x', 'X']) {
+		const markup = `<style><?php $width = 5; $value = 2; printf("%0*.1${specifier}rem", $width, $value); ?></style>`;
+		assert.ok(raw(markup).some((problem) => problem.includes('rem')), markup);
+	}
+	assert.ok(
+		raw('<style><?php $width = 5; $value = "abc"; printf("%0*.0srem", $width, $value); ?></style>')
+			.some((problem) => problem.includes('rem')),
+	);
+	assert.ok(
+		raw('<style><?php $width = 1; $value = "abc"; printf("%\'#*.0sfff", $width, $value); ?></style>')
+			.some((problem) => problem.includes('hex color')),
+	);
+	assert.ok(
+		raw('<style><?php $width = 1; $precision = 1; $value = 2; printf("%\'r*.*xgb(1 2 3)", $width, $precision, $value); ?></style>')
+			.some((problem) => problem.includes('color function')),
+	);
 });
 
 test('printf accepts PHP bare-dot precision directives', () => {

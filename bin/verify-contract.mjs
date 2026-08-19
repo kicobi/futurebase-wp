@@ -1379,13 +1379,38 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 		effectBytes.push(...value.effectBytes);
 		effectByteMap.push(...value.effectByteMap);
 	}
-	const bytes = [];
-	const byteMap = [];
+	const variants = [{ bytes: [], byteMap: [] }];
+	const bytes = variants[0].bytes;
+	const byteMap = variants[0].byteMap;
 	let returnKnown = format.known;
 	let sequential = 0;
 	const append = (value, sourceMap, fallback) => {
-		bytes.push(...value);
-		byteMap.push(...Array.from({ length: value.length }, (_, offset) => sourceMap[offset] ?? fallback));
+		for (const variant of variants) {
+			variant.bytes.push(...value);
+			variant.byteMap.push(...Array.from({ length: value.length }, (_, offset) => sourceMap[offset] ?? fallback));
+		}
+	};
+	const appendWithAlternatives = (value, sourceMap, fallback, alternatives) => {
+		// Keep the primary rendering exact enough for nested return counts, then
+		// carry a bounded set of fail-closed alternatives through the remaining
+		// static suffix so possible padding can still form a detectable CSS token.
+		const prefixBytes = [...bytes];
+		const prefixMap = [...byteMap];
+		append(value, sourceMap, fallback);
+		for (const alternative of alternatives) {
+			if (variants.length >= 32) break;
+			if (Buffer.from(alternative.bytes).equals(Buffer.from(value))) continue;
+			variants.push({
+				bytes: [...prefixBytes, ...alternative.bytes],
+				byteMap: [
+					...prefixMap,
+					...Array.from(
+						{ length: alternative.bytes.length },
+						(_, offset) => alternative.byteMap[offset] ?? fallback,
+					),
+				],
+			});
+		}
 	};
 	const formatText = format.bytes.toString('latin1');
 	for (let index = 0; index < formatText.length;) {
@@ -1406,10 +1431,15 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 			continue;
 		}
 		let width = directive[3] ? Number.parseInt(directive[3], 10) : null;
+		const widthSpecified = Boolean(directive[3] || directive[4]);
+		let widthUnknown = false;
 		if (directive[4]) {
 			const widthValue = values[directive[5] ? Number.parseInt(directive[5], 10) - 1 : sequential++];
 			width = widthValue?.known && /^[+-]?\d+$/.test(widthValue.text) ? Number.parseInt(widthValue.text, 10) : null;
-			if (width === null) returnKnown = false;
+			if (width === null) {
+				widthUnknown = true;
+				returnKnown = false;
+			}
 		}
 		let precision = directive[6] ? Number.parseInt(directive[6], 10) : null;
 		let precisionUnknown = false;
@@ -1429,6 +1459,7 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 		const customPad = /'(.)/.exec(flags)?.[1];
 		const ordinaryFlags = flags.replace(/'./g, '');
 		const numericSpecifier = ['b', 'c', 'd', 'e', 'f', 'g', 'h', 'o', 'u', 'x'].includes(specifier);
+		const sourceExact = value?.known === true && value.displayExact !== false;
 		let renderedBytes;
 		let renderedByteMap;
 		let renderedExact = false;
@@ -1471,7 +1502,7 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 		} else {
 			returnKnown = false;
 			const floatSpecifier = ['e', 'f', 'g', 'h'].includes(specifier);
-			const placeholder = floatSpecifier ? '0.0' : (numericSpecifier ? '0' : ';');
+			const placeholder = floatSpecifier ? '0.0' : (numericSpecifier || specifier === 's' ? '0' : ';');
 			renderedBytes = Buffer.from(placeholder);
 			renderedByteMap = Array.from({ length: renderedBytes.length }, () => format.byteMap[index] ?? absoluteFallback);
 		}
@@ -1518,13 +1549,31 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 				renderedByteMap = [...paddingMap, ...renderedByteMap];
 			}
 		}
-		append(renderedBytes, renderedByteMap, format.byteMap[index] ?? absoluteFallback);
+		const alternatives = [];
+		const mayRenderEmpty = renderedBytes.length === 0
+			|| (specifier === 's' && !sourceExact)
+			|| (['b', 'o', 'x'].includes(specifier) && (precision !== null || precisionUnknown));
+		const possibleZeroPad = ordinaryFlags.includes('0') && !(leftAligned && ['d', 'u'].includes(specifier));
+		const possiblePad = customPad ? customPad.charCodeAt(0) : (possibleZeroPad ? 0x30 : null);
+		if (widthSpecified && (widthUnknown || Math.abs(width ?? 0) > 0) && mayRenderEmpty && possiblePad !== null) {
+			alternatives.push({
+				bytes: Buffer.from([possiblePad]),
+				byteMap: [format.byteMap[index] ?? absoluteFallback],
+			});
+		}
+		appendWithAlternatives(renderedBytes, renderedByteMap, format.byteMap[index] ?? absoluteFallback, alternatives);
 		index += directive[0].length;
 	}
 	const formatted = decodedPhpBytes(Buffer.from(bytes), byteMap, absoluteFallback);
+	const probeBytes = [];
+	const probeByteMap = [];
+	for (const variant of variants.slice(1)) {
+		probeBytes.push(0x3b, ...variant.bytes);
+		probeByteMap.push(format.byteMap[0] ?? absoluteFallback, ...variant.byteMap);
+	}
 	const rendered = decodedPhpBytes(
-		Buffer.concat([Buffer.from(effectBytes), formatted.bytes]),
-		[...effectByteMap, ...formatted.byteMap],
+		Buffer.concat([Buffer.from(effectBytes), formatted.bytes, Buffer.from(probeBytes)]),
+		[...effectByteMap, ...formatted.byteMap, ...probeByteMap],
 		absoluteFallback,
 	);
 	return { ...rendered, formattedText: formatted.text, formattedMap: formatted.map, formattedBytes: formatted.bytes, formattedByteLength: formatted.bytes.length, returnKnown };
