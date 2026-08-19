@@ -65,21 +65,32 @@ test('page targets fail closed on malformed encoded credentials and session keys
 		'/preview?sessionid=FakeSessionSecret987',
 		'/preview?jsessionid=FakeSessionSecret987',
 		'/preview?phpsessid=FakeSessionSecret987',
+		'/preview?auth[sessionid]=FakeSessionSecret987',
+		'/preview?auth[token][scope]=FakeSessionSecret987',
+		'/preview?auth.session_id=FakeSessionSecret987',
+		'/preview?auth-sessionid=FakeSessionSecret987',
+		'/preview?%73essionid=FakeSessionSecret987',
+		'/preview;jsessionid=FakeSessionSecret987',
 	]) {
 		const errors = captureTargetErrors({ ...safe, pages: [{ name: 'unsafe', url }] });
 		assert.equal(errors.length, 1, `must reject ${url.split('=')[0]}`);
 		assert.doesNotMatch(errors[0], /FakeEncodedPassword987|FakeSessionSecret987/);
 	}
+	assert.deepEqual(captureTargetErrors({ ...safe, pages: [{ name: 'public', url: '/preview;lang=sv?lang=sv' }] }), []);
 });
 
 test('defensive sanitization strips credentials while retaining public query parameters', () => {
 	const config = sanitizeCaptureConfig({
 		base_url: 'https://admin:base-secret@example.test/private?token=base-secret',
-		pages: [{ name: 'sv', url: 'https://user:page-secret@example.test/about?lang=sv&access_token=page-secret' }],
+		pages: [
+			{ name: 'sv', url: 'https://user:page-secret@example.test/about?lang=sv&access_token=page-secret' },
+			{ name: 'session', url: '/preview;jsessionid=path-secret?auth[sessionid]=query-secret&lang=sv' },
+		],
 	});
 	assert.equal(config.base_url, 'https://example.test/');
 	assert.equal(config.pages[0].url, 'https://example.test/about?lang=sv');
-	assert.doesNotMatch(JSON.stringify(config), /base-secret|page-secret|admin|user/);
+	assert.equal(config.pages[1].url, '/preview?lang=sv');
+	assert.doesNotMatch(JSON.stringify(config), /base-secret|page-secret|path-secret|query-secret|admin|user/);
 
 	const summary = sanitizeRunSummary({ target: config, status: 'completed' });
 	assert.equal(summary.target.pages[0].url, 'https://example.test/about?lang=sv');
@@ -99,26 +110,37 @@ test('baseline init rejects credentials without creating config or echoing the v
 	}
 });
 
-test('baseline init rejects malformed encoded page credentials without persisting or echoing them', () => {
-	const { dir, cleanup } = sandbox();
-	try {
-		const sentinel = 'FakeEncodedPassword987';
-		const result = run([
-			'baseline',
-			'init',
-			'--url',
-			'https://example.test',
-			'--page',
-			`probe=https://admin%3A${sentinel}%40example.test`,
-			'--force',
-			'--json',
-		], dir);
-		assert.equal(result.status, 2);
-		assert.equal(existsSync(join(dir, '.project', 'baseline.config.yml')), false);
-		assert.doesNotMatch(result.stdout + result.stderr, new RegExp(sentinel));
-		assert.match(result.stdout + result.stderr, /page URL|credentials|HTTP\(S\)/i);
-	} finally {
-		cleanup();
+test('baseline init rejects malformed, nested, encoded, and path-form credentials without persisting or echoing them', () => {
+	const sentinel = 'FakeSessionSecret987';
+	for (const url of [
+		`https://admin%3A${sentinel}%40example.test`,
+		`/preview?auth[sessionid]=${sentinel}`,
+		`/preview?auth[token][scope]=${sentinel}`,
+		`/preview?auth.session_id=${sentinel}`,
+		`/preview?auth-sessionid=${sentinel}`,
+		`/preview?PHPSESSID=${sentinel}`,
+		`/preview?%73essionid=${sentinel}`,
+		`/preview;jsessionid=${sentinel}`,
+	]) {
+		const { dir, cleanup } = sandbox();
+		try {
+			const result = run([
+				'baseline',
+				'init',
+				'--url',
+				'https://example.test',
+				'--page',
+				`probe=${url}`,
+				'--force',
+				'--json',
+			], dir);
+			assert.equal(result.status, 2, url);
+			assert.equal(existsSync(join(dir, '.project', 'baseline.config.yml')), false, url);
+			assert.doesNotMatch(result.stdout + result.stderr, new RegExp(sentinel));
+			assert.match(result.stdout + result.stderr, /page URL|credentials|HTTP\(S\)/i);
+		} finally {
+			cleanup();
+		}
 	}
 });
 
@@ -132,7 +154,7 @@ test('capture rejects a secret page before creating a run and keeps JSON secret-
 		assert.doesNotMatch(result.stdout + result.stderr, new RegExp(sentinel));
 		assert.equal(existsSync(join(dir, '.project', 'baseline')), false);
 		const payload = JSON.parse(result.stdout);
-		assert.match(payload.message, /secret query parameters/);
+		assert.match(payload.message, /secret parameters/);
 	} finally {
 		cleanup();
 	}

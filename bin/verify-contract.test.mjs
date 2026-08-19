@@ -661,10 +661,24 @@ test('raw CSS detection reports signed decimals and modern color functions exact
 	}
 });
 
-test('raw CSS detection covers every container-query length unit case-insensitively', () => {
-	for (const unit of ['cqw', 'cqh', 'cqi', 'cqb', 'cqmin', 'cqmax', 'CQI']) {
+test('raw CSS detection covers every modern length-unit family case-insensitively', () => {
+	for (const unit of [
+		'px', 'cm', 'mm', 'q', 'in', 'pc', 'pt',
+		'em', 'ex', 'cap', 'ch', 'ic', 'rem', 'rex', 'rcap', 'rch', 'ric', 'lh', 'rlh',
+		'vw', 'vh', 'vi', 'vb', 'vmin', 'vmax',
+		'svw', 'svh', 'svi', 'svb', 'svmin', 'svmax',
+		'lvw', 'lvh', 'lvi', 'lvb', 'lvmin', 'lvmax',
+		'dvw', 'dvh', 'dvi', 'dvb', 'dvmin', 'dvmax',
+		'cqw', 'cqh', 'cqi', 'cqb', 'cqmin', 'cqmax', 'CQI',
+	]) {
 		const value = `2${unit}`;
 		assert.ok(raw(`<!-- wp:group {"style":{"spacing":{"padding":"${value}"}}} /-->`).some((problem) => problem.includes(`"${value}"`)), value);
+	}
+});
+
+test('length-like substrings inside identifiers and URLs are not raw CSS dimensions', () => {
+	for (const value of ['2cqw-token', 'token-2cqw', 'url(/docs/2cqw-layout)', 'url("/docs/2rem/layout.svg")']) {
+		assert.deepEqual(raw(`<!-- wp:group {"style":{"css":"${value.replaceAll('"', '\\"')}"}} /-->`), [], value);
 	}
 });
 
@@ -708,6 +722,26 @@ test('nested style variations enter the parsed checker', () => {
 		assert.match(result.stderr, /styles\/typography\/unsafe\.json.*#123456/);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test('WordPress-style case-insensitive JSON variation extensions enter the checker', () => {
+	for (const file of ['unsafe.JSON', 'nested/unsafe.JsOn']) {
+		const root = mkdtempSync(join(tmpdir(), 'contract-case-variation-'));
+		try {
+			fixtureTheme(root);
+			mkdirSync(dirname(join(root, 'styles', file)), { recursive: true });
+			writeFileSync(join(root, 'styles', file), JSON.stringify({
+				version: 3,
+				settings: { typography: { fluid: false } },
+				styles: { color: { text: '#123456' } },
+			}));
+			const result = runChecker(root);
+			assert.equal(result.status, 1, file);
+			assert.match(result.stderr, new RegExp(`styles/${file.replaceAll('.', '\\.')}.*fluid`, 'i'));
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
 	}
 });
 

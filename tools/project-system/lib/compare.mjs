@@ -14,7 +14,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { sanitizeRunSummary } from './targets.mjs';
+import { sanitizeTargetUrl, targetUrlHasSecret } from './targets.mjs';
 
 const readJsonSafe = (p) => {
 	try {
@@ -52,14 +52,17 @@ const hostOf = (url) => {
 // Query strings are: they can select a language, product, filter, or other
 // materially different resource while keeping the same pathname. Fragments
 // stay irrelevant because they never reach the server.
-const pathOf = (url) => {
+const pageIdentity = (url, baseUrl) => {
 	try {
-		const parsed = new URL(url);
-		return `${parsed.pathname.replace(/\/+$/, '') || '/'}${parsed.search}`;
+		const parsed = new URL(url, baseUrl || 'https://relative.invalid/');
+		return `${parsed.username}\0${parsed.password}\0${parsed.pathname.replace(/\/+$/, '') || '/'}${parsed.search}`;
 	} catch {
 		return String(url ?? '').replace(/\/+$/, '') || '/';
 	}
 };
+
+const safeBaseUrl = (value) => sanitizeTargetUrl(value, { originOnly: true });
+const safePageUrl = (value, baseUrl) => sanitizeTargetUrl(value, { baseUrl: safeBaseUrl(baseUrl) });
 const viewportKey = (vs) =>
 	(vs ?? [])
 		.map((v) => `${v.name}:${v.width}x${v.height}`)
@@ -93,8 +96,8 @@ export function compareTargets(baselineSummary, finalSummary) {
 		blocking.push(`viewports differ (baseline: ${bVp || 'none'} · final: ${fVp || 'none'}) — page-weight, layout and screenshot metrics are not comparable across different viewports`);
 	}
 
-	const bHost = hostOf(b.base_url);
-	const fHost = hostOf(f.base_url);
+	const bHost = hostOf(safeBaseUrl(b.base_url));
+	const fHost = hostOf(safeBaseUrl(f.base_url));
 	if (bHost !== fHost) {
 		limitations.push(`base URL host differs (baseline: ${bHost ?? 'none'} · final: ${fHost ?? 'none'}) — expected for a redesign that moves domain, but confirm it is deliberate`);
 	}
@@ -125,7 +128,15 @@ export function compareTargets(baselineSummary, finalSummary) {
 	for (const p of f.pages ?? []) {
 		const was = bByName.get(p.name);
 		if (was === undefined) continue;
-		if (pathOf(was) !== pathOf(p.url)) moved.push(`${p.name}: ${was} → ${p.url}`);
+		if (pageIdentity(was, b.base_url) === pageIdentity(p.url, f.base_url)) continue;
+		const secretBearing = targetUrlHasSecret(was, { baseUrl: safeBaseUrl(b.base_url) }) || targetUrlHasSecret(p.url, { baseUrl: safeBaseUrl(f.base_url) });
+		const beforeDisplay = safePageUrl(was, b.base_url);
+		const afterDisplay = safePageUrl(p.url, f.base_url);
+		if (secretBearing && beforeDisplay === afterDisplay) {
+			moved.push(`${p.name}: secret-bearing target differs`);
+			continue;
+		}
+		moved.push(`${p.name}: ${beforeDisplay} → ${afterDisplay}`);
 	}
 	if (moved.length) {
 		const message = `the same page name measures a different path or query (${moved.join(' · ')})`;
@@ -157,10 +168,10 @@ export function buildComparison(baselineRunDir, finalRunDir) {
 
 	// Comparability first: a mismatch here changes what every row below means.
 	// Historical summaries predate capture validation and can contain durable
-	// credentials. Comparison reasons quote target differences, so sanitize both
-	// sides before identity comparison or any message formatting.
-	const bSummary = sanitizeRunSummary(readJsonSafe(join(baselineRunDir, 'summary.json')));
-	const fSummary = sanitizeRunSummary(readJsonSafe(join(finalRunDir, 'summary.json')));
+	// credentials. compareTargets keeps raw identities in memory so redaction
+	// cannot erase a difference, but formats every reason from safe display URLs.
+	const bSummary = readJsonSafe(join(baselineRunDir, 'summary.json'));
+	const fSummary = readJsonSafe(join(finalRunDir, 'summary.json'));
 	const { limitations: targetLimits, blocking } = compareTargets(bSummary, fSummary);
 	limitations.push(...targetLimits);
 

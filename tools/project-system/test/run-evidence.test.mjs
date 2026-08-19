@@ -575,6 +575,54 @@ test('historical target secrets never reach comparison or case-study output', ()
 	}
 });
 
+test('redaction never turns secret-selected historical targets into a clean client claim', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const sentinel = /BaselineSecret987|FinalSecret987/;
+		const complete = [{ module: 'crawl', status: 'complete' }];
+		const { root } = caseStudyFixture(dir, complete, 'completed');
+		const baselineDir = join(root, '.project', 'baseline', '2026-07-30T100000Z');
+		const finalDir = join(root, '.project', 'final', '2026-08-01T100000Z');
+		const setTarget = (runDir, url, broken) => {
+			const summaryPath = join(runDir, 'summary.json');
+			const summary = JSON.parse(readFileSync(summaryPath, 'utf8'));
+			summary.target = {
+				base_url: 'https://example.test/',
+				pages: [{ name: 'home', url }],
+				viewports: [],
+				modules: ['crawl'],
+			};
+			writeFileSync(summaryPath, JSON.stringify(summary, null, 2));
+			writeFileSync(join(runDir, 'crawl', 'crawl.json'), JSON.stringify({ summary: { fetched: 1, brokenLinkCount: broken, missingMetaDesc: 0 } }));
+		};
+		setTarget(baselineDir, '/preview?token=BaselineSecret987', 9);
+		setTarget(finalDir, '/preview?token=FinalSecret987', 0);
+
+		const blocked = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--json'], { encoding: 'utf8' });
+		assert.equal(blocked.status, EXIT.INVALID_CONFIG);
+		assert.doesNotMatch(blocked.stdout + blocked.stderr, sentinel);
+		const secretBlocking = JSON.parse(blocked.stdout).blocking[0];
+		assert.match(secretBlocking, /secret-bearing (?:query|target) differs/);
+		assert.doesNotMatch(secretBlocking, /\[redacted|→/);
+
+		const allowed = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--allow-mismatch', '--json'], { encoding: 'utf8' });
+		assert.equal(allowed.status, EXIT.OK, allowed.stderr || allowed.stdout);
+		assert.doesNotMatch(allowed.stdout + allowed.stderr, sentinel);
+		const client = readFileSync(join(root, '.project', 'reports', 'comparison-2026-08-01T100000Z-client.md'), 'utf8');
+		assert.doesNotMatch(client, sentinel);
+		assert.doesNotMatch(client, /Broken internal links: 9 → 0/);
+		assert.match(client, /figures are withheld/);
+
+		setTarget(finalDir, '/preview', 0);
+		const absent = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--json'], { encoding: 'utf8' });
+		assert.equal(absent.status, EXIT.INVALID_CONFIG);
+		assert.doesNotMatch(absent.stdout + absent.stderr, sentinel);
+		assert.match(JSON.parse(absent.stdout).blocking[0], /secret-bearing (?:query|target) differs/);
+	} finally {
+		cleanup();
+	}
+});
+
 // --- a module may not report evidence it did not gather ----------------------
 //
 // Both of these returned `complete`. A comparison then treats `complete` as the

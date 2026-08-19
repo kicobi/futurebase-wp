@@ -142,14 +142,33 @@ export function scannableSource(source) {
 // to be as wide as the thing it excuses and no wider.
 const TOLERATED = [/"width":"\d+px"/g, /<div style="height:\s*\d+px"/g];
 
+// CSS Values & Units Level 4 length units, kept in one table so every scanner
+// consumes the same closure. `fr` is a flex fraction, not a <length>.
+const CSS_LENGTH_UNITS = [
+	'px', 'cm', 'mm', 'q', 'in', 'pc', 'pt',
+	'em', 'ex', 'cap', 'ch', 'ic', 'rem', 'rex', 'rcap', 'rch', 'ric', 'lh', 'rlh',
+	'vw', 'vh', 'vi', 'vb', 'vmin', 'vmax',
+	'svw', 'svh', 'svi', 'svb', 'svmin', 'svmax',
+	'lvw', 'lvh', 'lvi', 'lvb', 'lvmin', 'lvmax',
+	'dvw', 'dvh', 'dvi', 'dvb', 'dvmin', 'dvmax',
+	'cqw', 'cqh', 'cqi', 'cqb', 'cqmin', 'cqmax',
+];
+const CSS_LENGTH_RE = new RegExp(
+	`(?<![A-Za-z0-9_.-])[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:${CSS_LENGTH_UNITS.slice().sort((a, b) => b.length - a.length).join('|')})(?![A-Za-z0-9_-])`,
+	'i',
+);
+const CSS_URL_RE = /\burl\(\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:\\.|[^)])*)\)/gi;
+
 const RAW_VALUE_RULES = [
 	['hex color', /#[0-9a-f]{3,8}\b/i],
 	['color function', /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color(?:-mix)?)\s*\([^)]*\)/i],
-	['length', /(?<![A-Za-z0-9_.-])[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:px|rem|em|ch|ex|lh|rlh|vmin|vmax|svw|svh|lvw|lvh|dvw|dvh|vw|vh|cqw|cqh|cqi|cqb|cqmin|cqmax|cm|mm|q|in|pt|pc)\b/i],
+	['length', CSS_LENGTH_RE],
 ];
 
 function rawValueHits(value) {
-	const text = String(value);
+	// URLs can legitimately contain dimension-looking path segments. Blank the
+	// whole CSS url() token before looking for numeric dimensions elsewhere.
+	const text = String(value).replace(CSS_URL_RE, blankOut);
 	const hits = [];
 	for (const [label, re] of RAW_VALUE_RULES) {
 		const hit = text.match(re);
@@ -597,7 +616,7 @@ export function loadThemeJsonDocuments(root) {
 					}
 					// WordPress ignores support/documentation files in styles/; only
 					// regular JSON files are style-variation inputs.
-					if (stat.isFile() && entry.name.endsWith('.json')) files.push(file);
+					if (stat.isFile() && /\.json$/i.test(entry.name)) files.push(file);
 				}
 			};
 			walk(stylesDir, 'styles');
