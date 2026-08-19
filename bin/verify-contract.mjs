@@ -685,6 +685,7 @@ function markupContexts(source) {
 		}
 		const name = nameMatch[0].toLowerCase();
 		const attributes = [];
+		const emittedAttributeNames = new Set();
 		let cursor = start + 1 + nameMatch[0].length;
 		let end = null;
 		let selfClosing = false;
@@ -700,7 +701,12 @@ function markupContexts(source) {
 				break;
 			}
 			if (source.startsWith('<?', cursor)) {
-				cursor = phpEnd(source, cursor);
+				const phpClose = phpEnd(source, cursor);
+				const rendered = renderedPhpOutput(source.slice(cursor, phpClose), cursor);
+				for (const match of rendered.text.matchAll(/\b(color|face|size)\s*=/gi)) {
+					emittedAttributeNames.add(match[1].toLowerCase());
+				}
+				cursor = phpClose;
 				continue;
 			}
 			const attributeStart = cursor;
@@ -743,7 +749,10 @@ function markupContexts(source) {
 		}
 		if (end === null) break;
 		let parentNamespace = elementStack.at(-1)?.childNamespace ?? 'html';
-		const fontBreakout = name === 'font' && attributes.some((attribute) => ['color', 'face', 'size'].includes(attribute.name));
+		const fontBreakout = name === 'font' && (
+			attributes.some((attribute) => ['color', 'face', 'size'].includes(attribute.name))
+			|| emittedAttributeNames.size > 0
+		);
 		if (parentNamespace === 'svg' && (HTML_FOREIGN_BREAKOUT_TAGS.has(name) || fontBreakout)) {
 			while (elementStack.at(-1)?.childNamespace === 'svg') elementStack.pop();
 			parentNamespace = elementStack.at(-1)?.childNamespace ?? 'html';
@@ -779,12 +788,12 @@ function phpStringBody(source, start, end, absoluteStart, quote) {
 	};
 	while (index < end) {
 		if (quote !== "'" && source[index] === '{' && source[index + 1] === '$') {
-			append('x', index);
+			append(';', index);
 			index = Math.min(end, phpComplexInterpolationEnd(source, index));
 			continue;
 		}
 		if (quote !== "'" && source[index] === '$' && source[index + 1] === '{') {
-			append('x', index);
+			append(';', index);
 			index = Math.min(end, phpComplexInterpolationEnd(source, index + 1));
 			continue;
 		}
@@ -976,7 +985,8 @@ function phpTokens(source, absoluteStart) {
 }
 
 function renderedEchoExpression(tokens, absoluteFallback) {
-	tokens = collapseNestedPrintf(tokens, absoluteFallback);
+	const collapsed = collapseNestedPrintf(tokens, absoluteFallback);
+	tokens = collapsed.tokens;
 	let text = '';
 	const map = [];
 	let previous = null;
@@ -1005,7 +1015,10 @@ function renderedEchoExpression(tokens, absoluteFallback) {
 		map.push(...literal.map);
 		previous = { literal, index };
 	}
-	return { text, map };
+	return {
+		text: collapsed.text + text,
+		map: [...collapsed.map, ...map],
+	};
 }
 
 function renderedStaticPhpExpression(tokens, absoluteFallback) {
@@ -1046,10 +1059,11 @@ function splitPhpArguments(tokens) {
 function renderedPrintfExpression(tokens, absoluteFallback) {
 	const argumentsList = splitPhpArguments(tokens);
 	const format = renderedStaticPhpExpression(argumentsList.shift() ?? [], absoluteFallback);
-	if (!format) return { text: '', map: [] };
+	if (!format) return { text: '', map: [], returnKnown: false };
 	const values = argumentsList.map((argument) => renderedStaticPhpExpression(argument, absoluteFallback));
 	let text = '';
 	const map = [];
+	let returnKnown = true;
 	let sequential = 0;
 	const append = (value, sourceMap, fallback) => {
 		text += value;
@@ -1076,11 +1090,13 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 		if (directive[4]) {
 			const widthValue = values[sequential++];
 			width = widthValue && /^[+-]?\d+$/.test(widthValue.text) ? Number.parseInt(widthValue.text, 10) : null;
+			if (width === null) returnKnown = false;
 		}
 		let precision = directive[5] ? Number.parseInt(directive[5], 10) : null;
 		if (directive[6]) {
 			const precisionValue = values[sequential++];
 			precision = precisionValue && /^[+-]?\d+$/.test(precisionValue.text) ? Number.parseInt(precisionValue.text, 10) : null;
+			if (precision === null) returnKnown = false;
 		}
 		const valueIndex = directive[1] ? Number.parseInt(directive[1], 10) - 1 : sequential++;
 		const value = values[valueIndex];
@@ -1097,11 +1113,12 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 			}
 			append(renderedValue, value.map, format.map[index] ?? absoluteFallback);
 		} else {
-			append(specifier === 's' ? 'x' : '0', [], format.map[index] ?? absoluteFallback);
+			returnKnown = false;
+			append(';', [], format.map[index] ?? absoluteFallback);
 		}
 		index += directive[0].length;
 	}
-	return { text, map };
+	return { text, map, returnKnown };
 }
 
 function isPhpMemberAccess(tokens, index) {
@@ -1114,6 +1131,8 @@ function isPhpMemberAccess(tokens, index) {
 
 function collapseNestedPrintf(tokens, absoluteFallback) {
 	const collapsed = [];
+	let text = '';
+	const map = [];
 	for (let index = 0; index < tokens.length;) {
 		const callable = tokens[index].type === 'identifier' && tokens[index].value === 'printf'
 			&& tokens[index + 1]?.type === 'punctuation' && tokens[index + 1].value === '('
@@ -1132,17 +1151,19 @@ function collapseNestedPrintf(tokens, absoluteFallback) {
 			if (depth > 0) expression.push(token);
 		}
 		const rendered = renderedPrintfExpression(expression, absoluteFallback);
-		const returnValue = String(rendered.text.length);
+		text += rendered.text;
+		map.push(...rendered.map);
+		const returnValue = rendered.returnKnown ? String(Buffer.byteLength(rendered.text, 'utf8')) : '1';
 		collapsed.push({
 			type: 'static',
-			text: rendered.text + returnValue,
-			map: [...rendered.map, ...Array.from({ length: returnValue.length }, () => absoluteFallback)],
+			text: returnValue,
+			map: Array.from({ length: returnValue.length }, () => absoluteFallback),
 			start: tokens[index].start,
 			end: tokens[cursor - 1]?.end ?? tokens[index].end,
 		});
 		index = cursor;
 	}
-	return collapsed;
+	return { tokens: collapsed, text, map };
 }
 
 function renderedPhpOutput(php, absoluteStart) {

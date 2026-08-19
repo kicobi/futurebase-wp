@@ -515,6 +515,12 @@ test('HTML foreign-content breakout tags pop the SVG namespace', () => {
 	assert.ok(raw('<svg><div><script href="2rem#fff"></script></div></svg>').some((problem) => problem.includes('2rem')));
 });
 
+test('PHP-emitted conditional font attributes pop the SVG namespace', () => {
+	const problems = raw('<svg><font <?php echo \'color="red"\'; ?>><script href="2rem#fff"></script></font></svg>');
+	assert.ok(problems.some((problem) => problem.includes('2rem')));
+	assert.ok(problems.some((problem) => problem.includes('#fff')));
+});
+
 test('PHP output is reconstructed inside its surrounding CSS and URL context', () => {
 	assert.deepEqual(
 		raw('<style>\n.x { background-image: url(<?php echo get_theme_file_uri( \'assets/2rem.svg\' ); ?>); }\n</style>'),
@@ -573,6 +579,18 @@ CSS; ?></style>`,
 	}
 });
 
+test('complex interpolation cannot hide an adjacent raw value', () => {
+	for (const markup of [
+		'<style><?php $value = ["?>" => ""]; echo "{$value["?>"]}2rem"; ?></style>',
+		'<style><?php $name = "empty"; $empty = ""; echo "${$name}2rem"; ?></style>',
+		`<style><?php $value = ["?>" => ""]; echo <<<CSS
+{$value["?>"]}2rem
+CSS; ?></style>`,
+	]) {
+		assert.ok(raw(markup).some((problem) => problem.includes('2rem')), markup);
+	}
+});
+
 test('printf output is rendered without pulling dynamic URL arguments out of context', () => {
 	for (const markup of [
 		'<style><?php printf(".x{padding:2rem}"); ?></style>',
@@ -595,6 +613,23 @@ test('printf nested in echo keeps dynamic URL arguments inside url()', () => {
 	assert.deepEqual(
 		raw('<style><?php echo printf(".x{background:url(%s)}", get_theme_file_uri("assets/2rem.svg")); ?></style>'),
 		[],
+	);
+});
+
+test('nested printf side effects retain PHP evaluation order', () => {
+	for (const markup of [
+		'<style><?php echo ".x{background:url(" . printf("2rem") . ")}"; ?></style>',
+		'<style><?php print ".x{background:url(" . printf("2rem") . ")}"; ?></style>',
+		'<style><?= ".x{background:url(" . printf("2rem") . ")}" ?></style>',
+	]) {
+		assert.ok(raw(markup).some((problem) => problem.includes('2rem')), markup);
+	}
+});
+
+test('dynamic printf output does not lend its placeholder length to the return value', () => {
+	assert.ok(
+		raw('<style><?php $value = ";"; echo printf("%s", $value) . "rem"; ?></style>')
+			.some((problem) => problem.includes('1rem')),
 	);
 });
 
