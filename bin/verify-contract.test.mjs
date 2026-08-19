@@ -952,6 +952,12 @@ test('unknown printf precision bounds long known-string alternatives', { timeout
 	assert.ok(elapsed < 2_000, `long unknown-precision string took ${Math.round(elapsed)}ms`);
 });
 
+test('large unknown-precision strings fail closed without overflowing the argument stack', { timeout: 2_000 }, () => {
+	const value = 'x'.repeat(250_000);
+	const problems = raw(`<style><?php $precision = 1; printf("%.*s", $precision, "${value}"); ?></style>`);
+	assert.ok(problems.some((problem) => problem.includes('too many dynamic formatter alternatives')));
+});
+
 test('dynamic printf alternatives combine and survive the branch limit', () => {
 	assert.ok(
 		raw('<style><?php $width = 1; $value = ""; printf("%\'r*.0s%\'g*.0sb(1 2 3)", $width, $value, $width, $value); ?></style>')

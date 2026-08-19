@@ -1322,8 +1322,8 @@ function renderedEchoValue(tokens, absoluteFallback) {
 		const encoded = literal.bytes
 			? { bytes: literal.bytes, byteMap: literal.byteMap }
 			: encodedPhpText(literal.text, literal.map, absoluteFallback);
-		bytes.push(...encoded.bytes);
-		byteMap.push(...encoded.byteMap);
+		for (const byte of encoded.bytes) bytes.push(byte);
+		for (const position of encoded.byteMap) byteMap.push(position);
 		previous = { literal, index };
 	}
 	return decodedPhpBytes(Buffer.from(bytes), byteMap, absoluteFallback);
@@ -1870,8 +1870,8 @@ function combinedTextVariants(groups) {
 		for (let index = 0; index < groups.length; index++) {
 			const choice = groups[index][selection[index]];
 			text += choice.text;
-			map.push(...choice.map);
-			resumeMap.push(...choice.resumeMap);
+			for (const position of choice.map) map.push(position);
+			for (const position of choice.resumeMap) resumeMap.push(position);
 		}
 		if (seen.has(text)) continue;
 		seen.add(text);
