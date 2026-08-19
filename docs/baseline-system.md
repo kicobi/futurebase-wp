@@ -146,7 +146,8 @@ Gitignored classes: `.project/private/`, `.project/credentials/`,
 Capture targets are public and unauthenticated in this round. `base_url` is an
 HTTP(S) origin only; page URLs may be relative and may carry ordinary public
 queries such as `?lang=sv`, but userinfo and recognized credential parameters
-in query or path form are rejected. Do not put login URLs, tokens, passwords,
-or session identifiers in capture configuration. Authenticated/private capture
-remains out of scope; store any future authentication material only in the
-gitignored credential or auth directories above.
+in query, path, or fragment form are rejected. Do not put login URLs, tokens,
+passwords, or session identifiers in capture configuration.
+Authenticated/private capture remains out of scope; store any future
+authentication material only in the gitignored credential or auth directories
+above.

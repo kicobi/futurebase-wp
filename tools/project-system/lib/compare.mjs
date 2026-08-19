@@ -14,7 +14,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { sanitizeTargetUrl, targetUrlHasSecret } from './targets.mjs';
+import { normalizeBaseUrl, sanitizeTargetUrl, targetUrlHasSecret } from './targets.mjs';
 
 const readJsonSafe = (p) => {
 	try {
@@ -41,23 +41,32 @@ function row(label, before, after, direction, unit = '') {
 	return { label, before, after, unit, change };
 }
 
-const hostOf = (url) => {
+const baseIdentity = (url) => {
 	try {
-		return new URL(url).host;
+		const normalized = normalizeBaseUrl(url);
+		return { valid: true, origin: normalized ? new URL(normalized).origin : null };
 	} catch {
-		return url ?? null;
+		return { valid: false, origin: null };
 	}
 };
 // Trailing slash is not a difference worth blocking a comparison over.
 // Query strings are: they can select a language, product, filter, or other
 // materially different resource while keeping the same pathname. Fragments
 // stay irrelevant because they never reach the server.
-const pageIdentity = (url, baseUrl) => {
+const pageIdentity = (url, base) => {
+	if (!base.valid) return { valid: false, key: null, onBase: false };
 	try {
-		const parsed = new URL(url, baseUrl || 'https://relative.invalid/');
-		return `${parsed.username}\0${parsed.password}\0${parsed.pathname.replace(/\/+$/, '') || '/'}${parsed.search}`;
+		const parsed = new URL(url, base.origin ? `${base.origin}/` : 'https://relative.invalid/');
+		if (!['http:', 'https:'].includes(parsed.protocol)) return { valid: false, key: null, onBase: false };
+		const onBase = parsed.origin === (base.origin || 'https://relative.invalid');
+		const originKey = onBase ? '<base-origin>' : parsed.origin;
+		return {
+			valid: true,
+			onBase,
+			key: `${originKey}\0${parsed.username}\0${parsed.password}\0${parsed.pathname.replace(/\/+$/, '') || '/'}${parsed.search}`,
+		};
 	} catch {
-		return String(url ?? '').replace(/\/+$/, '') || '/';
+		return { valid: false, key: null, onBase: false };
 	}
 };
 
@@ -96,10 +105,12 @@ export function compareTargets(baselineSummary, finalSummary) {
 		blocking.push(`viewports differ (baseline: ${bVp || 'none'} · final: ${fVp || 'none'}) — page-weight, layout and screenshot metrics are not comparable across different viewports`);
 	}
 
-	const bHost = hostOf(safeBaseUrl(b.base_url));
-	const fHost = hostOf(safeBaseUrl(f.base_url));
-	if (bHost !== fHost) {
-		limitations.push(`base URL host differs (baseline: ${bHost ?? 'none'} · final: ${fHost ?? 'none'}) — expected for a redesign that moves domain, but confirm it is deliberate`);
+	const bBase = baseIdentity(b.base_url);
+	const fBase = baseIdentity(f.base_url);
+	if (!bBase.valid || !fBase.valid) {
+		blocking.push('one or both base URLs are malformed or unsafe — target identity cannot be verified');
+	} else if (bBase.origin !== fBase.origin) {
+		limitations.push(`base URL origin differs (baseline: ${bBase.origin ?? 'none'} · final: ${fBase.origin ?? 'none'}) — expected for a redesign that moves domain, but confirm it is deliberate`);
 	}
 
 	const bPages = (b.pages ?? []).map((p) => p.name).sort();
@@ -119,29 +130,40 @@ export function compareTargets(baselineSummary, finalSummary) {
 	// nothing reported, and case-study will happily publish the difference as an
 	// improvement.
 	//
-	// On a moved domain the paths are expected to change too, and that is
-	// already disclosed above — blocking there would break the redesign
-	// workflow this tool exists for. On the SAME host there is no benign reason
-	// for a label to point somewhere else, so that blocks.
+// On a declared origin move the paths are expected to change too, and that is
+// already disclosed above — blocking there would break the redesign workflow
+// this tool exists for. An off-base origin receives no such exemption: it is a
+// different capture target even when the declared base itself moved.
 	const bByName = new Map((b.pages ?? []).map((p) => [p.name, p.url]));
-	const moved = [];
-	for (const p of f.pages ?? []) {
-		const was = bByName.get(p.name);
-		if (was === undefined) continue;
-		if (pageIdentity(was, b.base_url) === pageIdentity(p.url, f.base_url)) continue;
-		const secretBearing = targetUrlHasSecret(was, { baseUrl: safeBaseUrl(b.base_url) }) || targetUrlHasSecret(p.url, { baseUrl: safeBaseUrl(f.base_url) });
-		const beforeDisplay = safePageUrl(was, b.base_url);
-		const afterDisplay = safePageUrl(p.url, f.base_url);
-		if (secretBearing && beforeDisplay === afterDisplay) {
-			moved.push(`${p.name}: secret-bearing target differs`);
-			continue;
+	if (bBase.valid && fBase.valid) {
+		const blockingMoves = [];
+		const allowedMoves = [];
+		for (const p of f.pages ?? []) {
+			const was = bByName.get(p.name);
+			if (was === undefined) continue;
+			const beforeIdentity = pageIdentity(was, bBase);
+			const afterIdentity = pageIdentity(p.url, fBase);
+			if (!beforeIdentity.valid || !afterIdentity.valid) {
+				blockingMoves.push(`${p.name}: one or both targets are malformed or unsafe`);
+				continue;
+			}
+			if (beforeIdentity.key === afterIdentity.key) continue;
+
+			const secretBearing = targetUrlHasSecret(was, { baseUrl: bBase.origin }) || targetUrlHasSecret(p.url, { baseUrl: fBase.origin });
+			const beforeDisplay = safePageUrl(was, b.base_url);
+			const afterDisplay = safePageUrl(p.url, f.base_url);
+			const detail = secretBearing && beforeDisplay === afterDisplay
+				? `${p.name}: secret-bearing target differs`
+				: `${p.name}: ${beforeDisplay} → ${afterDisplay}`;
+			const followsDeclaredMove = beforeIdentity.onBase && afterIdentity.onBase && bBase.origin !== fBase.origin;
+			(followsDeclaredMove ? allowedMoves : blockingMoves).push(detail);
 		}
-		moved.push(`${p.name}: ${beforeDisplay} → ${afterDisplay}`);
-	}
-	if (moved.length) {
-		const message = `the same page name measures a different path or query (${moved.join(' · ')})`;
-		if (bHost === fHost) blocking.push(`${message} — on the same host, that is a different page, not a changed one`);
-		else limitations.push(`${message} — expected alongside the domain move, but confirm each pairing is the page you mean`);
+		if (blockingMoves.length) {
+			blocking.push(`the same page name measures a different path, query, or origin (${blockingMoves.join(' · ')}) — that is a different page, not a changed one`);
+		}
+		if (allowedMoves.length) {
+			limitations.push(`the same page name measures a different path, query, or origin (${allowedMoves.join(' · ')}) — expected alongside the declared origin move, but confirm each pairing is the page you mean`);
+		}
 	}
 
 	const bMods = (b.modules ?? []).slice().sort();

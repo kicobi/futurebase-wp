@@ -46,15 +46,35 @@ test('differing viewports block the comparison', () => {
 	assert.match(blocking[0], /1440x900/);
 });
 
-test('a differing host is disclosed, not blocked', () => {
+test('a differing base origin is disclosed, not blocked', () => {
 	// Legitimate for a redesign that moves domain — refusing would break the
 	// workflow the tool exists for. It must still be said.
-	const final = run({ target: { base_url: 'https://new-domain.com' } });
+	const final = run({ target: {
+		base_url: 'https://new-domain.com',
+		pages: [
+			{ name: 'home', url: 'https://new-domain.com/' },
+			{ name: 'about', url: 'https://new-domain.com/about/' },
+		],
+	} });
 	const { limitations, blocking } = compareTargets(run(), final);
 	assert.deepEqual(blocking, []);
 	assert.equal(limitations.length, 1);
-	assert.match(limitations[0], /base URL host differs/);
+	assert.match(limitations[0], /base URL origin differs/);
 	assert.match(limitations[0], /new-domain\.com/);
+});
+
+test('scheme and port changes count as base-origin differences', () => {
+	for (const baseUrl of ['http://example.com', 'https://example.com:8443']) {
+		const { limitations, blocking } = compareTargets(run(), run({ target: {
+			base_url: baseUrl,
+			pages: [
+				{ name: 'home', url: `${baseUrl}/` },
+				{ name: 'about', url: `${baseUrl}/about/` },
+			],
+		} }));
+		assert.deepEqual(blocking, []);
+		assert.ok(limitations.some((reason) => reason.includes('base URL origin differs')), baseUrl);
+	}
 });
 
 test('a differing page set is disclosed with both sides named', () => {
@@ -88,6 +108,24 @@ test('a moved domain may move its paths without blocking', () => {
 	assert.ok(limitations.some((l) => l.includes('confirm each pairing')));
 });
 
+test('off-base absolute page origins block even when the declared base is unchanged', () => {
+	const baseline = run({ target: { pages: [{ name: 'home', url: 'https://one.test/preview?token=SameSecret987' }] } });
+	const final = run({ target: { pages: [{ name: 'home', url: 'https://two.test/preview?token=SameSecret987' }] } });
+	const { blocking } = compareTargets(baseline, final);
+	assert.equal(blocking.length, 1);
+	assert.match(blocking[0], /different (?:origin|page|path)/);
+	assert.doesNotMatch(blocking[0], /SameSecret987/);
+});
+
+test('malformed historical base URLs block without echoing their values', () => {
+	const baseline = run({ target: { base_url: 'https://admin%3ABaselineSecret987%40one.test', pages: [{ name: 'home', url: '/preview' }] } });
+	const final = run({ target: { base_url: 'https://admin%3AFinalSecret987%40two.test', pages: [{ name: 'home', url: '/preview' }] } });
+	const { blocking } = compareTargets(baseline, final);
+	assert.equal(blocking.length, 1);
+	assert.match(blocking[0], /base URL.*(?:malformed|unsafe)/i);
+	assert.doesNotMatch(blocking[0], /BaselineSecret987|FinalSecret987/);
+});
+
 test('a trailing slash is not a different page', () => {
 	const final = run({ target: { pages: [{ name: 'home', url: 'https://example.com' }, { name: 'about', url: 'https://example.com/about' }] } });
 	assert.deepEqual(compareTargets(run(), final).blocking, []);
@@ -98,7 +136,7 @@ test('an exact query-string change blocks on the same host', () => {
 	const final = run({ target: { pages: [{ name: 'home', url: 'https://example.com/?lang=en' }] } });
 	const { blocking } = compareTargets(baseline, final);
 	assert.equal(blocking.length, 1);
-	assert.match(blocking[0], /different path or query/);
+	assert.match(blocking[0], /different path, query, or origin/);
 	assert.match(blocking[0], /lang=sv/);
 	assert.match(blocking[0], /lang=en/);
 });
@@ -138,6 +176,10 @@ test('several differences are reported together, not just the first', () => {
 	const final = run({
 		target: {
 			base_url: 'https://new-domain.com',
+			pages: [
+				{ name: 'home', url: 'https://new-domain.com/' },
+				{ name: 'about', url: 'https://new-domain.com/about/' },
+			],
 			viewports: [{ name: 'desktop', width: 1440, height: 900 }],
 			modules: ['crawl'],
 		},

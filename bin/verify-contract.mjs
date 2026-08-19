@@ -153,27 +153,147 @@ const CSS_LENGTH_UNITS = [
 	'dvw', 'dvh', 'dvi', 'dvb', 'dvmin', 'dvmax',
 	'cqw', 'cqh', 'cqi', 'cqb', 'cqmin', 'cqmax',
 ];
-const CSS_LENGTH_RE = new RegExp(
-	`(?<![A-Za-z0-9_.-])[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:${CSS_LENGTH_UNITS.slice().sort((a, b) => b.length - a.length).join('|')})(?![A-Za-z0-9_-])`,
-	'i',
-);
-const CSS_URL_RE = /\burl\(\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:\\.|[^)])*)\)/gi;
+const CSS_LENGTH_UNIT_SET = new Set(CSS_LENGTH_UNITS);
+
+const isDigit = (char) => char >= '0' && char <= '9';
+const isHex = (char) => /^[0-9a-f]$/i.test(char || '');
+const isNameStart = (char) => !!char && (/[A-Za-z_]/.test(char) || char.codePointAt(0) >= 0x80);
+const isNameChar = (char) => isNameStart(char) || isDigit(char) || char === '-';
+const isValidEscape = (text, index) => text[index] === '\\' && index + 1 < text.length && !/[\n\r\f]/.test(text[index + 1]);
+
+function consumeEscape(text, start) {
+	let index = start + 1;
+	if (!isHex(text[index])) return { end: index + 1, value: text[index] || '' };
+	let hex = '';
+	while (hex.length < 6 && isHex(text[index])) hex += text[index++];
+	if (/\s/.test(text[index] || '')) index++;
+	const point = Number.parseInt(hex, 16);
+	return { end: index, value: point === 0 || point > 0x10ffff ? '\ufffd' : String.fromCodePoint(point) };
+}
+
+function wouldStartIdentifier(text, index) {
+	const char = text[index];
+	if (char === '-') return isNameStart(text[index + 1]) || text[index + 1] === '-' || isValidEscape(text, index + 1);
+	return isNameStart(char) || isValidEscape(text, index);
+}
+
+function consumeIdentifier(text, start) {
+	let index = start;
+	let value = '';
+	while (index < text.length) {
+		if (isNameChar(text[index])) {
+			value += text[index++];
+			continue;
+		}
+		if (!isValidEscape(text, index)) break;
+		const escape = consumeEscape(text, index);
+		value += escape.value;
+		index = escape.end;
+	}
+	return { end: index, value };
+}
+
+function wouldStartNumber(text, index) {
+	const char = text[index];
+	if (isDigit(char)) return true;
+	if (char === '.') return isDigit(text[index + 1]);
+	if (char !== '+' && char !== '-') return false;
+	return isDigit(text[index + 1]) || (text[index + 1] === '.' && isDigit(text[index + 2]));
+}
+
+function consumeNumber(text, start) {
+	const match = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/.exec(text.slice(start));
+	return start + match[0].length;
+}
+
+function consumeFunction(text, open) {
+	let depth = 0;
+	let quote = null;
+	for (let index = open; index < text.length; index++) {
+		const char = text[index];
+		if (isValidEscape(text, index)) {
+			index = consumeEscape(text, index).end - 1;
+			continue;
+		}
+		if (quote) {
+			if (char === quote) quote = null;
+			continue;
+		}
+		if (char === '"' || char === "'") {
+			quote = char;
+			continue;
+		}
+		if (char === '(') depth++;
+		if (char === ')' && --depth === 0) return index + 1;
+	}
+	return text.length;
+}
+
+function withoutCssUrls(value) {
+	const text = String(value);
+	let result = '';
+	let cursor = 0;
+	let index = 0;
+	while (index < text.length) {
+		if (!wouldStartIdentifier(text, index)) {
+			index++;
+			continue;
+		}
+		const identifier = consumeIdentifier(text, index);
+		let open = identifier.end;
+		while (/\s/.test(text[open] || '')) open++;
+		if (identifier.value.toLowerCase() !== 'url' || text[open] !== '(') {
+			index = identifier.end;
+			continue;
+		}
+		const end = consumeFunction(text, open);
+		result += text.slice(cursor, index) + blankOut(text.slice(index, end));
+		cursor = end;
+		index = end;
+	}
+	return result + text.slice(cursor);
+}
+
+function rawLengthHit(text) {
+	let index = 0;
+	while (index < text.length) {
+		if (wouldStartNumber(text, index)) {
+			const numberEnd = consumeNumber(text, index);
+			if (wouldStartIdentifier(text, numberEnd)) {
+				const unit = consumeIdentifier(text, numberEnd);
+				if (CSS_LENGTH_UNIT_SET.has(unit.value.toLowerCase())) return text.slice(index, unit.end);
+				index = unit.end;
+				continue;
+			}
+			index = numberEnd;
+			continue;
+		}
+		if (wouldStartIdentifier(text, index)) {
+			index = consumeIdentifier(text, index).end;
+			continue;
+		}
+		index++;
+	}
+	return null;
+}
 
 const RAW_VALUE_RULES = [
 	['hex color', /#[0-9a-f]{3,8}\b/i],
 	['color function', /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color(?:-mix)?)\s*\([^)]*\)/i],
-	['length', CSS_LENGTH_RE],
 ];
 
 function rawValueHits(value) {
-	// URLs can legitimately contain dimension-looking path segments. Blank the
-	// whole CSS url() token before looking for numeric dimensions elsewhere.
-	const text = String(value).replace(CSS_URL_RE, blankOut);
+	// URLs can legitimately contain color- or dimension-looking path segments.
+	// Blank the complete CSS function, including escaped spellings of `url`,
+	// before scanning the declaration value around it.
+	const text = withoutCssUrls(value);
 	const hits = [];
 	for (const [label, re] of RAW_VALUE_RULES) {
 		const hit = text.match(re);
 		if (hit) hits.push({ label, value: hit[0] });
 	}
+	const length = rawLengthHit(text);
+	if (length) hits.push({ label: 'length', value: length });
 	return hits;
 }
 

@@ -623,6 +623,59 @@ test('redaction never turns secret-selected historical targets into a clean clie
 	}
 });
 
+test('fragment credentials and off-base origins cannot leak or support a client claim', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const sentinel = /BaselineSecret987|FinalSecret987/;
+		const complete = [{ module: 'crawl', status: 'complete' }];
+		const { root, report: caseStudyReport } = caseStudyFixture(dir, complete, 'completed');
+		const baselineDir = join(root, '.project', 'baseline', '2026-07-30T100000Z');
+		const finalDir = join(root, '.project', 'final', '2026-08-01T100000Z');
+		const setTarget = (runDir, baseUrl, url, broken) => {
+			const summaryPath = join(runDir, 'summary.json');
+			const summary = JSON.parse(readFileSync(summaryPath, 'utf8'));
+			summary.target = { base_url: baseUrl, pages: [{ name: 'home', url }], viewports: [], modules: ['crawl'] };
+			writeFileSync(summaryPath, JSON.stringify(summary, null, 2));
+			writeFileSync(join(runDir, 'crawl', 'crawl.json'), JSON.stringify({ summary: { fetched: 1, brokenLinkCount: broken, missingMetaDesc: 0 } }));
+		};
+
+		setTarget(baselineDir, 'https://example.test/', '/old#access_token=BaselineSecret987', 9);
+		setTarget(finalDir, 'https://example.test/', '/new', 0);
+		for (const args of [
+			['compare', '--json'],
+			['compare', '--allow-mismatch'],
+			['project', 'case-study', '--json'],
+		]) {
+			const result = spawnSync(process.execPath, [COMPARE_CLI, ...args, '--project-root', root], { encoding: 'utf8' });
+			assert.doesNotMatch(result.stdout + result.stderr, sentinel, args.join(' '));
+		}
+		for (const file of [
+			'comparison-2026-08-01T100000Z.md',
+			'comparison-2026-08-01T100000Z-client.md',
+			'comparison-2026-08-01T100000Z.html',
+		]) {
+			const output = readFileSync(join(root, '.project', 'reports', file), 'utf8');
+			assert.doesNotMatch(output, sentinel, file);
+			if (file.endsWith('-client.md')) assert.doesNotMatch(output, /Broken internal links: 9 → 0/);
+		}
+		assert.doesNotMatch(readFileSync(caseStudyReport, 'utf8'), sentinel);
+
+		setTarget(baselineDir, 'https://example.test/', 'https://one.test/preview?token=SameSecret987', 9);
+		setTarget(finalDir, 'https://example.test/', 'https://two.test/preview?token=SameSecret987', 0);
+		const offBase = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--json'], { encoding: 'utf8' });
+		assert.equal(offBase.status, EXIT.INVALID_CONFIG);
+		assert.doesNotMatch(offBase.stdout + offBase.stderr, /SameSecret987/);
+
+		setTarget(baselineDir, 'https://admin%3ABaselineSecret987%40one.test', '/preview', 9);
+		setTarget(finalDir, 'https://admin%3AFinalSecret987%40two.test', '/preview', 0);
+		const malformedBase = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--json'], { encoding: 'utf8' });
+		assert.equal(malformedBase.status, EXIT.INVALID_CONFIG);
+		assert.doesNotMatch(malformedBase.stdout + malformedBase.stderr, sentinel);
+	} finally {
+		cleanup();
+	}
+});
+
 // --- a module may not report evidence it did not gather ----------------------
 //
 // Both of these returned `complete`. A comparison then treats `complete` as the

@@ -655,7 +655,7 @@ test('raw color and length values in root and variation styles are rejected, but
 });
 
 test('raw CSS detection reports signed decimals and modern color functions exactly', () => {
-	for (const value of ['-.5rem', '-2.25PX', '.75em', 'HSL(10 20% 30%)', 'color(display-p3 1 0 0)', 'oklab(50% .1 -.1)']) {
+	for (const value of ['-.5rem', '-2.25PX', '.75em', '1e2px', '+1E-2rem', 'HSL(10 20% 30%)', 'color(display-p3 1 0 0)', 'oklab(50% .1 -.1)']) {
 		const problems = raw(`<!-- wp:group {"style":{"css":"${value}"}} /-->`);
 		assert.ok(problems.some((problem) => problem.includes(`"${value}"`)), `must report the complete raw value: ${value}`);
 	}
@@ -677,7 +677,15 @@ test('raw CSS detection covers every modern length-unit family case-insensitivel
 });
 
 test('length-like substrings inside identifiers and URLs are not raw CSS dimensions', () => {
-	for (const value of ['2cqw-token', 'token-2cqw', 'url(/docs/2cqw-layout)', 'url("/docs/2rem/layout.svg")']) {
+	for (const value of [
+		'2cqw-token',
+		'token-2cqw',
+		'2remé',
+		String.raw`2rem\-token`,
+		'url(/docs/2cqw-layout)',
+		'url("/docs/2rem/layout.svg")',
+		String.raw`u\72l(/docs/2rem.svg)`,
+	]) {
 		assert.deepEqual(raw(`<!-- wp:group {"style":{"css":"${value.replaceAll('"', '\\"')}"}} /-->`), [], value);
 	}
 });
@@ -739,6 +747,7 @@ test('WordPress-style case-insensitive JSON variation extensions enter the check
 			const result = runChecker(root);
 			assert.equal(result.status, 1, file);
 			assert.match(result.stderr, new RegExp(`styles/${file.replaceAll('.', '\\.')}.*fluid`, 'i'));
+			assert.match(result.stderr, new RegExp(`styles/${file.replaceAll('.', '\\.')}.*raw hex color`, 'i'));
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}

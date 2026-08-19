@@ -71,12 +71,16 @@ test('page targets fail closed on malformed encoded credentials and session keys
 		'/preview?auth-sessionid=FakeSessionSecret987',
 		'/preview?%73essionid=FakeSessionSecret987',
 		'/preview;jsessionid=FakeSessionSecret987',
+		'/preview#access_token=FakeSessionSecret987',
+		'/preview#/callback?auth[token]=FakeSessionSecret987',
+		'/preview#route;jsessionid=FakeSessionSecret987',
 	]) {
 		const errors = captureTargetErrors({ ...safe, pages: [{ name: 'unsafe', url }] });
 		assert.equal(errors.length, 1, `must reject ${url.split('=')[0]}`);
 		assert.doesNotMatch(errors[0], /FakeEncodedPassword987|FakeSessionSecret987/);
 	}
 	assert.deepEqual(captureTargetErrors({ ...safe, pages: [{ name: 'public', url: '/preview;lang=sv?lang=sv' }] }), []);
+	assert.deepEqual(captureTargetErrors({ ...safe, pages: [{ name: 'public', url: '/preview?lang=sv#details' }] }), []);
 });
 
 test('defensive sanitization strips credentials while retaining public query parameters', () => {
@@ -85,12 +89,14 @@ test('defensive sanitization strips credentials while retaining public query par
 		pages: [
 			{ name: 'sv', url: 'https://user:page-secret@example.test/about?lang=sv&access_token=page-secret' },
 			{ name: 'session', url: '/preview;jsessionid=path-secret?auth[sessionid]=query-secret&lang=sv' },
+			{ name: 'fragment', url: '/callback?lang=sv#/done?access_token=fragment-secret' },
 		],
 	});
 	assert.equal(config.base_url, 'https://example.test/');
 	assert.equal(config.pages[0].url, 'https://example.test/about?lang=sv');
 	assert.equal(config.pages[1].url, '/preview?lang=sv');
-	assert.doesNotMatch(JSON.stringify(config), /base-secret|page-secret|path-secret|query-secret|admin|user/);
+	assert.equal(config.pages[2].url, '/callback?lang=sv');
+	assert.doesNotMatch(JSON.stringify(config), /base-secret|page-secret|path-secret|query-secret|fragment-secret|admin|user/);
 
 	const summary = sanitizeRunSummary({ target: config, status: 'completed' });
 	assert.equal(summary.target.pages[0].url, 'https://example.test/about?lang=sv');
@@ -121,6 +127,9 @@ test('baseline init rejects malformed, nested, encoded, and path-form credential
 		`/preview?PHPSESSID=${sentinel}`,
 		`/preview?%73essionid=${sentinel}`,
 		`/preview;jsessionid=${sentinel}`,
+		`/preview#access_token=${sentinel}`,
+		`/preview#/callback?auth[token]=${sentinel}`,
+		`/preview#route;jsessionid=${sentinel}`,
 	]) {
 		const { dir, cleanup } = sandbox();
 		try {
@@ -164,7 +173,7 @@ test('inspection and historical report regeneration redact old unsafe targets', 
 	const { dir, cleanup } = sandbox();
 	try {
 		const sentinel = 'HistoricalSecret987';
-		writeFileSync(join(dir, '.project', 'baseline.config.yml'), `schema_version: 1\nkind: baseline-config\nmode: redesign\nbase_url: https://admin:${sentinel}@example.test/private?password=${sentinel}\npages:\n  - name: home\n    url: /?lang=sv&token=${sentinel}\nmodules: [manual]\nviewports: []\n`);
+		writeFileSync(join(dir, '.project', 'baseline.config.yml'), `schema_version: 1\nkind: baseline-config\nmode: redesign\nbase_url: https://admin:${sentinel}@example.test/private?password=${sentinel}\npages:\n  - name: home\n    url: /?lang=sv#access_token=${sentinel}\nmodules: [manual]\nviewports: []\n`);
 		const runId = '2026-08-19T120000Z';
 		const runDir = join(dir, '.project', 'baseline', runId);
 		mkdirSync(runDir, { recursive: true });
@@ -176,7 +185,7 @@ test('inspection and historical report regeneration redact old unsafe targets', 
 			status: 'partial',
 			target: {
 				base_url: `https://admin:${sentinel}@example.test/private`,
-				pages: [{ name: 'home', url: `https://example.test/?lang=sv&token=${sentinel}` }],
+				pages: [{ name: 'home', url: `https://example.test/?lang=sv#/callback?access_token=${sentinel}` }],
 				viewports: [],
 				modules: ['manual'],
 			},

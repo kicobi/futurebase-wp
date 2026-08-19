@@ -78,6 +78,20 @@ function hasSecretPath(url) {
 	return false;
 }
 
+// OAuth callbacks and SPA routers commonly place query-shaped data after `#`.
+// Fragments never reach the server, but they are still durable configuration
+// here and are copied into inspection/report output, so treat recognized names
+// exactly as we do in the real query and matrix/path components.
+const FRAGMENT_PARAMETER_RE = /(?:^|[?&;])([^=/?#&;]+)=([^#&;]*)/g;
+
+function hasSecretFragment(url) {
+	const fragment = decoded(url.hash.replace(/^#/, ''));
+	for (const match of fragment.matchAll(FRAGMENT_PARAMETER_RE)) {
+		if (isSecretParameter(decoded(match[1]))) return true;
+	}
+	return false;
+}
+
 // Strip literal matrix/path parameters such as `;jsessionid=...`. If the
 // delimiter itself was encoded, rewriting only part of the encoded path risks
 // leaving a credential behind after a downstream decode, so redact the whole
@@ -94,7 +108,7 @@ export function targetUrlHasSecret(value, { baseUrl = null } = {}) {
 	if (value == null || value === '') return false;
 	try {
 		const url = parsePageUrl(String(value), baseUrl);
-		return !!(url.username || url.password || hasSecretQuery(url) || hasSecretPath(url));
+		return !!(url.username || url.password || hasSecretQuery(url) || hasSecretPath(url) || hasSecretFragment(url));
 	} catch {
 		return true;
 	}
@@ -148,7 +162,7 @@ export function captureTargetErrors(config) {
 			errors.push(`/pages/${index}/url must resolve to HTTP(S)`);
 			continue;
 		}
-		if (url.username || url.password || hasSecretQuery(url) || hasSecretPath(url)) {
+		if (url.username || url.password || hasSecretQuery(url) || hasSecretPath(url) || hasSecretFragment(url)) {
 			errors.push(`/pages/${index}/url must not contain credentials or secret parameters`);
 		}
 	}
@@ -176,6 +190,7 @@ export function sanitizeTargetUrl(value, { baseUrl = null, originOnly = false } 
 	url.username = '';
 	url.password = '';
 	if (!stripSecretPath(url)) return REDACTED_TARGET;
+	if (hasSecretFragment(url)) url.hash = '';
 	for (const name of [...url.searchParams.keys()]) {
 		if (isSecretParameter(name)) url.searchParams.delete(name);
 	}
