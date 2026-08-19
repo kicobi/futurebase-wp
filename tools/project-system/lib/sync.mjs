@@ -52,7 +52,7 @@ export const PRODUCT_ONLY = [
 ];
 
 // The portable exceptions inside bin/. Everything else there is slug-bearing —
-// rename rewrites the prefix and text domain into it — but these four derive
+// rename rewrites the prefix and text domain into it — but these derive
 // the theme slug at runtime from the pattern registry or style.css, and
 // bin/test-rename.sh ASSERTS they contain no slug literal after a rename.
 //
@@ -65,12 +65,29 @@ export const PRODUCT_ONLY = [
 // cannot drift: adding a file here without its slug-free property holding fails
 // the rename test. That assertion is what makes the claim true rather than
 // merely intended — do not inline a copy of this list anywhere.
-// verify-contract.mjs and its test travel together, deliberately. The checker
-// alone would be a file a project never runs (verify-theme.sh is review-class
-// and hand-ported), and the test alone proves nothing. Shipping the pair means
-// a project that ports its verify script gets checks already proven to reject
-// the markup they forbid.
-export const PORTABLE_BIN = ['bin/_page-set.sh', 'bin/demo-content.sh', 'bin/scorecard.sh', 'bin/smoke-render.sh', 'bin/smoke-render.php', 'bin/verify-contract.mjs', 'bin/verify-contract.test.mjs'];
+// The verifier is one executable closure. Shipping only the checker left an
+// older client runner that never called it; shipping only the runner left it
+// invoking absent support scripts. Keep the runner, checker, executable
+// negative tests, and every script the runner directly invokes together.
+export const VERIFIER_CLOSURE = [
+	'bin/verify-theme.sh',
+	'bin/_pm-detect.sh',
+	'bin/audit-identity.sh',
+	'bin/verify-version-surfaces.mjs',
+	'bin/test-rename.sh',
+	'bin/a11y-wp-env.sh',
+	'bin/verify-contract.mjs',
+	'bin/verify-contract.test.mjs',
+];
+
+export const PORTABLE_BIN = [
+	'bin/_page-set.sh',
+	'bin/demo-content.sh',
+	'bin/scorecard.sh',
+	'bin/smoke-render.sh',
+	'bin/smoke-render.php',
+	...VERIFIER_CLOSURE,
+];
 
 // Configuration the portable scripts cannot run without. bin/scorecard.sh is
 // CLASS.SAFE and copies verbatim, but the Lighthouse configs it passes to

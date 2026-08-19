@@ -33,6 +33,7 @@ import {
 	PORTABLE_CONFIG,
 	PRODUCT_ONLY,
 	safeFiles,
+	VERIFIER_CLOSURE,
 } from '../lib/sync.mjs';
 
 const TOOL_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -447,6 +448,57 @@ test('portable scripts travel with the configuration they invoke', () => {
 	// review-class, so a client could receive a newer script without them.
 	assert.equal(classifyPath('bin/scorecard.sh'), CLASS.SAFE);
 	for (const rel of PORTABLE_CONFIG) assert.equal(classifyPath(rel), CLASS.SAFE, `${rel} must travel with the script that reads it`);
+});
+
+test('the verifier runner invokes its checker and executable negative tests', () => {
+	const runner = readFileSync(resolve(TOOL_ROOT, '..', '..', 'bin', 'verify-theme.sh'), 'utf8');
+	assert.match(runner, /node bin\/verify-contract\.mjs/);
+	assert.match(runner, /node --test bin\/verify-contract\.test\.mjs/);
+	for (const rel of VERIFIER_CLOSURE) assert.equal(classifyPath(rel), CLASS.SAFE, `${rel} must travel with the verifier runner`);
+});
+
+test('an older client receives the complete verifier closure together', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const starter = join(dir, 'starter');
+		const projectRoot = join(dir, 'project');
+		initRepo(starter);
+		mkdirSync(projectRoot);
+		for (const rel of VERIFIER_CLOSURE) write(starter, rel, `old ${rel}\n`, rel.endsWith('.sh') ? 0o755 : 0o644);
+		commitAll(starter, 'older verifier closure');
+		for (const rel of VERIFIER_CLOSURE) write(projectRoot, rel, `old ${rel}\n`, rel.endsWith('.sh') ? 0o755 : 0o644);
+		for (const rel of VERIFIER_CLOSURE) write(starter, rel, `new ${rel}\n`, rel.endsWith('.sh') ? 0o755 : 0o644);
+		const head = commitAll(starter, 'update complete verifier closure');
+
+		const entries = planFiles({ projectRoot, starter, ref: head }).filter((entry) => VERIFIER_CLOSURE.includes(entry.rel));
+		assert.deepEqual(entries.map((entry) => entry.rel).sort(), VERIFIER_CLOSURE.slice().sort());
+		assert.ok(entries.every((entry) => entry.state === 'update'));
+		for (const entry of entries) assert.equal(applyEntry(entry, { projectRoot, starter }), true);
+		for (const rel of VERIFIER_CLOSURE) assert.equal(readFileSync(join(projectRoot, rel), 'utf8'), `new ${rel}\n`);
+	} finally {
+		cleanup();
+	}
+});
+
+test('a locally modified verifier runner remains a conflict and is never overwritten', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const starter = join(dir, 'starter');
+		const projectRoot = join(dir, 'project');
+		initRepo(starter);
+		mkdirSync(projectRoot);
+		write(starter, 'bin/verify-theme.sh', 'old runner\n', 0o755);
+		commitAll(starter, 'old runner');
+		write(starter, 'bin/verify-theme.sh', 'new runner\n', 0o755);
+		const head = commitAll(starter, 'new runner');
+		write(projectRoot, 'bin/verify-theme.sh', 'client-modified runner\n', 0o755);
+
+		const entry = planFiles({ projectRoot, starter, ref: head }).find((candidate) => candidate.rel === 'bin/verify-theme.sh');
+		assert.equal(entry.state, 'conflict');
+		assert.equal(readFileSync(join(projectRoot, entry.rel), 'utf8'), 'client-modified runner\n');
+	} finally {
+		cleanup();
+	}
 });
 
 test('the documented --allow-mismatch override is actually reachable', () => {

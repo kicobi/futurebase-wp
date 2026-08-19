@@ -22,6 +22,7 @@ FUTUREBASE_DISPLAY_SENTINEL='Futurebase'
 # sync verbatim, so an unguarded template-only step would fail client CI
 # permanently; bin/test-rename.sh asserts the guard is present and exact.
 FUTUREBASE_TEMPLATE_REPOSITORY='kicobi/futurebase-wp'
+FUTUREBASE_PATH_FLAG='--futurebase-path'
 
 FUTUREBASE_LEGACY_FORMS=(
 	'wp-starter'
