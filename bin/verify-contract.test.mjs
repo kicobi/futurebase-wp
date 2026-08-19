@@ -410,6 +410,14 @@ test('style elements and PHP-produced inline CSS are scanned in CSS context', ()
 		raw('<style nonce="<?php $probe = \'?>\'; ?>">\n.x{padding:2rem}\n</style>').some((problem) => /:2:.*2rem/.test(problem)),
 		'a legal PHP string containing the close-tag text must not truncate a style opening tag',
 	);
+	assert.ok(
+		raw('<style nonce="<?php #[Marker(\'?>\')] function contract_probe() {} ?>">\n.x{padding:2rem}\n</style>').some((problem) => /:2:.*2rem/.test(problem)),
+		'a PHP 8 attribute is not a hash comment and quoted close-tag text inside it is inert',
+	);
+	assert.ok(
+		raw('<style nonce="<?php #[Marker("?>")] function contract_probe_double() {} ?>">\n.x{padding:2rem}\n</style>').some((problem) => /:2:.*2rem/.test(problem)),
+		'PHP attribute strings may use the same quote character as their HTML container',
+	);
 });
 
 test('malformed block attributes fail closed instead of masking their raw values', () => {
@@ -453,6 +461,7 @@ test('the cover min-height exemption requires the exact class token', () => {
 	]) {
 		assert.ok(raw(markup).length > 0, `only the exact generated declaration may be exempt: ${markup}`);
 	}
+	assert.deepEqual(raw('<div class="wp-block-cover" style="/* core: generated */ min-height:50vh"></div>'), [], 'CSS comments do not change the generated declaration name or value');
 });
 
 test('escaped CSS hash-token colors are rejected in markup, block CSS, and theme styles', () => {
@@ -474,6 +483,9 @@ test('standard HTML and SVG URL attributes remain outside CSS-value checks', () 
 	for (const markup of [
 		'<img src="diagram.png" usemap="#fff"><map name="fff"></map>',
 		'<svg><use xlink:href="/sprite.svg#fff"></use></svg>',
+		'<svg><linearGradient href="/assets/2rem.svg#fff"></linearGradient></svg>',
+		'<svg><radialGradient xlink:href="/assets/2rem.svg#fff"></radialGradient></svg>',
+		'<svg><pattern href="/assets/2rem.svg#fff"></pattern><mpath href="/assets/2rem.svg#fff"></mpath><textPath href="/assets/2rem.svg#fff"></textPath></svg>',
 		'<link rel="preload" imagesrcset="/assets/2rem.png 1x">',
 		'<img src=/assets/2rem-#fff.svg>',
 		'<a href=#fff>Map target</a>',
@@ -485,6 +497,10 @@ test('standard HTML and SVG URL attributes remain outside CSS-value checks', () 
 	assert.ok(raw('<div data-href="#fff"></div>').some((problem) => problem.includes('hex color')), 'URL classification must use an exact attribute name');
 	assert.ok(raw('<div href="#fff"></div>').some((problem) => problem.includes('hex color')), 'URL classification must also use the element context');
 	assert.ok(raw('<div data="2rem"></div>').some((problem) => problem.includes('2rem')), 'element-specific URL names are not global exemptions');
+	for (const integrationPoint of ['desc', 'title']) {
+		const markup = `<svg><${integrationPoint}><script href="/2rem#fff"></script></${integrationPoint}></svg>`;
+		assert.ok(raw(markup).some((problem) => problem.includes('2rem')), `SVG ${integrationPoint} children re-enter the HTML namespace`);
+	}
 	const urlArray = '<!-- wp:acme/card {"url":["/assets/2rem.svg","#fff"]} /-->';
 	assert.deepEqual(raw(urlArray), [], 'array items inherit their URL-valued block attribute key');
 	assert.ok(raw('<!-- wp:image {"width":["600px"]} /-->').some((problem) => problem.includes('600px')), 'the core image width exception applies only to the direct scalar property');
@@ -498,12 +514,17 @@ test('PHP output is reconstructed inside its surrounding CSS and URL context', (
 		'a PHP URL fragment is still inside url(), not standalone CSS',
 	);
 	assert.deepEqual(raw('<style><?php $example = \'2rem\'; ?>.x{padding:var(--token)}</style>'), [], 'a non-output PHP string emits no CSS');
+	assert.deepEqual(raw(`<style><?php $unused = <<<'CSS'
+?> .x{padding:2rem}
+CSS; ?>.x{padding:var(--token)}</style>`), [], 'a PHP close tag inside a non-output nowdoc does not end the PHP span');
 	assert.deepEqual(raw('<div><?php $example = \'2rem\'; ?></div>'), [], 'PHP outside a CSS context is not CSS');
 	assert.ok(raw('<div style="<?php echo \'padding:\' . \'2rem\'; ?>"></div>').some((problem) => problem.includes('2rem')), 'concatenated emitted strings are scanned as their rendered CSS');
 	for (const markup of [
 		'<style>.x{padding:<?php echo "2"; echo "rem"; ?>}</style>',
 		'<style><?php echo ".x{padding:2", "rem}"; ?></style>',
 		String.raw`<style><?php echo '.x{padding:2r\65 m}'; ?></style>`,
+		'<style>.x{padding:<?php echo 2, "rem"; ?>}</style>',
+		String.raw`<style><?php echo ".x{padding:\u{32}rem}"; ?></style>`,
 	]) {
 		assert.ok(raw(markup).length > 0, `every literal PHP echo form contributes in render order: ${markup}`);
 	}
@@ -513,12 +534,65 @@ test('PHP output is reconstructed inside its surrounding CSS and URL context', (
 		'comments inside an echo expression do not produce CSS',
 	);
 	assert.deepEqual(raw('<style><?php $echo = ".x{padding:2rem}"; ?>.x{padding:var(--space)}</style>'), [], 'a variable named echo is not an output statement');
+	assert.deepEqual(raw('<style><?php $renderer->echo(".x{padding:2rem}"); ?>.x{padding:var(--space)}</style>'), [], 'a method named echo is not an output statement');
+	assert.deepEqual(raw('<style><?php #[Echo(".x{padding:2rem}")] function contract_probe_attribute_name() {} ?>.x{padding:var(--space)}</style>'), [], 'an attribute class named Echo is not an output statement');
+	assert.ok(raw('<style><?php #[Marker] function contract_probe_output() {} echo ".x{padding:2rem}"; ?></style>').some((problem) => problem.includes('2rem')), 'a PHP attribute does not hide a later echo statement');
+	assert.ok(raw('<style><?php contract_probe_label: print ".x{padding:2rem}"; ?></style>').some((problem) => problem.includes('2rem')), 'a statement label is not static member access');
+});
+
+test('PHP numeric bases, print, heredoc, and nowdoc cannot bypass rendered CSS checks', () => {
+	for (const markup of [
+		'<style>.x{padding:<?php echo 0x20, "rem"; ?>}</style>',
+		'<style>.x{padding:<?php echo 0b10, "rem"; ?>}</style>',
+		'<style>.x{padding:<?php echo 0o20, "rem"; ?>}</style>',
+		'<style><?php print ".x{padding:2rem}"; ?></style>',
+		`<style><?php echo <<<CSS
+.x{padding:2rem}
+CSS; ?></style>`,
+		String.raw`<style><?php echo <<<CSS
+.x{padding:\u{32}rem}
+CSS; ?></style>`,
+		`<style><?php echo <<<'CSS'
+.x{padding:2rem}
+CSS; ?></style>`,
+	]) {
+		assert.ok(raw(markup).length > 0, `every statically rendered PHP form is scanned: ${markup}`);
+	}
+});
+
+test('printf output is rendered without pulling dynamic URL arguments out of context', () => {
+	for (const markup of [
+		'<style><?php printf(".x{padding:2rem}"); ?></style>',
+		'<style><?php printf(".x{padding:%s}", "2rem"); ?></style>',
+		'<style><?php printf(".x{padding:%1$s}", "2rem"); ?></style>',
+	]) {
+		assert.ok(raw(markup).length > 0, `static printf output is scanned: ${markup}`);
+	}
+	assert.deepEqual(
+		raw('<style><?php printf(".x{background:url(%s)}", get_theme_file_uri("assets/2rem.svg")); ?></style>'),
+		[],
+		'a dynamic URL argument remains inside the format string URL context',
+	);
 });
 
 test('HTML character references are decoded before context and CSS checks', () => {
 	assert.ok(raw('<div style="color:&#35;fff"></div>').some((problem) => problem.includes('#fff')));
 	assert.ok(raw('<div style="color:&num;fff"></div>').some((problem) => problem.includes('#fff')));
+	assert.ok(raw('<div style="color:&#35fff"></div>').some((problem) => problem.includes('#fff')), 'numeric references may omit their semicolon');
+	assert.ok(raw('<div style="content:&quot;x&QUOT;;padding:2rem"></div>').some((problem) => problem.includes('2rem')), 'standard uppercase aliases are decoded with exact case');
+	assert.ok(raw('<div style="/*safe&ast;&sol;padding:2rem"></div>').some((problem) => problem.includes('2rem')), 'syntax-forming named references cannot hide CSS after a comment');
+	assert.ok(raw('<div style="content:&quot;x&QUOT/**/;padding:2rem"></div>').some((problem) => problem.includes('2rem')), 'legacy named references may omit a semicolon before punctuation');
 	assert.deepEqual(raw('<meta content="0;url=/2rem.html#fff" http-equiv="&#114;efresh">'), []);
+});
+
+test('class tokenization uses HTML ASCII whitespace only', () => {
+	for (const markup of [
+		'<div class="wp-block-cover&nbsp;extra" style="min-height:2rem"></div>',
+		'<div class="wp-block-cover&#8195;extra" style="min-height:2rem"></div>',
+	]) {
+		assert.ok(raw(markup).some((problem) => problem.includes('2rem')), markup);
+	}
+	assert.deepEqual(raw('<div class="wp-block-cover&Tab;extra" style="min-height:50vh"></div>'), []);
 });
 
 test('markup attribute diagnostics preserve UTF-16 source offsets', () => {

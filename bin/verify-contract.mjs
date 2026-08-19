@@ -228,9 +228,6 @@ const COLOR_FUNCTIONS = new Set([
 // attribute from creating a broad raw-value exemption.
 const URL_ATTRIBUTES_BY_TAG = new Map(Object.entries({
 	a: ['href', 'ping'],
-	animate: ['href', 'xlink:href'],
-	animateMotion: ['href', 'xlink:href'],
-	animateTransform: ['href', 'xlink:href'],
 	applet: ['archive', 'code', 'codebase', 'object'],
 	area: ['href', 'ping'],
 	audio: ['src'],
@@ -240,28 +237,42 @@ const URL_ATTRIBUTES_BY_TAG = new Map(Object.entries({
 	button: ['formaction'],
 	del: ['cite'],
 	embed: ['src'],
-	feimage: ['href', 'xlink:href'],
 	form: ['action'],
 	frame: ['longdesc', 'src'],
 	head: ['profile'],
 	html: ['manifest'],
 	iframe: ['longdesc', 'src'],
-	image: ['href', 'xlink:href'],
 	img: ['attributionsrc', 'dynsrc', 'longdesc', 'lowsrc', 'src', 'srcset', 'usemap'],
 	input: ['formaction', 'src', 'usemap'],
 	ins: ['cite'],
 	link: ['attributionsrc', 'href', 'imagesrcset'],
 	object: ['archive', 'classid', 'codebase', 'data', 'usemap'],
 	q: ['cite'],
-	script: ['attributionsrc', 'href', 'src', 'xlink:href'],
-	set: ['href', 'xlink:href'],
+	script: ['attributionsrc', 'src'],
 	source: ['src', 'srcset'],
 	table: ['background'],
 	td: ['background'],
 	th: ['background'],
 	track: ['src'],
-	use: ['href', 'xlink:href'],
 	video: ['poster', 'src'],
+}).map(([tag, names]) => [tag.toLowerCase(), new Set(names)]));
+const SVG_URL_ATTRIBUTES_BY_TAG = new Map(Object.entries({
+	a: ['href', 'xlink:href'],
+	animate: ['href', 'xlink:href'],
+	animateMotion: ['href', 'xlink:href'],
+	animateTransform: ['href', 'xlink:href'],
+	feImage: ['href', 'xlink:href'],
+	filter: ['href', 'xlink:href'],
+	image: ['href', 'xlink:href'],
+	linearGradient: ['href', 'xlink:href'],
+	marker: ['href', 'xlink:href'],
+	mpath: ['href', 'xlink:href'],
+	pattern: ['href', 'xlink:href'],
+	radialGradient: ['href', 'xlink:href'],
+	script: ['href', 'xlink:href'],
+	set: ['href', 'xlink:href'],
+	textPath: ['href', 'xlink:href'],
+	use: ['href', 'xlink:href'],
 }).map(([tag, names]) => [tag.toLowerCase(), new Set(names)]));
 const GLOBAL_URL_ATTRIBUTE_KEYS = new Set(['itemid', 'itemtype', 'xml:base', 'xmlns', 'xmlns:xlink']);
 const BLOCK_URL_ATTRIBUTE_KEYS = new Set([
@@ -269,10 +280,11 @@ const BLOCK_URL_ATTRIBUTE_KEYS = new Set([
 	'url', 'usemap', 'xlink:href',
 ]);
 
-const isMarkupUrlAttribute = (name, tagName, attributes) => {
+const isMarkupUrlAttribute = (name, tagName, namespace, attributes) => {
 	const lower = name.toLowerCase();
 	if (GLOBAL_URL_ATTRIBUTE_KEYS.has(lower) || lower.startsWith('xmlns:')) return true;
-	if (URL_ATTRIBUTES_BY_TAG.get(tagName)?.has(lower)) return true;
+	const pairs = namespace === 'svg' ? SVG_URL_ATTRIBUTES_BY_TAG : URL_ATTRIBUTES_BY_TAG;
+	if (pairs.get(tagName)?.has(lower)) return true;
 	if (tagName !== 'meta' || lower !== 'content') return false;
 	return attributes.get('http-equiv')?.decodedValue?.trim().toLowerCase() === 'refresh';
 };
@@ -539,13 +551,20 @@ function phpEnd(source, start) {
 			index++;
 			continue;
 		}
+		if (source.startsWith('<<<', index)) {
+			const heredoc = phpHeredocToken(source, index, 0);
+			if (heredoc) {
+				index = heredoc.end;
+				continue;
+			}
+		}
 		if (source.startsWith('?>', index)) return index + 2;
 		if (source.startsWith('/*', index)) {
 			blockComment = true;
 			index += 2;
 			continue;
 		}
-		if (source.startsWith('//', index) || source[index] === '#') {
+		if (source.startsWith('//', index) || (source[index] === '#' && source[index + 1] !== '[')) {
 			lineComment = true;
 			index += source[index] === '#' ? 1 : 2;
 			continue;
@@ -566,6 +585,8 @@ function phpEnd(source, start) {
 function markupContexts(source) {
 	const tags = [];
 	const styles = [];
+	const elementStack = [];
+	const voidHtmlElements = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
 	let index = 0;
 	while (index < source.length) {
 		const start = source.indexOf('<', index);
@@ -579,7 +600,17 @@ function markupContexts(source) {
 			index = phpEnd(source, start);
 			continue;
 		}
-		if (source[start + 1] === '/' || source[start + 1] === '!') {
+		if (source[start + 1] === '/') {
+			const closingName = /^<\/\s*([A-Za-z][A-Za-z0-9:-]*)/.exec(source.slice(start))?.[1]?.toLowerCase();
+			if (closingName) {
+				const matching = elementStack.findLastIndex((entry) => entry.name === closingName);
+				if (matching !== -1) elementStack.splice(matching);
+			}
+			const close = source.indexOf('>', start + 2);
+			index = close === -1 ? source.length : close + 1;
+			continue;
+		}
+		if (source[start + 1] === '!') {
 			const close = source.indexOf('>', start + 2);
 			index = close === -1 ? source.length : close + 1;
 			continue;
@@ -593,10 +624,12 @@ function markupContexts(source) {
 		const attributes = [];
 		let cursor = start + 1 + nameMatch[0].length;
 		let end = null;
+		let selfClosing = false;
 		while (cursor < source.length) {
 			while (/\s/.test(source[cursor] || '')) cursor++;
 			if (source.startsWith('/>', cursor)) {
 				end = cursor + 2;
+				selfClosing = true;
 				break;
 			}
 			if (source[cursor] === '>') {
@@ -646,9 +679,15 @@ function markupContexts(source) {
 			attributes.push({ name: attributeName, value, valueStart, valueEnd });
 		}
 		if (end === null) break;
-		const tag = { name, start, end, attributes };
+		const parentNamespace = elementStack.at(-1)?.childNamespace ?? 'html';
+		const namespace = name === 'svg' ? 'svg' : parentNamespace;
+		const childNamespace = namespace === 'svg' && ['foreignobject', 'desc', 'title'].includes(name) ? 'html' : namespace;
+		const tag = { name, namespace, start, end, attributes };
 		tags.push(tag);
 		if (name !== 'style') {
+			if (!selfClosing && !(namespace === 'html' && voidHtmlElements.has(name))) {
+				elementStack.push({ name, childNamespace });
+			}
 			index = end;
 			continue;
 		}
@@ -662,17 +701,16 @@ function markupContexts(source) {
 	return { tags, styles };
 }
 
-function phpStringToken(source, start, absoluteStart) {
-	const quote = source[start];
-	let index = start + 1;
+function phpStringBody(source, start, end, absoluteStart, quote) {
+	let index = start;
 	let text = '';
 	const map = [];
 	const append = (value, sourceIndex) => {
 		text += value;
 		for (let offset = 0; offset < value.length; offset++) map.push(absoluteStart + sourceIndex);
 	};
-	while (index < source.length && source[index] !== quote) {
-		if (source[index] !== '\\' || index + 1 >= source.length) {
+	while (index < end) {
+		if (source[index] !== '\\' || index + 1 >= end) {
 			append(source[index], index++);
 			continue;
 		}
@@ -711,14 +749,86 @@ function phpStringToken(source, start, absoluteStart) {
 		const unicode = /^u\{([0-9a-f]+)\}/i.exec(source.slice(index + 1));
 		if (unicode && Number.parseInt(unicode[1], 16) <= 0x10ffff) {
 			append(String.fromCodePoint(Number.parseInt(unicode[1], 16)), escapeStart);
-			index += 3 + unicode[1].length;
+			index += 1 + unicode[0].length;
 			continue;
 		}
 		// PHP preserves an unknown escape in a double-quoted string.
 		append('\\', index++);
 	}
-	if (source[index] === quote) index++;
-	return { type: 'string', text, map, start, end: index };
+	return { text, map };
+}
+
+function phpStringToken(source, start, absoluteStart) {
+	const quote = source[start];
+	let end = start + 1;
+	while (end < source.length && source[end] !== quote) {
+		end += source[end] === '\\' && end + 1 < source.length ? 2 : 1;
+	}
+	const body = phpStringBody(source, start + 1, end, absoluteStart, quote);
+	if (source[end] === quote) end++;
+	return { type: 'string', ...body, start, end };
+}
+
+function phpHeredocToken(source, start, absoluteStart) {
+	const header = /^<<<[ \t]*(?:(['"])([A-Za-z_\x80-\uffff][A-Za-z0-9_\x80-\uffff]*)\1|([A-Za-z_\x80-\uffff][A-Za-z0-9_\x80-\uffff]*))[ \t]*(?:\r\n|\n|\r)/.exec(source.slice(start));
+	if (!header) return null;
+	const label = header[2] || header[3];
+	const bodyStart = start + header[0].length;
+	const closing = new RegExp(`^[ \\t]*${label}(?![A-Za-z0-9_\\x80-\\uffff])`, 'gm');
+	closing.lastIndex = bodyStart;
+	const match = closing.exec(source);
+	if (!match) return null;
+	const closingStart = match.index;
+	const end = closingStart + match[0].length;
+	const nowdoc = header[1] === "'";
+	const body = nowdoc
+		? {
+			text: source.slice(bodyStart, closingStart),
+			map: Array.from({ length: closingStart - bodyStart }, (_, offset) => absoluteStart + bodyStart + offset),
+		}
+		: phpStringBody(source, bodyStart, closingStart, absoluteStart, '"');
+	return { type: 'string', ...body, start, end };
+}
+
+function phpNumberToken(source, start, absoluteStart) {
+	const input = source.slice(start);
+	const based = /^(?:0[xX][0-9a-fA-F](?:_?[0-9a-fA-F])*|0[bB][01](?:_?[01])*|0[oO][0-7](?:_?[0-7])*|0[0-7](?:_?[0-7])*)/.exec(input);
+	if (based) {
+		const literal = based[0].replaceAll('_', '');
+		let radix = 8;
+		let digits = literal;
+		if (/^0[xX]/.test(literal)) {
+			radix = 16;
+			digits = literal.slice(2);
+		} else if (/^0[bB]/.test(literal)) {
+			radix = 2;
+			digits = literal.slice(2);
+		} else if (/^0[oO]/.test(literal)) {
+			digits = literal.slice(2);
+		} else {
+			digits = literal.slice(1) || '0';
+		}
+		let integer = 0n;
+		for (const digit of digits.toLowerCase()) {
+			integer = integer * BigInt(radix) + BigInt('0123456789abcdef'.indexOf(digit));
+		}
+		const text = integer.toString();
+		return {
+			type: 'static',
+			text,
+			map: Array.from({ length: text.length }, () => absoluteStart + start),
+			start,
+			end: start + based[0].length,
+		};
+	}
+	const decimal = /^(?:\d[\d_]*(?:\.[\d_]*)?|\.\d[\d_]*)(?:[eE][+-]?[\d_]+)?/.exec(input);
+	if (!decimal) return null;
+	const text = decimal[0].replaceAll('_', '');
+	const map = [];
+	for (let offset = 0; offset < decimal[0].length; offset++) {
+		if (decimal[0][offset] !== '_') map.push(absoluteStart + start + offset);
+	}
+	return { type: 'static', text, map, start, end: start + decimal[0].length };
 }
 
 function phpTokens(source, absoluteStart) {
@@ -728,7 +838,7 @@ function phpTokens(source, absoluteStart) {
 			index++;
 			continue;
 		}
-		if (source.startsWith('//', index) || source[index] === '#') {
+		if (source.startsWith('//', index) || (source[index] === '#' && source[index + 1] !== '[')) {
 			const relativeNewline = source.slice(index + 1).search(/\r|\n/);
 			index = relativeNewline === -1 ? source.length : index + 2 + relativeNewline;
 			continue;
@@ -751,6 +861,20 @@ function phpTokens(source, absoluteStart) {
 			tokens.push({ type: 'dynamic', value: 'backtick' });
 			continue;
 		}
+		if (source.startsWith('<<<', index)) {
+			const token = phpHeredocToken(source, index, absoluteStart);
+			if (token) {
+				tokens.push(token);
+				index = token.end;
+				continue;
+			}
+		}
+		const number = phpNumberToken(source, index, absoluteStart);
+		if (number) {
+			tokens.push(number);
+			index = number.end;
+			continue;
+		}
 		const variable = /^\$[A-Za-z_\x80-\uffff][A-Za-z0-9_\x80-\uffff]*/.exec(source.slice(index));
 		if (variable) {
 			tokens.push({ type: 'dynamic', value: variable[0], start: index, end: index + variable[0].length });
@@ -759,7 +883,14 @@ function phpTokens(source, absoluteStart) {
 		}
 		const identifier = /^[A-Za-z_\x80-\uffff][A-Za-z0-9_\x80-\uffff]*/.exec(source.slice(index));
 		if (identifier) {
-			tokens.push({ type: 'identifier', value: identifier[0].toLowerCase(), start: index, end: index + identifier[0].length });
+			const value = identifier[0].toLowerCase();
+			if (value === 'true') {
+				tokens.push({ type: 'static', text: '1', map: [absoluteStart + index], start: index, end: index + identifier[0].length });
+			} else if (value === 'false' || value === 'null') {
+				tokens.push({ type: 'static', text: '', map: [], start: index, end: index + identifier[0].length });
+			} else {
+				tokens.push({ type: 'identifier', value, start: index, end: index + identifier[0].length });
+			}
 			index += identifier[0].length;
 			continue;
 		}
@@ -782,7 +913,7 @@ function renderedEchoExpression(tokens, absoluteFallback) {
 	}
 	for (let index = 0; index < tokens.length; index++) {
 		const literal = tokens[index];
-		if (literal.type !== 'string') continue;
+		if (literal.type !== 'string' && literal.type !== 'static') continue;
 		if (previous) {
 			const between = tokens.slice(previous.index + 1, index);
 			const previousDepth = depths.get(previous.literal);
@@ -801,6 +932,71 @@ function renderedEchoExpression(tokens, absoluteFallback) {
 	return { text, map };
 }
 
+function renderedStaticPhpExpression(tokens, absoluteFallback) {
+	const allowed = tokens.every((token) => token.type === 'string' || token.type === 'static'
+		|| (token.type === 'punctuation' && ['.', '(', ')'].includes(token.value)));
+	return allowed ? renderedEchoExpression(tokens, absoluteFallback) : null;
+}
+
+function splitPhpArguments(tokens) {
+	const argumentsList = [[]];
+	let depth = 0;
+	for (const token of tokens) {
+		if (token.type === 'punctuation' && ['(', '[', '{'].includes(token.value)) depth++;
+		if (token.type === 'punctuation' && [')', ']', '}'].includes(token.value)) depth = Math.max(0, depth - 1);
+		if (token.type === 'punctuation' && token.value === ',' && depth === 0) {
+			argumentsList.push([]);
+		} else {
+			argumentsList.at(-1).push(token);
+		}
+	}
+	return argumentsList;
+}
+
+function renderedPrintfExpression(tokens, absoluteFallback) {
+	const argumentsList = splitPhpArguments(tokens);
+	const format = renderedStaticPhpExpression(argumentsList.shift() ?? [], absoluteFallback);
+	if (!format) return { text: '', map: [] };
+	const values = argumentsList.map((argument) => renderedStaticPhpExpression(argument, absoluteFallback));
+	let text = '';
+	const map = [];
+	let sequential = 0;
+	const append = (value, sourceMap, fallback) => {
+		text += value;
+		for (let offset = 0; offset < value.length; offset++) map.push(sourceMap[offset] ?? fallback);
+	};
+	for (let index = 0; index < format.text.length;) {
+		if (format.text[index] !== '%') {
+			append(format.text[index], [format.map[index]], absoluteFallback);
+			index++;
+			continue;
+		}
+		if (format.text[index + 1] === '%') {
+			append('%', [format.map[index]], absoluteFallback);
+			index += 2;
+			continue;
+		}
+		const directive = /^%(?:(\d+)\$)?(?:[-+ 0]|'.)*(?:\d+)?(?:\.\d+)?[bcdeEfFgGouxXhHs]/.exec(format.text.slice(index));
+		if (!directive) {
+			append('%', [format.map[index]], absoluteFallback);
+			index++;
+			continue;
+		}
+		const valueIndex = directive[1] ? Number.parseInt(directive[1], 10) - 1 : sequential++;
+		const value = values[valueIndex];
+		const specifier = directive[0].at(-1).toLowerCase();
+		if (value) {
+			let renderedValue = value.text;
+			if (specifier === 'c' && /^\d+$/.test(renderedValue)) renderedValue = String.fromCodePoint(Number.parseInt(renderedValue, 10));
+			append(renderedValue, value.map, format.map[index] ?? absoluteFallback);
+		} else {
+			append(specifier === 's' ? 'x' : '0', [], format.map[index] ?? absoluteFallback);
+		}
+		index += directive[0].length;
+	}
+	return { text, map };
+}
+
 function renderedPhpOutput(php, absoluteStart) {
 	const opener = /^<\?(?:php\b)?/i.exec(php)?.[0] ?? '<?';
 	const bodyStart = php.startsWith('<?=') ? 3 : opener.length;
@@ -809,11 +1005,45 @@ function renderedPhpOutput(php, absoluteStart) {
 	const tokens = phpTokens(body, absoluteStart + bodyStart);
 	const expressions = [];
 	if (php.startsWith('<?=')) {
-		expressions.push(tokens);
+		expressions.push({ kind: 'echo', tokens });
 	} else {
+		let attributeDepth = 0;
 		for (let index = 0; index < tokens.length;) {
-			if (tokens[index].type !== 'identifier' || tokens[index].value !== 'echo') {
+			if (attributeDepth > 0) {
+				if (tokens[index].type === 'punctuation' && tokens[index].value === '[') attributeDepth++;
+				if (tokens[index].type === 'punctuation' && tokens[index].value === ']') attributeDepth--;
 				index++;
+				continue;
+			}
+			if (tokens[index].type === 'punctuation' && tokens[index].value === '#'
+				&& tokens[index + 1]?.type === 'punctuation' && tokens[index + 1].value === '[') {
+				attributeDepth = 1;
+				index += 2;
+				continue;
+			}
+			const previous = tokens[index - 1];
+			const beforePrevious = tokens[index - 2];
+			const memberAccess = previous?.type === 'punctuation'
+				&& ((previous.value === '>' && beforePrevious?.type === 'punctuation' && beforePrevious.value === '-')
+					|| (previous.value === ':' && beforePrevious?.type === 'punctuation' && beforePrevious.value === ':'));
+			const callableOutput = tokens[index].type === 'identifier' && tokens[index].value === 'printf'
+				&& tokens[index + 1]?.type === 'punctuation' && tokens[index + 1].value === '(';
+			const statementOutput = tokens[index].type === 'identifier' && ['echo', 'print'].includes(tokens[index].value);
+			if ((!callableOutput && !statementOutput) || memberAccess) {
+				index++;
+				continue;
+			}
+			if (callableOutput) {
+				const expression = [];
+				let depth = 1;
+				index += 2;
+				while (index < tokens.length && depth > 0) {
+					const token = tokens[index++];
+					if (token.type === 'punctuation' && token.value === '(') depth++;
+					if (token.type === 'punctuation' && token.value === ')') depth--;
+					if (depth > 0) expression.push(token);
+				}
+				expressions.push({ kind: 'printf', tokens: expression });
 				continue;
 			}
 			const expression = [];
@@ -827,14 +1057,16 @@ function renderedPhpOutput(php, absoluteStart) {
 				expression.push(token);
 				index++;
 			}
-			expressions.push(expression);
+			expressions.push({ kind: 'echo', tokens: expression });
 			if (tokens[index]?.value === ';') index++;
 		}
 	}
 	let text = '';
 	const map = [];
 	for (const expression of expressions) {
-		const rendered = renderedEchoExpression(expression, absoluteStart + bodyStart);
+		const rendered = expression.kind === 'printf'
+			? renderedPrintfExpression(expression.tokens, absoluteStart + bodyStart)
+			: renderedEchoExpression(expression.tokens, absoluteStart + bodyStart);
 		text += rendered.text;
 		map.push(...rendered.map);
 	}
@@ -842,31 +1074,51 @@ function renderedPhpOutput(php, absoluteStart) {
 }
 
 const HTML_NAMED_CHARACTERS = new Map([
-	['amp', '&'], ['apos', "'"], ['bsol', '\\'], ['colon', ':'], ['comma', ','],
-	['equals', '='], ['gt', '>'], ['lpar', '('], ['lt', '<'], ['minus', '-'],
-	['nbsp', '\u00a0'], ['NewLine', '\n'], ['num', '#'], ['percnt', '%'],
-	['period', '.'], ['plus', '+'], ['quot', '"'], ['rpar', ')'], ['semi', ';'],
-	['sol', '/'], ['Tab', '\t'],
+	['amp', '&'], ['AMP', '&'], ['apos', "'"], ['ast', '*'], ['bsol', '\\'],
+	['colon', ':'], ['comma', ','], ['commat', '@'], ['dollar', '$'], ['equals', '='],
+	['excl', '!'], ['grave', '`'], ['gt', '>'], ['GT', '>'], ['Hat', '^'],
+	['lbrace', '{'], ['lbrack', '['], ['lcub', '{'], ['lpar', '('], ['lsqb', '['],
+	['lt', '<'], ['LT', '<'], ['lowbar', '_'], ['minus', '-'], ['nbsp', '\u00a0'],
+	['NewLine', '\n'], ['num', '#'], ['percnt', '%'], ['period', '.'], ['plus', '+'],
+	['quest', '?'], ['quot', '"'], ['QUOT', '"'], ['rbrace', '}'], ['rbrack', ']'],
+	['rcub', '}'], ['rpar', ')'], ['rsqb', ']'], ['semi', ';'], ['sol', '/'],
+	['Tab', '\t'], ['UnderBar', '_'], ['vert', '|'], ['VerticalLine', '|'],
 ]);
+const HTML_LEGACY_NAME_WITHOUT_SEMICOLON = new Set(['amp', 'AMP', 'gt', 'GT', 'lt', 'LT', 'nbsp', 'quot', 'QUOT']);
+const HTML_NAMED_CHARACTER_NAMES = [...HTML_NAMED_CHARACTERS.keys()].sort((left, right) => right.length - left.length);
+
+function namedHtmlReferenceAt(source, start) {
+	for (const name of HTML_NAMED_CHARACTER_NAMES) {
+		const prefix = `&${name}`;
+		if (!source.startsWith(prefix, start)) continue;
+		const next = source[start + prefix.length];
+		if (next === ';') return { decoded: HTML_NAMED_CHARACTERS.get(name), length: prefix.length + 1 };
+		if (HTML_LEGACY_NAME_WITHOUT_SEMICOLON.has(name) && !/[A-Za-z0-9=]/.test(next || '')) {
+			return { decoded: HTML_NAMED_CHARACTERS.get(name), length: prefix.length };
+		}
+	}
+	return null;
+}
 
 function decodeHtmlReferences(view) {
 	let text = '';
 	const map = [];
 	for (let index = 0; index < view.text.length;) {
 		if (view.text[index] === '&') {
-			const entity = /^&(?:#([0-9]+)|#x([0-9a-f]+)|([A-Za-z][A-Za-z0-9]+));/i.exec(view.text.slice(index));
+			const numeric = /^&#(?:x([0-9a-f]+)|([0-9]+));?/i.exec(view.text.slice(index));
+			const named = numeric ? null : namedHtmlReferenceAt(view.text, index);
 			let decoded = null;
-			if (entity?.[1] || entity?.[2]) {
-				const point = Number.parseInt(entity[1] || entity[2], entity[1] ? 10 : 16);
+			if (numeric) {
+				const point = Number.parseInt(numeric[1] || numeric[2], numeric[1] ? 16 : 10);
 				decoded = point > 0 && point <= 0x10ffff && !(point >= 0xd800 && point <= 0xdfff)
 					? String.fromCodePoint(point) : '\ufffd';
-			} else if (entity?.[3] && HTML_NAMED_CHARACTERS.has(entity[3])) {
-				decoded = HTML_NAMED_CHARACTERS.get(entity[3]);
+			} else if (named) {
+				decoded = named.decoded;
 			}
 			if (decoded !== null) {
 				text += decoded;
 				for (let offset = 0; offset < decoded.length; offset++) map.push(view.map[index]);
-				index += entity[0].length;
+				index += numeric ? numeric[0].length : named.length;
 				continue;
 			}
 		}
@@ -936,13 +1188,34 @@ function cssDeclarations(css) {
 		if ((css[index] !== ';' || depth !== 0) && index !== css.length) continue;
 		const end = index;
 		const segment = css.slice(start, end);
-		const colon = segment.indexOf(':');
+		const tokenView = cssTokenView(segment);
+		let colon = -1;
+		let tokenQuote = null;
+		let tokenDepth = 0;
+		for (let tokenIndex = 0; tokenIndex < tokenView.text.length; tokenIndex++) {
+			const char = tokenView.text[tokenIndex];
+			if (tokenQuote) {
+				if (char === '\\') tokenIndex++;
+				else if (char === tokenQuote) tokenQuote = null;
+				continue;
+			}
+			if (char === '"' || char === "'") {
+				tokenQuote = char;
+				continue;
+			}
+			if (char === '(') tokenDepth++;
+			else if (char === ')') tokenDepth = Math.max(0, tokenDepth - 1);
+			else if (char === ':' && tokenDepth === 0) {
+				colon = tokenIndex;
+				break;
+			}
+		}
 		if (colon !== -1) {
 			declarations.push({
 				start,
 				end,
-				property: segment.slice(0, colon).trim().toLowerCase(),
-				value: segment.slice(colon + 1).trim(),
+				property: tokenView.text.slice(0, colon).trim().toLowerCase(),
+				value: tokenView.text.slice(colon + 1).trim(),
 			});
 		}
 		start = index + 1;
@@ -1021,9 +1294,9 @@ export function checkRawValues(files) {
 				attribute.decodedValue = directView?.text ?? null;
 				if (!attributes.has(attribute.name)) attributes.set(attribute.name, attribute);
 			}
-			const classes = attributes.get('class')?.decodedValue?.split(/\s+/).filter(Boolean) ?? [];
+			const classes = attributes.get('class')?.decodedValue?.split(/[\t\n\f\r ]+/).filter(Boolean) ?? [];
 			for (const attribute of tag.attributes) {
-				if (attribute.value === null || isMarkupUrlAttribute(attribute.name, tag.name, attributes)) continue;
+				if (attribute.value === null || isMarkupUrlAttribute(attribute.name, tag.name, tag.namespace, attributes)) continue;
 				if (attribute.name !== 'style') {
 					addHits(attribute.decodedView);
 					continue;
