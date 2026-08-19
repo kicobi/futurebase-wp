@@ -43,14 +43,16 @@ section() { printf "\n\033[1m%s\033[0m\n" "$1"; }
 # 3. Patterns compose; templates wire.
 #    front-page.html must not contain content blocks other than header/main/pattern/footer.
 # ---------------------------------------------------------------------------
-section "3, 4, 5, 7, 9. Parsed contract checks"
+section "1, 3, 4, 5, 7, 9. Parsed contract checks"
 
-# These five moved into bin/verify-contract.mjs, which parses block markup and
-# theme.json instead of grepping them. The greps here passed for the wrong
+# These checks live in bin/verify-contract.mjs, which parses block markup, root
+# theme.json, and every styles/*.json variation instead of grepping them. The
+# old split shell/JavaScript rules passed for the wrong
 # reason: a blacklist that omitted core/list and core/html, a pattern count
 # nobody took, a `"fluid": true` match that a nested preset satisfied, an AWK
-# parser that read compact JSON as an empty list. bin/verify-contract.test.mjs
-# feeds each check markup that must fail it.
+# parser that read compact JSON as an empty list, and style variations that were
+# only syntax-checked. bin/verify-contract.test.mjs feeds each check input that
+# must fail it.
 if command -v node > /dev/null; then
 	if contract_output=$(node bin/verify-contract.mjs 2>&1); then
 		pass "contract items 1, 3, 4, 5, 7, 9 (parsed)"
@@ -196,42 +198,6 @@ if [ -d src/blocks ]; then
 	fi
 else
 	pass "src/blocks/ not present (no theme-bound blocks)"
-fi
-
-# ---------------------------------------------------------------------------
-# Style variations — every styles/*.json file must parse. Broken variation
-# JSON silently degrades to "no variation available" in the editor; catch
-# it here so it isn't discovered at project delivery.
-# ---------------------------------------------------------------------------
-section "Style variations parse"
-
-if command -v node > /dev/null; then
-	style_files=$(find styles -maxdepth 1 -name '*.json' 2>/dev/null || true)
-	if [ -z "$style_files" ]; then
-		pass "no styles/*.json files declared"
-	else
-		if styles_output=$(node -e '
-			const fs = require("fs");
-			const path = require("path");
-			const dir = "styles";
-			if (!fs.existsSync(dir)) process.exit(0);
-			const files = fs.readdirSync(dir).filter(f => f.endsWith(".json"));
-			const bad = [];
-			for (const f of files) {
-				const full = path.join(dir, f);
-				try { JSON.parse(fs.readFileSync(full, "utf8")); }
-				catch (e) { bad.push(full + ": " + e.message); }
-			}
-			if (bad.length) { console.log(bad.join("\n")); process.exit(1); }
-		' 2>&1); then
-			pass "every styles/*.json file parses"
-		else
-			fail "styles/*.json contains invalid JSON:"
-			printf "%s\n" "$styles_output" | sed 's/^/    /'
-		fi
-	fi
-else
-	fail "node not found on PATH (cannot validate styles/*.json)"
 fi
 
 # ---------------------------------------------------------------------------
