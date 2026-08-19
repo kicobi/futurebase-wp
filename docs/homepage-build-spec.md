@@ -1,6 +1,6 @@
 # Homepage build spec
 
-Build specification for the homepage on a project based on `futurebase`. It captures the design intent (tokens, composition, a11y), the Technical Contract the build must satisfy, the delivery gates, and the failure modes to reject.
+Build specification for the homepage on a project based on `futurebase`. It captures the design intent (tokens, composition, a11y), the Technical Contract the build must satisfy, the delivery gates, and the failure modes to reject. <!-- futurebase-rename: keep-line -->
 
 The block below is the canonical form handed to an AI coding agent (Claude Code, Codex, etc.) to execute the build — fill the `[UPPERCASE]` fields and paste. The same document doubles as human-readable documentation of how the homepage was architected: read it without pasting if you're onboarding onto the project.
 

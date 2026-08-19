@@ -4,7 +4,7 @@ Decided 2026-08-02: **three in-house plugins, built ahead of client demand,
 renamed per project exactly like the theme, never published to
 wordpress.org.**
 
-Futurebase WP is a theme, and a theme is the wrong home for anything that
+Futurebase WP is a theme, and a theme is the wrong home for anything that <!-- futurebase-rename: keep-line -->
 must survive a theme switch. This document records what the plugin layer is,
 what belongs in it, how it reaches client sites, and why the catalogue is
 deliberately small. It is the plugin counterpart to [seo.md](seo.md), which
@@ -14,7 +14,7 @@ decides one of the three in detail.
 
 These are in-house plugins. They are not listed on wordpress.org, not sold,
 not publicly downloadable, and carry no public support obligation. They exist
-to serve Futurebase WP projects and to demonstrate repeatable capability.
+to serve Futurebase WP projects and to demonstrate repeatable capability. <!-- futurebase-rename: keep-line -->
 
 The distribution choice is not a limitation to be lifted later. Publishing
 would add a review queue, a support forum, and a public quality signal that
@@ -114,7 +114,7 @@ at the end.
 
 Provenance follows the theme's existing rule in
 [futurebase-company-site.md](futurebase-company-site.md): client identity
-throughout, one "Built on Futurebase WP" note.
+throughout, one "Built on Futurebase WP" note. <!-- futurebase-rename: keep-line -->
 
 ### What renaming costs
 

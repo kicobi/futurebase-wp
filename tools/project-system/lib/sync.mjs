@@ -209,6 +209,52 @@ export function hashFile(path) {
 	return r.ok ? r.stdout : null;
 }
 
+function themeTechnicalIdentity(styleCss) {
+	const slug = /^Text Domain:\s*([a-z][a-z0-9]*(?:-[a-z0-9]+)*)\s*$/im.exec(String(styleCss || ''))?.[1] ?? null;
+	if (!slug) return null;
+	const snake = slug.replaceAll('-', '_');
+	return { slug, snake, upper: snake.toUpperCase() };
+}
+
+function escapeRegExp(value) {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// REVIEW files often differ solely because promotion renamed the theme. Undo
+// only the same bounded technical contexts rename-theme.sh owns; display-name
+// prose and unquoted client language deliberately remain untouched.
+export function reverseNormalizeReviewIdentity(content, projectIdentity, starterIdentity) {
+	if (!projectIdentity || !starterIdentity || projectIdentity.slug === starterIdentity.slug) return String(content);
+	const from = Object.fromEntries(Object.entries(projectIdentity).map(([key, value]) => [key, escapeRegExp(value)]));
+	const to = starterIdentity;
+	let normalized = String(content);
+
+	// PHPCS uses the same bare value shape for its prefix and text-domain
+	// properties, so the owning property is the only safe discriminator.
+	normalized = normalized.replace(
+		new RegExp(`(<property\\s+name="prefixes"[\\s\\S]*?<element\\s+value=")${from.snake}("\\s*\\/>[\\s\\S]*?<\\/property>)`, 'g'),
+		`$1${to.snake}$2`,
+	);
+	normalized = normalized.replace(
+		new RegExp(`(<property\\s+name="text_domain"[\\s\\S]*?<element\\s+value=")${from.slug}("\\s*\\/>[\\s\\S]*?<\\/property>)`, 'g'),
+		`$1${to.slug}$2`,
+	);
+
+	// PHP/global prefixes, exact quoted slug literals, pattern namespaces,
+	// package annotations, the Text Domain header, and the three registered
+	// frontend asset handles are the rename contract's technical identity set.
+	normalized = normalized.replace(new RegExp(`(?<![A-Za-z0-9])${from.snake}_`, 'g'), `${to.snake}_`);
+	normalized = normalized.replace(new RegExp(`(?<![A-Za-z0-9])${from.upper}_`, 'g'), `${to.upper}_`);
+	normalized = normalized.replace(new RegExp(`(['"\\x60])${from.slug}\\1`, 'g'), `$1${to.slug}$1`);
+	normalized = normalized.replace(new RegExp(`(?<!/)${from.slug}/`, 'g'), `${to.slug}/`);
+	normalized = normalized.replace(new RegExp(`/${from.slug}"`, 'g'), `/${to.slug}"`);
+	normalized = normalized.replace(new RegExp(`\\b${from.slug}-(style|main|script)\\b`, 'g'), `${to.slug}-$1`);
+	normalized = normalized.replace(new RegExp(`(@package\\s+)${from.slug}\\b`, 'g'), `$1${to.slug}`);
+	normalized = normalized.replace(new RegExp(`(Text Domain:\\s*)${from.slug}\\b`, 'g'), `$1${to.slug}`);
+
+	return normalized;
+}
+
 // Has this exact content ever been the upstream version of this path?
 //
 // This is what separates "the project is simply behind" from "someone edited a
@@ -232,6 +278,9 @@ export function planFiles({ projectRoot, starter, ref, only }) {
 	const entries = [];
 	const upstream = treeAt(starter, ref);
 	const upstreamSet = new Set(upstream.map((e) => e.rel));
+	const projectStyle = existsSync(join(projectRoot, 'style.css')) ? readFileSync(join(projectRoot, 'style.css'), 'utf8') : null;
+	const projectIdentity = themeTechnicalIdentity(projectStyle);
+	const starterIdentity = themeTechnicalIdentity(textAt(starter, ref, 'style.css'));
 
 	for (const { rel, mode, blob: starterBlob } of upstream) {
 		const cls = classifyPath(rel);
@@ -257,6 +306,19 @@ export function planFiles({ projectRoot, starter, ref, only }) {
 				entries.push({ rel, cls, state: 'update', starterBlob, projectBlob, mode, note });
 			}
 			continue;
+		}
+		if (cls === CLASS.REVIEW && projectIdentity && starterIdentity && isExec(abs) === wantsExec(mode)) {
+			const starterBytes = blobBytes(starter, starterBlob);
+			const projectBytes = readFileSync(abs);
+			// Identity-aware comparison is text-only. A NUL marks an opaque file;
+			// those keep the existing byte-for-byte review behavior.
+			if (starterBytes && !starterBytes.includes(0) && !projectBytes.includes(0)) {
+				const normalized = reverseNormalizeReviewIdentity(projectBytes.toString('utf8'), projectIdentity, starterIdentity);
+				if (normalized === starterBytes.toString('utf8')) {
+					entries.push({ rel, cls, state: 'up-to-date' });
+					continue;
+				}
+			}
 		}
 		const stale = isKnownUpstreamVersion(starter, ref, rel, projectBlob);
 		entries.push({ rel, cls, state: stale ? 'update' : 'conflict', starterBlob, projectBlob, mode });

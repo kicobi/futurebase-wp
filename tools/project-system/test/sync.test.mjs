@@ -32,6 +32,7 @@ import {
 	planFiles,
 	PORTABLE_CONFIG,
 	PRODUCT_ONLY,
+	reverseNormalizeReviewIdentity,
 	safeFiles,
 	VERIFIER_CLOSURE,
 } from '../lib/sync.mjs';
@@ -74,6 +75,61 @@ test('the navigation migration guide is surfaced for manual porting', () => {
 
 test('client-owned WordPress readme metadata is never surfaced by sync', () => {
 	assert.equal(classifyPath('readme.txt'), CLASS.NEVER);
+});
+
+test('review comparison removes only known technical rename identity', () => {
+	const starterIdentity = { slug: 'futurebase', snake: 'futurebase', upper: 'FUTUREBASE' };
+	const projectIdentity = { slug: 'acme-client', snake: 'acme_client', upper: 'ACME_CLIENT' };
+	const project = [
+		"'acme-client' \"acme-client\" `acme-client`",
+		'acme_client_register ACME_CLIENT_VERSION acme-client/home /acme-client"',
+		'acme-client-style acme-client-main acme-client-script',
+		' * @package acme-client',
+		'Text Domain: acme-client',
+		'<property name="prefixes"><element value="acme_client"/></property>',
+		'<property name="text_domain"><element value="acme-client"/></property>',
+		'Acme Client prose and an arbitrary acme-client mention stay client-owned.',
+	].join('\n');
+	const normalized = reverseNormalizeReviewIdentity(project, projectIdentity, starterIdentity);
+
+	assert.match(normalized, /'futurebase' "futurebase" `futurebase`/);
+	assert.match(normalized, /futurebase_register FUTUREBASE_VERSION futurebase\/home \/futurebase"/);
+	assert.match(normalized, /futurebase-style futurebase-main futurebase-script/);
+	assert.match(normalized, /@package futurebase/);
+	assert.match(normalized, /Text Domain: futurebase/);
+	assert.match(normalized, /name="prefixes"><element value="futurebase"/);
+	assert.match(normalized, /name="text_domain"><element value="futurebase"/);
+	assert.match(normalized, /Acme Client prose and an arbitrary acme-client mention stay client-owned/);
+});
+
+test('identity-only review drift is omitted while prose, real drift, and safe files remain', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const starter = join(dir, 'starter');
+		const projectRoot = join(dir, 'project');
+		initRepo(starter);
+		mkdirSync(projectRoot);
+		write(starter, 'style.css', '/*\nTheme Name: Futurebase WP\nText Domain: futurebase\n*/\n');
+		write(starter, 'docs/technical.md', "`futurebase` futurebase_register FUTUREBASE_VERSION futurebase/home futurebase-main @package futurebase\n");
+		write(starter, 'docs/prose.md', 'The futurebase project has deliberate prose.\n');
+		write(starter, 'docs/changed.md', '`futurebase` original behavior.\n');
+		write(starter, 'tools/project-system/portable.txt', '`futurebase`\n');
+		const ref = commitAll(starter, 'starter identity');
+
+		write(projectRoot, 'style.css', '/*\nTheme Name: Acme Client\nText Domain: acme-client\n*/\n');
+		write(projectRoot, 'docs/technical.md', "`acme-client` acme_client_register ACME_CLIENT_VERSION acme-client/home acme-client-main @package acme-client\n");
+		write(projectRoot, 'docs/prose.md', 'The acme-client project has deliberate prose.\n');
+		write(projectRoot, 'docs/changed.md', '`acme-client` materially different behavior.\n');
+		write(projectRoot, 'tools/project-system/portable.txt', '`acme-client`\n');
+
+		const byPath = new Map(planFiles({ projectRoot, starter, ref }).map((entry) => [entry.rel, entry]));
+		assert.equal(byPath.get('docs/technical.md').state, 'up-to-date');
+		assert.notEqual(byPath.get('docs/prose.md').state, 'up-to-date', 'unquoted client prose is never normalized');
+		assert.notEqual(byPath.get('docs/changed.md').state, 'up-to-date', 'real review drift remains visible');
+		assert.notEqual(byPath.get('tools/project-system/portable.txt').state, 'up-to-date', 'safe files retain byte comparison');
+	} finally {
+		cleanup();
+	}
 });
 
 test('dependency planning preserves project identity and blocks an unsafe lock replacement', () => {

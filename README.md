@@ -103,6 +103,8 @@ The script performs the following edits in one pass:
 10. **Client readme history** — resets `readme.txt` to one initial client release and leaves exactly one Futurebase WP provenance sentence in `README.md`.
 11. **Base-only product material** — removes the Futurebase WP narrative, company-site brief, social image, and branded theme screenshot from the client checkout while rewriting client-owned identity in `docs/`, `src/`, and `inc/`.
 
+Markdown lines that intentionally name the starter, product, or `futurebase` CLI carry the exact `<!-- futurebase-rename: keep-line -->` marker and remain unchanged. Client-specific technical examples continue to be renamed, so no starter-history prose needs manual repair. <!-- futurebase-rename: keep-line -->
+
 Re-running the script with the same arguments is a no-op — the `Contributors:` line isn't duplicated, and already-renamed references don't match the search pattern.
 
 After running, manually review:
@@ -111,7 +113,6 @@ After running, manually review:
 - **Theme metadata** — review `Description` and `Tags` in `style.css`, plus `Contributors` in `readme.txt`. The Kicobi author fields intentionally carry into client themes. If you skipped `--theme-uri` or `--contributors`, review those values too.
 - **`package.json`** — review the author after repository identity is set.
 - **`screenshot.png`** — add a client-branded theme screenshot; the Futurebase WP product screenshot is removed automatically.
-- **`docs/conventions.md`** — starter-history prose was rewritten along with everything else; the text describing "the starter ships with the slug `futurebase`" will now name your slug. Adjust or delete as you like.
 - **Translation files** — regenerate `.pot` / `.mo` in `languages/` if you carry them over.
 
 The rename is offline and reconciles npm lockfile identity without package resolution. Because Composer derives its lock hash from the renamed package, finish with `composer update --lock --no-install --no-interaction` before committing.
