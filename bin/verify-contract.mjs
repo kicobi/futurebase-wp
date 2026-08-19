@@ -835,8 +835,17 @@ function markupContexts(source) {
 		if (source[start + 1] === '/') {
 			const closingName = /^<\/\s*([A-Za-z][A-Za-z0-9:-]*)/.exec(source.slice(start))?.[1]?.toLowerCase();
 			if (closingName) {
-				const matching = elementStack.findLastIndex((entry) => entry.name === closingName);
-				if (matching !== -1) elementStack.splice(matching);
+				if (elementStack.at(-1)?.childNamespace === 'svg' && ['br', 'p'].includes(closingName)) {
+					while (elementStack.at(-1)?.childNamespace === 'svg') elementStack.pop();
+				} else {
+					const matching = elementStack.findLastIndex((entry) => entry.name === closingName);
+					const matchingEntry = matching === -1 ? null : elementStack[matching];
+					const crossesOpenHtmlDescendant = matching !== -1
+						&& matching < elementStack.length - 1
+						&& matchingEntry.namespace === 'svg'
+						&& elementStack.at(-1)?.childNamespace === 'html';
+					if (matching !== -1 && !crossesOpenHtmlDescendant) elementStack.splice(matching);
+				}
 			}
 			const close = source.indexOf('>', start + 2);
 			index = close === -1 ? source.length : close + 1;
@@ -876,7 +885,7 @@ function markupContexts(source) {
 		if (name !== 'style') {
 			const selfClosingApplies = selfClosing && namespace !== 'html';
 			if (!selfClosingApplies && !(namespace === 'html' && voidHtmlElements.has(name))) {
-				elementStack.push({ name, childNamespace });
+				elementStack.push({ name, namespace, childNamespace });
 			}
 			index = end;
 			continue;
@@ -1096,15 +1105,15 @@ function phpNumberToken(source, start, absoluteStart) {
 			integer = integer * BigInt(radix) + BigInt('0123456789abcdef'.indexOf(digit));
 		}
 		const numericText = integer.toString();
-		const numericKind = integer <= 0x7fffffffffffffffn ? 'int-literal' : 'float-literal';
-		const text = numericKind === 'float-literal' ? '0.0' : numericText;
+		const numericKind = integer <= 0x7fffffffffffffffn ? 'int-literal' : 'float-based-literal';
+		const text = numericKind === 'float-based-literal' ? '0.0' : numericText;
 		const map = Array.from({ length: text.length }, () => absoluteStart + start);
 		const encoded = encodedPhpText(text, map, absoluteStart + start);
 		return {
 			type: 'static',
 			text,
 			numericText,
-			displayExact: numericKind !== 'float-literal',
+			displayExact: numericKind !== 'float-based-literal',
 			map,
 			...encoded,
 			numericKind,
@@ -1327,6 +1336,7 @@ function splitPhpArguments(tokens) {
 }
 
 function phpIntegerValue(text, origin = 'computed') {
+	if (origin === 'float-based-literal') return null;
 	const numeric = /^[\t\n\r\f\v ]*([+-]?(?:(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?))/i.exec(text)?.[1];
 	if (!numeric) return null;
 	if (/^[+-]?\d+$/.test(numeric)) {
@@ -1402,19 +1412,26 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 			if (width === null) returnKnown = false;
 		}
 		let precision = directive[6] ? Number.parseInt(directive[6], 10) : null;
+		let precisionUnknown = false;
 		if (directive[7]) {
 			const precisionValue = values[directive[8] ? Number.parseInt(directive[8], 10) - 1 : sequential++];
 			precision = precisionValue?.known && /^[+-]?\d+$/.test(precisionValue.text) ? Number.parseInt(precisionValue.text, 10) : null;
-			if (precision === null) returnKnown = false;
+			if (precision === null) {
+				precisionUnknown = true;
+				returnKnown = false;
+			}
 		}
 		const valueIndex = directive[1] ? Number.parseInt(directive[1], 10) - 1 : sequential++;
 		const value = values[valueIndex];
 		const rawSpecifier = directive[9];
 		const specifier = rawSpecifier.toLowerCase();
 		const flags = directive[2];
+		const customPad = /'(.)/.exec(flags)?.[1];
+		const ordinaryFlags = flags.replace(/'./g, '');
 		const numericSpecifier = ['b', 'c', 'd', 'e', 'f', 'g', 'h', 'o', 'u', 'x'].includes(specifier);
 		let renderedBytes;
 		let renderedByteMap;
+		let renderedExact = false;
 		if (value?.known) {
 			renderedBytes = value.bytes;
 			renderedByteMap = [...value.byteMap];
@@ -1425,6 +1442,7 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 					renderedBytes = Buffer.from(';');
 				} else {
 					renderedBytes = Buffer.from([Number(BigInt.asUintN(8, integer))]);
+					renderedExact = true;
 				}
 				renderedByteMap = [value.byteMap[0] ?? format.byteMap[index] ?? absoluteFallback];
 			} else if (['b', 'd', 'o', 'u', 'x'].includes(specifier)) {
@@ -1436,6 +1454,7 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 				} else {
 					renderedBytes = Buffer.from(formattedInteger);
 					renderedByteMap = Array.from({ length: renderedBytes.length }, () => value.byteMap[0] ?? absoluteFallback);
+					renderedExact = value.displayExact !== false;
 				}
 			} else if (!['s'].includes(specifier)) {
 				// Float conversions depend on PHP-specific coercion, locale and exponent
@@ -1445,7 +1464,10 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 				renderedBytes = Buffer.from('0.0');
 				renderedByteMap = Array.from({ length: renderedBytes.length }, () => format.byteMap[index] ?? absoluteFallback);
 			}
-			if (specifier === 's' && !value.displayExact) returnKnown = false;
+			if (specifier === 's') {
+				renderedExact = value.displayExact !== false;
+				if (!renderedExact) returnKnown = false;
+			}
 		} else {
 			returnKnown = false;
 			const floatSpecifier = ['e', 'f', 'g', 'h'].includes(specifier);
@@ -1454,18 +1476,25 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 			renderedByteMap = Array.from({ length: renderedBytes.length }, () => format.byteMap[index] ?? absoluteFallback);
 		}
 		const signedSpecifier = specifier === 'd' || ['e', 'f', 'g', 'h'].includes(specifier);
-		if (signedSpecifier && flags.includes('+') && renderedBytes[0] !== 0x2d && renderedBytes[0] !== 0x2b) {
+		if (signedSpecifier && ordinaryFlags.includes('+') && renderedBytes[0] !== 0x2d && renderedBytes[0] !== 0x2b) {
 			renderedBytes = Buffer.concat([Buffer.from('+'), renderedBytes]);
 			renderedByteMap = [format.byteMap[index] ?? absoluteFallback, ...renderedByteMap];
 		}
-		if (specifier === 's' && precision !== null && precision >= 0) {
+		if (precisionUnknown) {
+			renderedBytes = Buffer.from('0');
+			renderedByteMap = [value?.byteMap[0] ?? format.byteMap[index] ?? absoluteFallback];
+			renderedExact = false;
+		} else if (specifier === 's' && precision !== null && precision >= 0) {
 			renderedBytes = renderedBytes.subarray(0, precision);
 			renderedByteMap = renderedByteMap.slice(0, precision);
+		} else if (['b', 'o', 'x'].includes(specifier) && precision !== null) {
+			renderedBytes = Buffer.alloc(0);
+			renderedByteMap = [];
 		}
-		if (width !== null && Math.abs(width) > renderedBytes.length) {
-			const customPad = /'(.)/.exec(flags)?.[1];
-			const leftAligned = width < 0 || flags.includes('-');
-			const zeroPad = flags.includes('0') && !(numericSpecifier && leftAligned);
+		const leftAligned = width !== null && (width < 0 || ordinaryFlags.includes('-'));
+		const widthCanBeModeled = specifier !== 'c' && !(leftAligned && !renderedExact);
+		if (widthCanBeModeled && width !== null && Math.abs(width) > renderedBytes.length) {
+			const zeroPad = ordinaryFlags.includes('0') && !(leftAligned && ['d', 'u'].includes(specifier));
 			const pad = customPad ? customPad.charCodeAt(0) : (zeroPad ? 0x30 : 0x20);
 			const padding = Buffer.alloc(Math.abs(width) - renderedBytes.length, pad);
 			const paddingMap = Array.from({ length: padding.length }, () => format.byteMap[index] ?? absoluteFallback);
@@ -1525,8 +1554,9 @@ function collapseNestedPrintf(tokens, absoluteFallback) {
 		bytes.push(...rendered.bytes);
 		byteMap.push(...rendered.byteMap);
 		const returnValue = rendered.returnKnown ? String(rendered.formattedByteLength) : '1';
-		const returnMap = Array.from({ length: returnValue.length }, () => absoluteFallback);
-		const encodedReturn = encodedPhpText(returnValue, returnMap, absoluteFallback);
+		const callableStart = absoluteFallback + (tokens[index].start ?? 0);
+		const returnMap = Array.from({ length: returnValue.length }, () => callableStart);
+		const encodedReturn = encodedPhpText(returnValue, returnMap, callableStart);
 		collapsed.push({
 			type: 'static',
 			text: returnValue,

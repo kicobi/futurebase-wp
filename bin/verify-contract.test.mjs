@@ -515,6 +515,18 @@ test('HTML foreign-content breakout tags pop the SVG namespace', () => {
 	assert.ok(raw('<svg><div><script href="2rem#fff"></script></div></svg>').some((problem) => problem.includes('2rem')));
 });
 
+test('mismatched foreign-content end tags cannot escape an HTML integration point', () => {
+	for (const markup of [
+		'<svg><foreignObject><div></foreignObject><script href="2rem#fff"></script>',
+		'<svg><g></p><script href="2rem#fff"></script>',
+		'<svg><g></br><script href="2rem#fff"></script>',
+	]) {
+		const problems = raw(markup);
+		assert.ok(problems.some((problem) => problem.includes('2rem')), markup);
+		assert.ok(problems.some((problem) => problem.includes('#fff')), markup);
+	}
+});
+
 test('PHP-emitted conditional font attributes pop the SVG namespace', () => {
 	const problems = raw('<svg><font <?php echo \'color="red"\'; ?>><script href="2rem#fff"></script></font></svg>');
 	assert.ok(problems.some((problem) => problem.includes('2rem')));
@@ -751,6 +763,12 @@ test('printf supports positional star width and precision selectors', () => {
 	}
 });
 
+test('unknown printf string precision preserves truncation-sensitive CSS boundaries', () => {
+	assert.ok(
+		raw('<style><?php $precision = 1; printf("%.*srem", $precision, "2x"); ?></style>').length > 0,
+	);
+});
+
 test('printf keeps byte-split precision counts through nested formatting', () => {
 	assert.ok(
 		raw('<style><?php printf("%.*s", printf("%3.1s;", "é"), "2remXX"); ?></style>')
@@ -820,6 +838,36 @@ test('numeric placeholders preserve raw-value token boundaries', () => {
 	}
 });
 
+test('left-aligned non-exact printf values preserve width-overflow boundaries', () => {
+	for (const markup of [
+		'<style><?php $value = 123456; printf("%-5drem", $value); ?></style>',
+		'<style><?php printf("%-5srem", 9223372036854775808); ?></style>',
+		'<style><?php printf("%-5frem", 2); ?></style>',
+	]) {
+		assert.ok(raw(markup).length > 0, markup);
+	}
+});
+
+test('printf applies zero padding with left alignment per conversion', () => {
+	assert.ok(
+		raw('<style><?php printf("%-05brem", 2); ?></style>')
+			.some((problem) => problem.includes('10000rem')),
+	);
+});
+
+test('printf precision and width behavior remains conversion-specific', () => {
+	assert.deepEqual(raw('<style><?php printf("%.0brem", 2); ?></style>'), []);
+	assert.ok(raw('<style><?php printf("%-03.0brem", 2); ?></style>').some((problem) => problem.includes('000rem')));
+	assert.ok(raw('<style><?php printf("%-5crem", 50); ?></style>').some((problem) => problem.includes('2rem')));
+});
+
+test('printf custom padding is distinct from alignment flags', () => {
+	assert.ok(
+		raw('<style><?php printf("%\'-5s", "2rem"); ?></style>')
+			.some((problem) => problem.includes('-2rem')),
+	);
+});
+
 test('printf signs and zero padding preserve PHP token boundaries', () => {
 	assert.ok(raw('<style><?php printf("a%+drem", 2); ?></style>').some((problem) => problem.includes('+2rem')));
 	assert.ok(raw('<style><?php printf("%05drem", -2); ?></style>').some((problem) => problem.includes('-0002rem')));
@@ -845,6 +893,13 @@ test('integer printf coercion preserves based-literal and concatenated-string or
 	}
 });
 
+test('overflowing based literals cannot determine printf padding or adjacency', () => {
+	const binary = `0b1${'0'.repeat(63)}`;
+	assert.ok(
+		raw(`<style><?php printf("a%20drem", ${binary}); ?></style>`).length > 0,
+	);
+});
+
 test('left-aligned numeric printf ignores zero padding', () => {
 	assert.deepEqual(raw('<style><?php printf("%-05drem", -2); ?></style>'), []);
 });
@@ -853,6 +908,12 @@ test('unary printf operand diagnostics retain the sign source line', () => {
 	const problems = raw(`<style><?php printf("%05drem",
 -2); ?></style>`);
 	assert.ok(problems.some((problem) => /:2:.*-0002rem/.test(problem)), problems.join('\n'));
+});
+
+test('nested printf return diagnostics map to the callable line', () => {
+	const problems = raw(`<style><?php echo
+printf("%s", ";") . "rem"; ?></style>`);
+	assert.ok(problems.some((problem) => /:2:.*1rem/.test(problem)), problems.join('\n'));
 });
 
 test('printf leading padding preserves the formatted value source line', () => {
