@@ -3,12 +3,15 @@
 
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { presetsDir } from './paths.mjs';
+import { presetsDir, requirePath } from './paths.mjs';
 import { readYaml, writeYaml } from './yaml.mjs';
 import { validateMetrics } from './validate.mjs';
 
+// Resolved, not joined. projectPaths() proves `.project` is real; it says
+// nothing about `.project/metrics`, and a link there sent every metric this
+// tool records into someone else's directory.
 export function metricsPath(projectDir) {
-	return join(projectDir, 'metrics', 'metrics.yml');
+	return requirePath(projectDir, join('metrics', 'metrics.yml'));
 }
 
 export function loadMetrics(projectDir) {
@@ -24,7 +27,7 @@ export function saveMetrics(projectDir, doc) {
 }
 
 export function loadProject(projectDir) {
-	const p = join(projectDir, 'project.yml');
+	const p = requirePath(projectDir, 'project.yml');
 	return existsSync(p) ? readYaml(p) : null;
 }
 

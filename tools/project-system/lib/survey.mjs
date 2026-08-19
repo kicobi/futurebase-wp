@@ -6,6 +6,7 @@
 
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { requirePath } from './paths.mjs';
 import { readYaml, writeYaml } from './yaml.mjs';
 
 export const PERIODS = ['baseline', '30-days', '90-days'];
@@ -49,7 +50,7 @@ export function questionsFor(period) {
 export const scaleIds = () => SCALE.map((q) => q.id);
 
 export function resultsPath(followUpDir, period) {
-	return join(followUpDir, `survey-${period}.yml`);
+	return requirePath(followUpDir, `survey-${period}.yml`);
 }
 
 export function loadResults(followUpDir, period) {

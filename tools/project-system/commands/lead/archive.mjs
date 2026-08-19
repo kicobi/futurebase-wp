@@ -10,7 +10,7 @@ import { cpSync, existsSync, rmSync, renameSync, writeFileSync, mkdirSync } from
 import { join } from 'node:path';
 import { EXIT, die, ok, info, emitJson, c } from '../../lib/output.mjs';
 import { isValidSlug } from '../../lib/slug.mjs';
-import { leadDir, leadsRoot } from '../../lib/paths.mjs';
+import { ManagedPathError, leadDir, leadsRoot, requirePath } from '../../lib/paths.mjs';
 import { readYaml, writeYaml } from '../../lib/yaml.mjs';
 
 const REASONS = ['lost', 'abandoned'];
@@ -24,11 +24,15 @@ export function leadArchive(positional, flags) {
 	const reason = flags.reason || 'lost';
 	if (!REASONS.includes(reason)) die(`--reason must be one of: ${REASONS.join(', ')}`, EXIT.INVALID_CONFIG, { json });
 
+	// leadDir() refuses a symlinked workspace, and every write below resolves
+	// through the same rule: this command stamps a status and leaves a note
+	// INSIDE the workspace before moving it, so a `<slug> -> elsewhere` link had
+	// it write two files into someone else's directory and then move the link.
 	const root = leadsRoot(flags['workspace-root']);
 	const src = leadDir(slug, flags['workspace-root']);
 	if (!existsSync(src)) die(`no lead workspace at ${src}`, EXIT.ACCESS_FAILURE, { json });
 
-	const dest = join(root, '_archive', slug);
+	const dest = requirePath(root, join('_archive', slug));
 	if (existsSync(dest)) die(`already archived: ${dest}`, EXIT.ACCESS_FAILURE, { json });
 
 	if (flags['dry-run']) {
@@ -41,23 +45,27 @@ export function leadArchive(positional, flags) {
 
 	// Stamp status + leave a note before moving (best-effort on the config).
 	try {
-		const cfg = readYaml(join(src, 'project.yml'));
+		const cfgPath = requirePath(src, 'project.yml');
+		const cfg = readYaml(cfgPath);
 		if (cfg?.project) {
 			cfg.project.status = reason;
-			writeYaml(join(src, 'project.yml'), cfg);
+			writeYaml(cfgPath, cfg);
 		}
-	} catch {
-		// unreadable config shouldn't block archiving
+	} catch (err) {
+		// An unreadable config shouldn't block archiving. A config that is a
+		// SYMLINK is a different claim — swallowing that would turn the refusal
+		// into a silent skip, which is the shape of the defect being fixed.
+		if (err instanceof ManagedPathError) throw err;
 	}
 	writeFileSync(
-		join(src, 'ARCHIVE.md'),
+		requirePath(src, 'ARCHIVE.md'),
 		`# Archived (${reason})\n\nArchived on ${new Date().toISOString().slice(0, 10)}.\n\n_Reason and lessons for future proposals:_\n`,
 		'utf8'
 	);
 
 	// Move under _archive/. Same filesystem in the normal case; fall back to
 	// copy+remove across devices.
-	mkdirSync(join(root, '_archive'), { recursive: true });
+	mkdirSync(requirePath(root, '_archive'), { recursive: true });
 	try {
 		renameSync(src, dest);
 	} catch (err) {

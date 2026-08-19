@@ -13,6 +13,7 @@ import { findProjectRoot, projectPaths, latestRunId, readRunSummary } from '../.
 import { readYaml } from '../../lib/yaml.mjs';
 import { loadMetrics } from '../../lib/metrics.mjs';
 import { buildComparison } from '../../lib/compare.mjs';
+import { requirePath } from '../../lib/paths.mjs';
 
 const fmt = (v, unit) => (v == null ? '—' : `${v}${unit ? ' ' + unit : ''}`);
 
@@ -98,7 +99,7 @@ export function caseStudy(_positional, flags) {
 	}
 
 	mkdirSync(paths.reportsDir, { recursive: true });
-	const out = join(paths.reportsDir, 'case-study.md');
+	const out = requirePath(paths.reportsDir, 'case-study.md');
 	writeFileSync(out, md.join('\n'), 'utf8');
 
 	if (json) emitJson({ status: 'ok', path: out, has_comparison: !!comparison });

@@ -12,6 +12,7 @@ import { findProjectRoot, projectPaths } from '../../lib/baseline.mjs';
 import { readYaml } from '../../lib/yaml.mjs';
 import { loadMetrics } from '../../lib/metrics.mjs';
 import { PERIODS, surveyMarkdown, resultsTemplate, resultsPath, saveResults } from '../../lib/survey.mjs';
+import { requirePath } from '../../lib/paths.mjs';
 
 export function metricsSurvey(_positional, flags) {
 	const json = !!flags.json;
@@ -30,15 +31,16 @@ export function metricsSurvey(_positional, flags) {
 	}
 	const metrics = loadMetrics(paths.projectDir);
 	const md = surveyMarkdown(period, projectName, metrics);
-	const followUpDir = join(paths.projectDir, 'follow-up');
+	const followUpDir = paths.at('follow-up');
 	const ymlPath = resultsPath(followUpDir, period);
+	const mdPath = requirePath(followUpDir, `survey-${period}.md`);
 
 	if (flags.write) {
 		mkdirSync(followUpDir, { recursive: true });
-		writeFileSync(join(followUpDir, `survey-${period}.md`), md, 'utf8');
+		writeFileSync(mdPath, md, 'utf8');
 		if (!existsSync(ymlPath)) saveResults(ymlPath, resultsTemplate(period));
-		if (json) emitJson({ status: 'written', period, form: join(followUpDir, `survey-${period}.md`), results_template: ymlPath });
-		ok(`survey written: ${join(followUpDir, `survey-${period}.md`)}`);
+		if (json) emitJson({ status: 'written', period, form: mdPath, results_template: ymlPath });
+		ok(`survey written: ${mdPath}`);
 		info(`fill in answers:  ${ymlPath}`);
 		info('then combine periods:  futurebase metrics follow-up');
 		process.exit(EXIT.OK);
