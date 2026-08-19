@@ -169,7 +169,7 @@ Read-only until `--apply --confirm`, and it writes only by path class:
 
 | class | paths | behaviour |
 | --- | --- | --- |
-| `safe` | `tools/`, `.github/workflows/`, `fixtures/`, and four scripts in `bin/` | copied verbatim — slug-free *by contract*: rename never scans `tools/`, and `bin/test-rename.sh` asserts `fixtures/` and those four scripts carry no slug literal |
+| `safe` | `tools/`, `.github/workflows/`, `fixtures/`, the portable verifier closure, and its support scripts/config | copied verbatim — slug-free *by contract*: rename never scans `tools/`, and `bin/test-rename.sh` asserts every portable path carries no slug literal |
 | `deps` | `package.json`, `package-lock.json`, `composer.json`, `composer.lock` | dependency blocks merged (starter wins on shared entries, project additions preserved); lockfiles adopted with the project's own package name restored |
 | `review` | `bin/`, `docs/`, `CLAUDE.md`, anything unclassified | reported only — these carry the theme slug, so copying them would undo the rename |
 | `never` | `patterns/`, `templates/`, `parts/`, `theme.json`, `style.css`, `functions.php`, `inc/`, `src/`, `assets/`, `.project/`, `.github/workflows/scorecard.yml` | untouched and unreported — the client's work, plus workflows that test the starter itself |

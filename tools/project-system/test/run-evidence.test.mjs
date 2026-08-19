@@ -517,6 +517,64 @@ test('allow-mismatch stays successful, records blocking JSON, and withholds clie
 	}
 });
 
+test('historical target secrets never reach comparison or case-study output', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const sentinel = 'HistoricalSecret987';
+		const complete = [{ module: 'crawl', status: 'complete' }];
+		const { root, report: caseStudyReport } = caseStudyFixture(dir, complete, 'completed');
+		const baselineDir = join(root, '.project', 'baseline', '2026-07-30T100000Z');
+		const finalDir = join(root, '.project', 'final', '2026-08-01T100000Z');
+		for (const [runDir, pageUrl] of [
+			[baselineDir, `https://example.test/preview?token=${sentinel}`],
+			[finalDir, 'https://example.test/preview?lang=sv'],
+		]) {
+			const summaryPath = join(runDir, 'summary.json');
+			const summary = JSON.parse(readFileSync(summaryPath, 'utf8'));
+			summary.target = {
+				base_url: 'https://example.test/',
+				pages: [{ name: 'home', url: pageUrl }],
+				viewports: [{ name: 'mobile', width: 390, height: 844 }],
+				modules: ['crawl'],
+			};
+			writeFileSync(summaryPath, JSON.stringify(summary, null, 2));
+		}
+
+		const blockedHuman = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root], { encoding: 'utf8' });
+		assert.equal(blockedHuman.status, EXIT.INVALID_CONFIG);
+		assert.doesNotMatch(blockedHuman.stdout + blockedHuman.stderr, new RegExp(sentinel));
+
+		const blockedJson = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--json'], { encoding: 'utf8' });
+		assert.equal(blockedJson.status, EXIT.INVALID_CONFIG);
+		assert.doesNotMatch(blockedJson.stdout + blockedJson.stderr, new RegExp(sentinel));
+		assert.match(JSON.parse(blockedJson.stdout).blocking[0], /lang=sv/);
+
+		const allowedJson = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--allow-mismatch', '--json'], { encoding: 'utf8' });
+		assert.equal(allowedJson.status, EXIT.OK, allowedJson.stderr || allowedJson.stdout);
+		assert.doesNotMatch(allowedJson.stdout + allowedJson.stderr, new RegExp(sentinel));
+
+		const reports = join(root, '.project', 'reports');
+		for (const file of [
+			'comparison-2026-08-01T100000Z.md',
+			'comparison-2026-08-01T100000Z-client.md',
+			'comparison-2026-08-01T100000Z.html',
+		]) {
+			assert.doesNotMatch(readFileSync(join(reports, file), 'utf8'), new RegExp(sentinel), file);
+		}
+
+		const allowedHuman = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--allow-mismatch'], { encoding: 'utf8' });
+		assert.equal(allowedHuman.status, EXIT.OK, allowedHuman.stderr || allowedHuman.stdout);
+		assert.doesNotMatch(allowedHuman.stdout + allowedHuman.stderr, new RegExp(sentinel));
+
+		const caseStudy = spawnSync(process.execPath, [COMPARE_CLI, 'project', 'case-study', '--project-root', root, '--json'], { encoding: 'utf8' });
+		assert.equal(caseStudy.status, EXIT.OK, caseStudy.stderr || caseStudy.stdout);
+		assert.doesNotMatch(caseStudy.stdout + caseStudy.stderr, new RegExp(sentinel));
+		assert.doesNotMatch(readFileSync(caseStudyReport, 'utf8'), new RegExp(sentinel));
+	} finally {
+		cleanup();
+	}
+});
+
 // --- a module may not report evidence it did not gather ----------------------
 //
 // Both of these returned `complete`. A comparison then treats `complete` as the

@@ -14,6 +14,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { sanitizeRunSummary } from './targets.mjs';
 
 const readJsonSafe = (p) => {
 	try {
@@ -155,8 +156,11 @@ export function buildComparison(baselineRunDir, finalRunDir) {
 	const limitations = [];
 
 	// Comparability first: a mismatch here changes what every row below means.
-	const bSummary = readJsonSafe(join(baselineRunDir, 'summary.json'));
-	const fSummary = readJsonSafe(join(finalRunDir, 'summary.json'));
+	// Historical summaries predate capture validation and can contain durable
+	// credentials. Comparison reasons quote target differences, so sanitize both
+	// sides before identity comparison or any message formatting.
+	const bSummary = sanitizeRunSummary(readJsonSafe(join(baselineRunDir, 'summary.json')));
+	const fSummary = sanitizeRunSummary(readJsonSafe(join(finalRunDir, 'summary.json')));
 	const { limitations: targetLimits, blocking } = compareTargets(bSummary, fSummary);
 	limitations.push(...targetLimits);
 

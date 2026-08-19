@@ -55,6 +55,23 @@ test('page targets preserve public queries but reject userinfo and secret parame
 	}
 });
 
+test('page targets fail closed on malformed encoded credentials and session keys', () => {
+	const safe = { base_url: 'https://example.test/', pages: [{ name: 'sv', url: '/about?lang=sv' }] };
+	assert.deepEqual(captureTargetErrors(safe), [], 'ordinary relative pages and public queries remain valid');
+
+	for (const url of [
+		'https://admin%3AFakeEncodedPassword987%40example.test',
+		'/preview?session_id=FakeSessionSecret987',
+		'/preview?sessionid=FakeSessionSecret987',
+		'/preview?jsessionid=FakeSessionSecret987',
+		'/preview?phpsessid=FakeSessionSecret987',
+	]) {
+		const errors = captureTargetErrors({ ...safe, pages: [{ name: 'unsafe', url }] });
+		assert.equal(errors.length, 1, `must reject ${url.split('=')[0]}`);
+		assert.doesNotMatch(errors[0], /FakeEncodedPassword987|FakeSessionSecret987/);
+	}
+});
+
 test('defensive sanitization strips credentials while retaining public query parameters', () => {
 	const config = sanitizeCaptureConfig({
 		base_url: 'https://admin:base-secret@example.test/private?token=base-secret',
@@ -77,6 +94,29 @@ test('baseline init rejects credentials without creating config or echoing the v
 		assert.equal(existsSync(join(dir, '.project', 'baseline.config.yml')), false);
 		assert.doesNotMatch(result.stdout + result.stderr, new RegExp(sentinel));
 		assert.match(result.stdout + result.stderr, /HTTP\(S\) origin/);
+	} finally {
+		cleanup();
+	}
+});
+
+test('baseline init rejects malformed encoded page credentials without persisting or echoing them', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const sentinel = 'FakeEncodedPassword987';
+		const result = run([
+			'baseline',
+			'init',
+			'--url',
+			'https://example.test',
+			'--page',
+			`probe=https://admin%3A${sentinel}%40example.test`,
+			'--force',
+			'--json',
+		], dir);
+		assert.equal(result.status, 2);
+		assert.equal(existsSync(join(dir, '.project', 'baseline.config.yml')), false);
+		assert.doesNotMatch(result.stdout + result.stderr, new RegExp(sentinel));
+		assert.match(result.stdout + result.stderr, /page URL|credentials|HTTP\(S\)/i);
 	} finally {
 		cleanup();
 	}

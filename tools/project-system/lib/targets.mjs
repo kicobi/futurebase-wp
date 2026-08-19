@@ -25,6 +25,10 @@ const SECRET_PARAMETERS = new Set([
 	'private_key',
 	'refresh_token',
 	'secret',
+	'jsessionid',
+	'phpsessid',
+	'session_id',
+	'sessionid',
 	'session_token',
 	'token',
 ]);
@@ -93,11 +97,11 @@ export function captureTargetErrors(config) {
 		try {
 			url = parsePageUrl(page.url, baseUrl);
 		} catch {
-			// URL syntax remains the capture module's concern, but credential-like
-			// values fail closed even when the URL parser cannot interpret them.
-			if (/:\/\/[^/?#]*@/i.test(page.url) || /(?:^|[?&])[^=]*(?:password|passwd|secret|token|api[_-]?key)[^=]*=/i.test(page.url)) {
-				errors.push(`/pages/${index}/url must not contain credentials or secret query parameters`);
-			}
+			// A parser failure is not evidence that a target is harmless. Encoded
+			// userinfo can make an absolute URL unparseable while still preserving
+			// the credential bytes for a config/report to persist. Fail closed and
+			// keep the error value-free.
+			errors.push(`/pages/${index}/url must be a valid HTTP(S) page URL without credentials or secret query parameters`);
 			continue;
 		}
 		if (!['http:', 'https:'].includes(url.protocol)) {

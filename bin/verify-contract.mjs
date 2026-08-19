@@ -145,7 +145,7 @@ const TOLERATED = [/"width":"\d+px"/g, /<div style="height:\s*\d+px"/g];
 const RAW_VALUE_RULES = [
 	['hex color', /#[0-9a-f]{3,8}\b/i],
 	['color function', /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color(?:-mix)?)\s*\([^)]*\)/i],
-	['length', /(?<![A-Za-z0-9_.-])[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:px|rem|em|ch|ex|lh|rlh|vmin|vmax|svw|svh|lvw|lvh|dvw|dvh|vw|vh|cm|mm|q|in|pt|pc)\b/i],
+	['length', /(?<![A-Za-z0-9_.-])[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:px|rem|em|ch|ex|lh|rlh|vmin|vmax|svw|svh|lvw|lvh|dvw|dvh|vw|vh|cqw|cqh|cqi|cqb|cqmin|cqmax|cm|mm|q|in|pt|pc)\b/i],
 ];
 
 function rawValueHits(value) {
@@ -416,6 +416,8 @@ export function checkFluidTypography(theme, { file = 'theme.json', requireGlobal
 					if (max === null) problems.push(`${prefix} fluid max ${JSON.stringify(fluid.max)} must be rem or px`);
 					if (min !== null && max !== null) {
 						if (min > max) problems.push(`${prefix} fluid min ${fluid.min} is greater than max ${fluid.max}`);
+						else if (size !== null && size < min) problems.push(`${prefix} size ${preset.size} is less than fluid min ${fluid.min}`);
+						else if (size !== null && size > max) problems.push(`${prefix} size ${preset.size} is greater than fluid max ${fluid.max}`);
 					}
 				}
 			}
@@ -555,7 +557,7 @@ export function collect(dirs, root) {
 	return out;
 }
 
-// Root theme.json and every direct styles/*.json variation enter one parsed
+// Root theme.json and every styles/**/*.json variation enter one parsed
 // pipeline. Keeping variation parsing in the shell created two rule sets that
 // could only drift: the shell knew whether JSON parsed, while the JavaScript
 // checker knew what valid JSON was allowed to say.
@@ -564,14 +566,44 @@ export function loadThemeJsonDocuments(root) {
 	const problems = [];
 	const files = ['theme.json'];
 	const stylesDir = join(root, 'styles');
-	if (existsSync(stylesDir)) {
-		try {
-			for (const entry of readdirSync(stylesDir, { withFileTypes: true })) {
-				if (entry.name.endsWith('.json')) files.push(`styles/${entry.name}`);
-			}
-		} catch (err) {
-			problems.push(`styles/: cannot read style variations — ${err.message}`);
+	try {
+		const rootReal = realpathSync(root);
+		const stylesStat = lstatSync(stylesDir);
+		if (stylesStat.isSymbolicLink()) {
+			problems.push('styles/: style variations directory must not be a symlink');
+		} else if (!stylesStat.isDirectory()) {
+			problems.push('styles/: style variations path must be a directory');
+		} else {
+			const contained = (path) => {
+				const rel = relative(rootReal, realpathSync(path));
+				return rel === '' || (!isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`));
+			};
+			const walk = (abs, rel) => {
+				for (const entry of readdirSync(abs, { withFileTypes: true })) {
+					const path = join(abs, entry.name);
+					const file = `${rel}/${entry.name}`;
+					const stat = lstatSync(path);
+					if (stat.isSymbolicLink()) {
+						problems.push(`${file}: style variation paths must not be symlinks`);
+						continue;
+					}
+					if (!contained(path)) {
+						problems.push(`${file}: style variation path is not contained in the theme`);
+						continue;
+					}
+					if (stat.isDirectory()) {
+						walk(path, file);
+						continue;
+					}
+					// WordPress ignores support/documentation files in styles/; only
+					// regular JSON files are style-variation inputs.
+					if (stat.isFile() && entry.name.endsWith('.json')) files.push(file);
+				}
+			};
+			walk(stylesDir, 'styles');
 		}
+	} catch (err) {
+		if (err?.code !== 'ENOENT') problems.push(`styles/: cannot read style variations — ${err.message}`);
 	}
 
 	for (const file of files.sort((a, b) => a.localeCompare(b))) {

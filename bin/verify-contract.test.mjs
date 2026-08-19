@@ -661,6 +661,13 @@ test('raw CSS detection reports signed decimals and modern color functions exact
 	}
 });
 
+test('raw CSS detection covers every container-query length unit case-insensitively', () => {
+	for (const unit of ['cqw', 'cqh', 'cqi', 'cqb', 'cqmin', 'cqmax', 'CQI']) {
+		const value = `2${unit}`;
+		assert.ok(raw(`<!-- wp:group {"style":{"spacing":{"padding":"${value}"}}} /-->`).some((problem) => problem.includes(`"${value}"`)), value);
+	}
+});
+
 test('fluid ranges reject incomplete and inverted endpoints and use the largest endpoint', () => {
 	const fixtures = [
 		[{ slug: 'incomplete', size: '1rem', fluid: { min: '1rem' } }, /both min and max/],
@@ -671,6 +678,56 @@ test('fluid ranges reject incomplete and inverted endpoints and use the largest 
 		const problems = checkFluidTypography(themeWith({ fontSizes: [preset] }));
 		if (expected) assert.ok(problems.some((problem) => expected.test(problem)), preset.slug);
 		else assert.deepEqual(problems, [], 'a complete range is valid even when size itself is body scale');
+	}
+});
+
+test('fluid size must sit inside its min/max range across compatible rem and px units', () => {
+	for (const [preset, expected] of [
+		[{ slug: 'above', size: '48px', fluid: { min: '1rem', max: '2rem' } }, /size 48px is greater than fluid max 2rem/],
+		[{ slug: 'below', size: '.5rem', fluid: { min: '16px', max: '32px' } }, /size \.5rem is less than fluid min 16px/],
+	]) {
+		const problems = checkFluidTypography(themeWith({ fontSizes: [preset] }));
+		assert.ok(problems.some((problem) => expected.test(problem)), preset.slug);
+	}
+});
+
+test('nested style variations enter the parsed checker', () => {
+	const root = mkdtempSync(join(tmpdir(), 'contract-nested-variation-'));
+	try {
+		fixtureTheme(root);
+		mkdirSync(join(root, 'styles', 'typography'), { recursive: true });
+		writeFileSync(join(root, 'styles', 'typography', 'unsafe.json'), JSON.stringify({
+			version: 3,
+			settings: { typography: { fluid: false } },
+			styles: { typography: { fontSize: '8cqi' }, color: { text: '#123456' } },
+		}));
+		const result = runChecker(root);
+		assert.equal(result.status, 1);
+		assert.match(result.stderr, /styles\/typography\/unsafe\.json.*fluid/);
+		assert.match(result.stderr, /styles\/typography\/unsafe\.json.*8cqi/);
+		assert.match(result.stderr, /styles\/typography\/unsafe\.json.*#123456/);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test('nested style discovery rejects symlinks without following cycles and ignores non-JSON files', () => {
+	const root = mkdtempSync(join(tmpdir(), 'contract-variation-links-'));
+	try {
+		fixtureTheme(root);
+		mkdirSync(join(root, 'styles', 'group'), { recursive: true });
+		writeFileSync(join(root, 'styles', 'notes.md'), '# ignored by WordPress\n');
+		writeFileSync(join(root, 'outside.json'), JSON.stringify({ styles: { color: { text: '#123456' } } }));
+		symlinkSync(join(root, 'outside.json'), join(root, 'styles', 'linked.json'));
+		symlinkSync(join(root, 'styles'), join(root, 'styles', 'group', 'cycle'));
+
+		const result = runChecker(root);
+		assert.equal(result.status, 1);
+		assert.match(result.stderr, /styles\/linked\.json.*symlink/);
+		assert.match(result.stderr, /styles\/group\/cycle.*symlink/);
+		assert.doesNotMatch(result.stderr, /outside\.json.*raw hex color/);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
 	}
 });
 

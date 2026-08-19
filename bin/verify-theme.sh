@@ -46,7 +46,7 @@ section() { printf "\n\033[1m%s\033[0m\n" "$1"; }
 section "1, 3, 4, 5, 7, 9. Parsed contract checks"
 
 # These checks live in bin/verify-contract.mjs, which parses block markup, root
-# theme.json, and every styles/*.json variation instead of grepping them. The
+# theme.json, and every JSON variation below styles/ instead of grepping them. The
 # old split shell/JavaScript rules passed for the wrong
 # reason: a blacklist that omitted core/list and core/html, a pattern count
 # nobody took, a `"fluid": true` match that a nested preset satisfied, an AWK
