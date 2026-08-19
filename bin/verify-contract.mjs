@@ -124,13 +124,9 @@ export function patternsBySlug(files) {
 // comments at the top of templates/front-page.html and parts/footer.html, and a
 // line-prefix test cannot tell those from a block.
 const blankOut = (match) => match.replace(/[^\n]/g, ' ');
-const removePreservingNewlines = (match) => match.replace(/[^\n]/g, '');
 
 export function scannableSource(source) {
 	return String(source)
-		// CSS removes comments before tokenization. Preserve their newlines for
-		// diagnostics, but do not turn `url/**/(` into the distinct `url (` form.
-		.replace(/\/\*[\s\S]*?\*\//g, removePreservingNewlines)
 		.replace(/<!--(?!\s*\/?wp:)[\s\S]*?-->/g, blankOut);
 }
 
@@ -232,41 +228,144 @@ function consumeFunction(text, open) {
 	return text.length;
 }
 
-function withoutCssUrls(value) {
-	const text = String(value);
-	let result = '';
-	let cursor = 0;
-	let index = 0;
-	while (index < text.length) {
-		if (!wouldStartIdentifier(text, index)) {
+const COLOR_FUNCTIONS = new Set([
+	'rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch',
+	'color', 'color-mix', 'device-cmyk', 'light-dark', 'contrast-color',
+]);
+const URL_ATTRIBUTE_KEYS = new Set(['action', 'cite', 'data', 'formaction', 'href', 'manifest', 'ping', 'poster', 'src', 'srcset', 'url']);
+
+const previousNonSpace = (text, index) => {
+	let cursor = index - 1;
+	while (cursor >= 0 && /\s/.test(text[cursor])) cursor--;
+	return text[cursor];
+};
+
+function cssTokenView(value, { markup = false } = {}) {
+	const source = String(value);
+	let text = '';
+	const map = [];
+	let quote = null;
+	let attributeQuote = null;
+	for (let index = 0; index < source.length;) {
+		const char = source[index];
+		if (quote) {
+			text += char;
+			map.push(index);
+			if (char === '\\' && index + 1 < source.length) {
+				text += source[index + 1];
+				map.push(index + 1);
+				index += 2;
+				continue;
+			}
+			if (char === quote) quote = null;
 			index++;
 			continue;
 		}
-		const identifier = consumeIdentifier(text, index);
-		const open = identifier.end;
-		if (identifier.value.toLowerCase() !== 'url' || text[open] !== '(') {
-			index = identifier.end;
+		if (markup && attributeQuote && char === '&') {
+			const entity = /^&(?:(quot)|(#0*34)|(#x0*22)|(apos)|(#0*39)|(#x0*27));/i.exec(source.slice(index));
+			if (entity) {
+				text += entity[1] || entity[2] || entity[3] ? '"' : "'";
+				map.push(index);
+				index += entity[0].length;
+				continue;
+			}
+		}
+		if (markup && attributeQuote && char === attributeQuote) {
+			attributeQuote = null;
+			text += char;
+			map.push(index++);
 			continue;
 		}
-		const end = consumeFunction(text, open);
-		result += text.slice(cursor, index) + blankOut(text.slice(index, end));
-		cursor = end;
-		index = end;
+		if (markup && !attributeQuote && (char === '"' || char === "'") && previousNonSpace(source, index) === '=') {
+			attributeQuote = char;
+			text += char;
+			map.push(index++);
+			continue;
+		}
+		if (char === '"' || char === "'") {
+			quote = char;
+			text += char;
+			map.push(index++);
+			continue;
+		}
+		if (char === '/' && source[index + 1] === '*') {
+			const close = source.indexOf('*/', index + 2);
+			index = close === -1 ? source.length : close + 2;
+			continue;
+		}
+		text += char;
+		map.push(index++);
 	}
-	return result + text.slice(cursor);
+	return { source, text, map };
 }
 
-function rawLengthHits(text) {
+function consumeString(text, start) {
+	const quote = text[start];
+	let index = start + 1;
+	while (index < text.length) {
+		if (text[index] === '\\' && index + 1 < text.length) {
+			index += 2;
+			continue;
+		}
+		if (text[index++] === quote) break;
+	}
+	return index;
+}
+
+function rawValueHits(value, { markup = false } = {}) {
+	const { source, text, map } = cssTokenView(value, { markup });
 	const hits = [];
+	let attributeQuote = null;
+	let ignoredAttribute = false;
+	const sourceSlice = (start, end) => {
+		if (end <= start || map[start] === undefined) return '';
+		return source.slice(map[start], (map[end - 1] ?? map[start]) + 1);
+	};
+	const add = (label, start, end) => hits.push({ label, value: sourceSlice(start, end), index: map[start] ?? 0 });
+
 	let index = 0;
 	while (index < text.length) {
+		const char = text[index];
+		if (markup && attributeQuote) {
+			const entityQuote = source[map[index]] === '&';
+			if (char === attributeQuote && !entityQuote) {
+				attributeQuote = null;
+				ignoredAttribute = false;
+				index++;
+				continue;
+			}
+			if (ignoredAttribute) {
+				index++;
+				continue;
+			}
+			if ((char === '"' || char === "'") && (char !== attributeQuote || entityQuote)) {
+				index = consumeString(text, index);
+				continue;
+			}
+		} else if (markup && (char === '"' || char === "'") && previousNonSpace(text, index) === '=') {
+			attributeQuote = char;
+			const attribute = /([A-Za-z_:][A-Za-z0-9:._-]*)\s*=\s*$/.exec(text.slice(0, index));
+			ignoredAttribute = URL_ATTRIBUTE_KEYS.has(attribute?.[1]?.toLowerCase());
+			index++;
+			continue;
+		} else if (char === '"' || char === "'") {
+			index = consumeString(text, index);
+			continue;
+		}
+
+		if (char === '#') {
+			const color = /^#[0-9a-f]{3,8}\b/i.exec(text.slice(index));
+			if (color) {
+				add('hex color', index, index + color[0].length);
+				index += color[0].length;
+				continue;
+			}
+		}
 		if (wouldStartNumber(text, index)) {
 			const numberEnd = consumeNumber(text, index);
 			if (wouldStartIdentifier(text, numberEnd)) {
 				const unit = consumeIdentifier(text, numberEnd);
-				if (CSS_LENGTH_UNIT_SET.has(unit.value.toLowerCase())) {
-					hits.push({ index, value: text.slice(index, unit.end) });
-				}
+				if (CSS_LENGTH_UNIT_SET.has(unit.value.toLowerCase())) add('length', index, unit.end);
 				index = unit.end;
 				continue;
 			}
@@ -274,44 +373,78 @@ function rawLengthHits(text) {
 			continue;
 		}
 		if (wouldStartIdentifier(text, index)) {
-			index = consumeIdentifier(text, index).end;
+			const identifier = consumeIdentifier(text, index);
+			if (text[identifier.end] === '(') {
+				const end = consumeFunction(text, identifier.end);
+				const name = identifier.value.toLowerCase();
+				if (name === 'url') {
+					index = end;
+					continue;
+				}
+				if (COLOR_FUNCTIONS.has(name)) {
+					add('color function', index, end);
+					index = end;
+					continue;
+				}
+			}
+			index = identifier.end;
 			continue;
 		}
 		index++;
 	}
-	return hits;
+	return hits.sort((left, right) => left.index - right.index);
 }
 
-const RAW_VALUE_RULES = [
-	['hex color', /#[0-9a-f]{3,8}\b/i],
-	['color function', /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color(?:-mix)?)\s*\([^)]*\)/i],
-];
-
-function rawValueHits(value) {
-	// URLs can legitimately contain color- or dimension-looking path segments.
-	// Blank the complete CSS function, including escaped spellings of `url`,
-	// before scanning the declaration value around it.
-	const text = withoutCssUrls(value);
-	const hits = [];
-	for (const [label, re] of RAW_VALUE_RULES) {
-		const global = new RegExp(re.source, `${re.flags.replaceAll('g', '')}g`);
-		for (const hit of text.matchAll(global)) hits.push({ label, value: hit[0], index: hit.index });
+function decodedJsonStrings(json, absoluteStart) {
+	const strings = [];
+	for (let index = 0; index < json.length;) {
+		if (json[index] !== '"') {
+			index++;
+			continue;
+		}
+		const start = index++;
+		while (index < json.length) {
+			if (json[index] === '\\') {
+				index += 2;
+				continue;
+			}
+			if (json[index++] === '"') break;
+		}
+		const raw = json.slice(start, index);
+		let after = index;
+		while (/\s/.test(json[after] || '')) after++;
+		if (json[after] === ':') continue;
+		const value = JSON.parse(raw);
+		const map = [];
+		for (let rawIndex = 1; rawIndex < raw.length - 1;) {
+			if (raw[rawIndex] !== '\\') {
+				map.push(absoluteStart + start + rawIndex++);
+				continue;
+			}
+			const escapeStart = rawIndex;
+			if (raw[rawIndex + 1] === 'u') rawIndex += 6;
+			else rawIndex += 2;
+			map.push(absoluteStart + start + escapeStart);
+		}
+		const before = json.slice(0, start);
+		const keyMatch = /("(?:\\.|[^"\\])*")\s*:\s*$/.exec(before);
+		strings.push({ value, map, key: keyMatch ? JSON.parse(keyMatch[1]) : null });
 	}
-	for (const hit of rawLengthHits(text)) hits.push({ label: 'length', ...hit });
-	return hits.sort((left, right) => left.index - right.index);
+	return strings;
 }
 
 // Spaces, not deletion: removing tolerated generated text would join its
 // neighbours into tokens that were never written (`#ff` + `0000`) and make
 // diagnostics harder to match back to the source.
-const withoutTolerated = (line) => {
-	let result = TOLERATED.reduce((acc, re) => acc.replace(re, blankOut), line);
+const withoutTolerated = (source) => {
+	let result = TOLERATED.reduce((acc, re) => acc.replace(re, blankOut), source);
 	// core/cover serializes its numeric minHeight + minHeightUnit attributes as
 	// an inline min-height. Like image width and spacer height, no token-valued
-	// block attribute exists; keep the exemption bounded to the generated class.
-	if (/class="[^"]*\bwp-block-cover\b/.test(line)) {
-		result = result.replace(/min-height:\s*\d+(?:\.\d+)?(?:px|rem|em|vh|vw)\b/gi, blankOut);
-	}
+	// block attribute exists; keep the exemption bounded to that exact tag.
+	result = result.replace(/<[^>]*>/g, (tag) => {
+		if (!/\bclass\s*=\s*["'][^"']*\bwp-block-cover\b/i.test(tag)) return tag;
+		return tag.replace(/min-height:\s*\d+(?:\.\d+)?(?:px|rem|em|vh|vw)\b/gi, blankOut);
+	});
 	return result;
 };
 
@@ -330,25 +463,18 @@ export function checkRawValues(files) {
 				continue;
 			}
 			const name = match[2].includes('/') ? match[2] : `core/${match[2]}`;
-			const line = source.slice(0, match.index).split('\n').length;
-			const walk = (value, key = '') => {
-				if (typeof value === 'string') {
-					if (name === 'core/image' && key === 'width' && /^\d+px$/.test(value)) return;
-					for (const hit of rawValueHits(value)) {
-						problems.push(`${file}:${line}: raw ${hit.label} "${hit.value}" — every value resolves to a theme.json preset`);
-					}
-					return;
-				}
-				if (Array.isArray(value)) {
-					value.forEach((child) => walk(child));
-					return;
-				}
-				if (!value || typeof value !== 'object') return;
-				for (const [childKey, child] of Object.entries(value)) walk(child, childKey);
-			};
-			walk(attrs);
 			const jsonOffset = match[0].indexOf(json);
-			maskedRanges.push([match.index + jsonOffset, match.index + jsonOffset + json.length]);
+			const jsonStart = match.index + jsonOffset;
+			for (const decoded of decodedJsonStrings(json, jsonStart)) {
+				if (name === 'core/image' && decoded.key === 'width' && /^\d+px$/.test(decoded.value)) continue;
+				if (URL_ATTRIBUTE_KEYS.has(decoded.key)) continue;
+				for (const hit of rawValueHits(decoded.value)) {
+					const absoluteIndex = decoded.map[hit.index] ?? jsonStart;
+					const line = source.slice(0, absoluteIndex).split('\n').length;
+					problems.push(`${file}:${line}: raw ${hit.label} "${hit.value}" — every value resolves to a theme.json preset`);
+				}
+			}
+			maskedRanges.push([jsonStart, jsonStart + json.length]);
 		}
 
 		let sourceWithoutBlockJson = source;
@@ -356,7 +482,7 @@ export function checkRawValues(files) {
 			sourceWithoutBlockJson = sourceWithoutBlockJson.slice(0, start) + blankOut(sourceWithoutBlockJson.slice(start, end)) + sourceWithoutBlockJson.slice(end);
 		}
 		const scannable = withoutTolerated(scannableSource(sourceWithoutBlockJson));
-		for (const hit of rawValueHits(scannable)) {
+		for (const hit of rawValueHits(scannable, { markup: true })) {
 			const line = scannable.slice(0, hit.index).split('\n').length;
 			problems.push(`${file}:${line}: raw ${hit.label} "${hit.value}" — every value resolves to a theme.json preset`);
 		}

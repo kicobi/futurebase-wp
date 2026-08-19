@@ -631,10 +631,10 @@ test('fragment credentials and off-base origins cannot leak or support a client 
 		const { root, report: caseStudyReport } = caseStudyFixture(dir, complete, 'completed');
 		const baselineDir = join(root, '.project', 'baseline', '2026-07-30T100000Z');
 		const finalDir = join(root, '.project', 'final', '2026-08-01T100000Z');
-		const setTarget = (runDir, baseUrl, url, broken) => {
+		const setTarget = (runDir, baseUrl, url, broken, name = 'home') => {
 			const summaryPath = join(runDir, 'summary.json');
 			const summary = JSON.parse(readFileSync(summaryPath, 'utf8'));
-			summary.target = { base_url: baseUrl, pages: [{ name: 'home', url }], viewports: [], modules: ['crawl'] };
+			summary.target = { base_url: baseUrl, pages: [{ name, url }], viewports: [], modules: ['crawl'] };
 			writeFileSync(summaryPath, JSON.stringify(summary, null, 2));
 			writeFileSync(join(runDir, 'crawl', 'crawl.json'), JSON.stringify({ summary: { fetched: 1, brokenLinkCount: broken, missingMetaDesc: 0 } }));
 		};
@@ -669,6 +669,16 @@ test('fragment credentials and off-base origins cannot leak or support a client 
 		const fragmentClient = readFileSync(join(root, '.project', 'reports', 'comparison-2026-08-01T100000Z-client.md'), 'utf8');
 		assert.doesNotMatch(fragmentClient, /Broken internal links: 9 → 0/);
 		assert.match(fragmentClient, /figures are withheld/);
+
+		setTarget(baselineDir, 'https://example.test/', '/preview#/callback?access_token=BaselineSecret987', 9, 'old');
+		setTarget(finalDir, 'https://example.test/', '/preview#public', 0, 'new');
+		const unmatchedSecret = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--allow-mismatch', '--json'], { encoding: 'utf8' });
+		assert.equal(unmatchedSecret.status, EXIT.OK, unmatchedSecret.stderr || unmatchedSecret.stdout);
+		assert.doesNotMatch(unmatchedSecret.stdout + unmatchedSecret.stderr, sentinel);
+		assert.ok(JSON.parse(unmatchedSecret.stdout).blocking.length > 0);
+		const unmatchedClient = readFileSync(join(root, '.project', 'reports', 'comparison-2026-08-01T100000Z-client.md'), 'utf8');
+		assert.doesNotMatch(unmatchedClient, /Broken internal links: 9 → 0/);
+		assert.match(unmatchedClient, /figures are withheld/);
 
 		setTarget(baselineDir, 'https://example.test/', 'https://one.test/preview?token=SameSecret987', 9);
 		setTarget(finalDir, 'https://example.test/', 'https://two.test/preview?token=SameSecret987', 0);

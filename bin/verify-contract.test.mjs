@@ -353,6 +353,41 @@ test('decoded CSS escapes form dimensions in block JSON and across source lines'
 	assert.ok(raw('<style>.x{padding:2r\\65\nm}</style>').some((problem) => problem.includes('raw length')));
 });
 
+test('decoded block CSS ignores comments and strings but scans the effective tokens around them', () => {
+	const block = (css) => {
+		const markup = `<!-- wp:group ${JSON.stringify({ style: { css } })} /-->`;
+		assert.equal(parseBlocks(markup).blocks[0].malformed, undefined);
+		return raw(markup);
+	};
+	assert.deepEqual(block('.x{/* old 2rem */color:var(--token)}'), []);
+	assert.ok(block('.x{/* url( */padding:2rem}').some((problem) => problem.includes('2rem')));
+	assert.ok(block('.x{content:"url(";padding:2rem}').some((problem) => problem.includes('2rem')));
+	assert.ok(block(String.raw`.x{color:r\67 b(1 2 3)}`).some((problem) => problem.includes('color function')));
+	assert.deepEqual(block('.x{background:url/**/("/assets/2rem.svg")}'), []);
+});
+
+test('whole-source CSS tokenization preserves physical lines and scoped core exemptions', () => {
+	const coverAndRaw = '<div class="wp-block-cover" style="min-height:50vh"></div>\n<div style="min-height:2rem"></div>';
+	assert.ok(raw(coverAndRaw).some((problem) => /:2:.*2rem/.test(problem)));
+	const sameLine = '<div class="wp-block-cover" style="min-height:50vh"></div><div style="min-height:2rem"></div>';
+	assert.ok(raw(sameLine).some((problem) => problem.includes('2rem')));
+	assert.deepEqual(raw('<style>.x{background:url/*\n*/("/assets/2rem.svg")}</style>'), []);
+	assert.ok(raw('<style>.x{content:"url(";padding:2rem}</style>').some((problem) => problem.includes('2rem')));
+	assert.ok(raw('<div style="/* url( */padding:2rem"></div>').some((problem) => problem.includes('2rem')));
+	assert.ok(raw('<div style="content:&quot;url(&quot;;padding:2rem"></div>').some((problem) => problem.includes('2rem')));
+
+	const multiline = '<!-- wp:group {\n  "style": {\n    "css": "padding:2rem"\n  }\n} /-->';
+	assert.equal(parseBlocks(multiline).blocks[0].malformed, undefined);
+	assert.ok(raw(multiline).some((problem) => /:3:.*2rem/.test(problem)));
+});
+
+test('HTML and block URL attributes are not mistaken for CSS values', () => {
+	assert.deepEqual(raw('<img src="/assets/2rem-#fff.svg"><a href="/docs/#abcdef">Docs</a>'), []);
+	const image = `<!-- wp:image ${JSON.stringify({ url: '/assets/2rem-#fff.svg', alt: '' })} /-->`;
+	assert.equal(parseBlocks(image).blocks[0].malformed, undefined);
+	assert.deepEqual(raw(image), []);
+});
+
 test('a file-header comment is not scanned', () => {
 	// This is what the line-prefix exclusion was protecting, and why it could not
 	// simply be deleted: templates and parts open with an HTML comment.

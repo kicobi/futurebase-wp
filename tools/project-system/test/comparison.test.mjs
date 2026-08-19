@@ -176,6 +176,34 @@ test('secret-bearing fragments block even when the public page identity is uncha
 	assert.doesNotMatch(blocking[0], /BaselineSecret987/);
 });
 
+test('every page is preflighted even when page names do not match', () => {
+	const secret = run({ target: { pages: [{ name: 'old', url: 'https://example.com/preview#/callback?access_token=BaselineSecret987' }] } });
+	const publicFinal = run({ target: { pages: [{ name: 'new', url: 'https://example.com/preview#public' }] } });
+	const secretComparison = compareTargets(secret, publicFinal);
+	assert.ok(secretComparison.blocking.some((reason) => /credential|secret/i.test(reason)));
+	assert.doesNotMatch(JSON.stringify(secretComparison), /BaselineSecret987/);
+	const rendered = renderComparison({
+		projectName: 'Probe',
+		baselineRun: 'before',
+		finalRun: 'after',
+		metrics: null,
+		comparison: { rows: [{ label: 'Broken links', before: 9, after: 0, unit: '', change: 'better' }], ...secretComparison },
+	});
+	assert.doesNotMatch(rendered.clientMd, /9 → 0/);
+
+	for (const [baselinePages, finalPages] of [
+		[[{ name: 'old', url: '/preview' }], [{ name: 'new', url: '/preview' }]],
+		[[{ name: 'old', url: '/preview' }], []],
+		[[], [{ name: 'new', url: '/preview' }]],
+	]) {
+		const { blocking } = compareTargets(
+			run({ target: { base_url: null, pages: baselinePages } }),
+			run({ target: { base_url: null, pages: finalPages } }),
+		);
+		assert.ok(blocking.length > 0, 'every relative null-base target is unverifiable');
+	}
+});
+
 test('a differing module set is disclosed', () => {
 	const final = run({ target: { modules: ['crawl'] } });
 	const { limitations } = compareTargets(run(), final);

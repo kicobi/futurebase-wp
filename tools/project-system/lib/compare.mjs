@@ -117,6 +117,17 @@ export function compareTargets(baselineSummary, finalSummary) {
 
 	const bPages = (b.pages ?? []).map((p) => p.name).sort();
 	const fPages = (f.pages ?? []).map((p) => p.name).sort();
+	let pageTargetHasSecret = false;
+	let pageTargetIsInvalid = false;
+	for (const [target, base] of [
+		[b, bBase],
+		[f, fBase],
+	]) {
+		for (const page of target.pages ?? []) {
+			if (targetUrlHasSecret(page.url, { baseUrl: base.origin })) pageTargetHasSecret = true;
+			if (base.valid && !pageIdentity(page.url, base).valid) pageTargetIsInvalid = true;
+		}
+	}
 	if (bPages.join('|') !== fPages.join('|')) {
 		const onlyB = bPages.filter((p) => !fPages.includes(p));
 		const onlyF = fPages.filter((p) => !bPages.includes(p));
@@ -174,6 +185,12 @@ export function compareTargets(baselineSummary, finalSummary) {
 		if (allowedMoves.length) {
 			limitations.push(`the same page name measures a different path, query, or origin (${allowedMoves.join(' · ')}) — expected alongside the declared origin move, but confirm each pairing is the page you mean`);
 		}
+	}
+	if (pageTargetHasSecret && !blocking.some((reason) => reason.includes('secret-bearing target'))) {
+		blocking.push('a secret-bearing target differs or cannot support a public comparison — every historical page target must be public and unauthenticated');
+	}
+	if (pageTargetIsInvalid && !blocking.some((reason) => reason.includes('targets are malformed or unsafe'))) {
+		blocking.push('one or more page targets are malformed or have no verifiable HTTP(S) origin');
 	}
 
 	const bMods = (b.modules ?? []).slice().sort();
