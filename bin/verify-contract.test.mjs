@@ -537,6 +537,24 @@ test('PHP-emitted SVG font attributes are parsed as exact complete names', () =>
 	);
 });
 
+test('PHP inside an SVG font attribute name does not truncate the reconstructed tag', () => {
+	for (const markup of [
+		'<svg><font co<?php echo \'lo\'; ?>r><script href="2rem#fff"></script></font></svg>',
+		'<svg><font co<?= \'l\' ?><?php echo \'or\'; ?>><script href="2rem#fff"></script></font></svg>',
+	]) {
+		const problems = raw(markup);
+		assert.ok(problems.some((problem) => problem.includes('2rem')), markup);
+		assert.ok(problems.some((problem) => problem.includes('#fff')), markup);
+	}
+});
+
+test('PHP-emitted quotes can terminate an SVG font attribute before a conditional name', () => {
+	const markup = `<svg><font data-x="<?php echo '"'; ?> color><script href="2rem#fff"></script></font></svg>`;
+	const problems = raw(markup);
+	assert.ok(problems.some((problem) => problem.includes('2rem')));
+	assert.ok(problems.some((problem) => problem.includes('#fff')));
+});
+
 test('PHP output is reconstructed inside its surrounding CSS and URL context', () => {
 	assert.deepEqual(
 		raw('<style>\n.x { background-image: url(<?php echo get_theme_file_uri( \'assets/2rem.svg\' ); ?>); }\n</style>'),
@@ -666,6 +684,39 @@ test('printf string width and return counts use PHP byte lengths', () => {
 	const problems = raw('<style><?php echo printf("%3s;", "é") . "rem"; ?></style>');
 	assert.ok(problems.some((problem) => problem.includes('4rem')));
 	assert.ok(problems.every((problem) => !problem.includes('5rem')));
+});
+
+test('printf supports positional star width and precision selectors', () => {
+	for (const markup of [
+		'<style><?php printf(\'%2$*1$srem\', 1, \'2\'); ?></style>',
+		'<style><?php printf(\'%2$.*1$srem\', 1, \'2x\'); ?></style>',
+		'<style><?php printf(\'%3$*1$.*2$srem\', 1, 1, \'2x\'); ?></style>',
+	]) {
+		assert.ok(raw(markup).some((problem) => problem.includes('2rem')), markup);
+	}
+});
+
+test('printf keeps byte-split precision counts through nested formatting', () => {
+	assert.ok(
+		raw('<style><?php printf("%.*s", printf("%3.1s;", "é"), "2remXX"); ?></style>')
+			.some((problem) => problem.includes('2rem')),
+	);
+});
+
+test('PHP hex and octal byte escapes keep byte counts through nested formatting', () => {
+	for (const markup of [
+		String.raw`<style><?php printf("%.*s", printf("%s;", "\xC3\xA9"), "2pxZZ"); ?></style>`,
+		String.raw`<style><?php printf("%.*s", printf("%s;", "\303\251"), "2pxZZ"); ?></style>`,
+	]) {
+		assert.ok(raw(markup).some((problem) => problem.includes('2px')), markup);
+	}
+});
+
+test('printf %c output keeps PHP byte counts through nested formatting', () => {
+	assert.ok(
+		raw('<style><?php printf("%.*s", printf("%c;%c;%c;%c;", 233, 233, 233, 233), ";;;;2remfoo"); ?></style>')
+			.some((problem) => problem.includes('2rem')),
+	);
 });
 
 test('HTML character references are decoded before context and CSS checks', () => {

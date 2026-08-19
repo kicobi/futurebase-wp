@@ -673,6 +673,31 @@ function startTagAttributeNames(source) {
 	return names;
 }
 
+function renderedStartTag(source, start) {
+	let cursor = start;
+	while (cursor < source.length) {
+		const phpStart = source.indexOf('<?', cursor);
+		const candidate = source.indexOf('>', cursor);
+		if (candidate === -1) return { text: renderedCssView(source.slice(start), start).text, sourceEnd: source.length };
+		if (phpStart !== -1 && phpStart < candidate) {
+			cursor = phpEnd(source, phpStart);
+			continue;
+		}
+		const rendered = renderedCssView(source.slice(start, candidate + 1), start).text;
+		let quote = null;
+		for (let index = 0; index < rendered.length; index++) {
+			if (quote) {
+				if (rendered[index] === quote) quote = null;
+				continue;
+			}
+			if (rendered[index] === '"' || rendered[index] === "'") quote = rendered[index];
+			else if (rendered[index] === '>') return { text: rendered.slice(0, index + 1), sourceEnd: candidate + 1 };
+		}
+		cursor = candidate + 1;
+	}
+	return { text: renderedCssView(source.slice(start), start).text, sourceEnd: source.length };
+}
+
 function markupContexts(source) {
 	const tags = [];
 	const styles = [];
@@ -712,6 +737,7 @@ function markupContexts(source) {
 			continue;
 		}
 		const name = nameMatch[0].toLowerCase();
+		const reconstructedStartTag = name === 'font' ? renderedStartTag(source, start) : null;
 		const attributes = [];
 		let cursor = start + 1 + nameMatch[0].length;
 		let end = null;
@@ -769,10 +795,11 @@ function markupContexts(source) {
 			}
 			attributes.push({ name: attributeName, value, valueStart, valueEnd });
 		}
+		if (reconstructedStartTag) end = reconstructedStartTag.sourceEnd;
 		if (end === null) break;
 		let parentNamespace = elementStack.at(-1)?.childNamespace ?? 'html';
-		const renderedAttributeNames = name === 'font'
-			? startTagAttributeNames(renderedCssView(source.slice(start, end), start).text)
+		const renderedAttributeNames = reconstructedStartTag
+			? startTagAttributeNames(reconstructedStartTag.text)
 			: [];
 		const fontBreakout = name === 'font'
 			&& renderedAttributeNames.some((attributeName) => ['color', 'face', 'size'].includes(attributeName));
@@ -801,37 +828,82 @@ function markupContexts(source) {
 	return { tags, styles };
 }
 
-function phpStringBody(source, start, end, absoluteStart, quote) {
-	let index = start;
+function encodedPhpText(text, sourceMap = [], fallback = 0) {
+	const bytes = [];
+	const byteMap = [];
+	for (let index = 0; index < text.length;) {
+		const point = text.codePointAt(index);
+		const value = String.fromCodePoint(point);
+		const encoded = Buffer.from(value, 'utf8');
+		bytes.push(...encoded);
+		byteMap.push(...Array.from({ length: encoded.length }, () => sourceMap[index] ?? fallback));
+		index += value.length;
+	}
+	return { bytes: Buffer.from(bytes), byteMap };
+}
+
+function decodedPhpBytes(bytes, byteMap = [], fallback = 0) {
 	let text = '';
 	const map = [];
-	const append = (value, sourceIndex) => {
+	for (let index = 0; index < bytes.length;) {
+		const first = bytes[index];
+		let length = 1;
+		if (first >= 0xc2 && first <= 0xdf && index + 1 < bytes.length && (bytes[index + 1] & 0xc0) === 0x80) {
+			length = 2;
+		} else if (first >= 0xe0 && first <= 0xef && index + 2 < bytes.length
+			&& (bytes[index + 1] & 0xc0) === 0x80 && (bytes[index + 2] & 0xc0) === 0x80
+			&& !(first === 0xe0 && bytes[index + 1] < 0xa0) && !(first === 0xed && bytes[index + 1] >= 0xa0)) {
+			length = 3;
+		} else if (first >= 0xf0 && first <= 0xf4 && index + 3 < bytes.length
+			&& (bytes[index + 1] & 0xc0) === 0x80 && (bytes[index + 2] & 0xc0) === 0x80 && (bytes[index + 3] & 0xc0) === 0x80
+			&& !(first === 0xf0 && bytes[index + 1] < 0x90) && !(first === 0xf4 && bytes[index + 1] >= 0x90)) {
+			length = 4;
+		}
+		const value = bytes.subarray(index, index + length).toString('utf8');
 		text += value;
-		for (let offset = 0; offset < value.length; offset++) map.push(absoluteStart + sourceIndex);
+		map.push(...Array.from({ length: value.length }, () => byteMap[index] ?? fallback));
+		index += length;
+	}
+	return { text, map, bytes, byteMap };
+}
+
+function phpStringBody(source, start, end, absoluteStart, quote) {
+	let index = start;
+	const bytes = [];
+	const byteMap = [];
+	const appendBytes = (value, sourceIndex) => {
+		bytes.push(...value);
+		byteMap.push(...Array.from({ length: value.length }, () => absoluteStart + sourceIndex));
+	};
+	const appendText = (value, sourceIndex) => {
+		appendBytes(Buffer.from(value, 'utf8'), sourceIndex);
 	};
 	while (index < end) {
 		if (quote !== "'" && source[index] === '{' && source[index + 1] === '$') {
-			append(';', index);
+			appendText(';', index);
 			index = Math.min(end, phpComplexInterpolationEnd(source, index));
 			continue;
 		}
 		if (quote !== "'" && source[index] === '$' && source[index + 1] === '{') {
-			append(';', index);
+			appendText(';', index);
 			index = Math.min(end, phpComplexInterpolationEnd(source, index + 1));
 			continue;
 		}
 		if (source[index] !== '\\' || index + 1 >= end) {
-			append(source[index], index++);
+			const point = source.codePointAt(index);
+			const value = String.fromCodePoint(point);
+			appendText(value, index);
+			index += value.length;
 			continue;
 		}
 		const escapeStart = index;
 		const escaped = source[index + 1];
 		if (quote === "'") {
 			if (escaped === "'" || escaped === '\\') {
-				append(escaped, escapeStart);
+				appendText(escaped, escapeStart);
 				index += 2;
 			} else {
-				append('\\', index++);
+				appendText('\\', index++);
 			}
 			continue;
 		}
@@ -840,32 +912,32 @@ function phpStringBody(source, start, end, absoluteStart, quote) {
 			['f', '\f'], ['\\', '\\'], ['$', '$'], ['"', '"'],
 		]);
 		if (simple.has(escaped)) {
-			append(simple.get(escaped), escapeStart);
+			appendText(simple.get(escaped), escapeStart);
 			index += 2;
 			continue;
 		}
 		const octal = /^[0-7]{1,3}/.exec(source.slice(index + 1));
 		if (octal) {
-			append(String.fromCodePoint(Number.parseInt(octal[0], 8) & 0xff), escapeStart);
+			appendBytes(Buffer.from([Number.parseInt(octal[0], 8) & 0xff]), escapeStart);
 			index += 1 + octal[0].length;
 			continue;
 		}
 		const hex = /^x([0-9a-f]{1,2})/i.exec(source.slice(index + 1));
 		if (hex) {
-			append(String.fromCodePoint(Number.parseInt(hex[1], 16)), escapeStart);
+			appendBytes(Buffer.from([Number.parseInt(hex[1], 16)]), escapeStart);
 			index += 2 + hex[1].length;
 			continue;
 		}
 		const unicode = /^u\{([0-9a-f]+)\}/i.exec(source.slice(index + 1));
 		if (unicode && Number.parseInt(unicode[1], 16) <= 0x10ffff) {
-			append(String.fromCodePoint(Number.parseInt(unicode[1], 16)), escapeStart);
+			appendText(String.fromCodePoint(Number.parseInt(unicode[1], 16)), escapeStart);
 			index += 1 + unicode[0].length;
 			continue;
 		}
 		// PHP preserves an unknown escape in a double-quoted string.
-		append('\\', index++);
+		appendText('\\', index++);
 	}
-	return { text, map };
+	return decodedPhpBytes(Buffer.from(bytes), byteMap, absoluteStart + start);
 }
 
 function phpStringToken(source, start, absoluteStart) {
@@ -888,12 +960,15 @@ function phpHeredocToken(source, start, absoluteStart) {
 	const closingStart = match.index;
 	const end = closingStart + match[0].length;
 	const nowdoc = header[1] === "'";
-	const body = nowdoc
-		? {
-			text: source.slice(bodyStart, closingStart),
-			map: Array.from({ length: closingStart - bodyStart }, (_, offset) => absoluteStart + bodyStart + offset),
-		}
-		: phpStringBody(source, bodyStart, closingStart, absoluteStart, '"');
+	let body;
+	if (nowdoc) {
+		const text = source.slice(bodyStart, closingStart);
+		const sourceMap = Array.from({ length: text.length }, (_, offset) => absoluteStart + bodyStart + offset);
+		const encoded = encodedPhpText(text, sourceMap, absoluteStart + bodyStart);
+		body = { text, map: sourceMap, ...encoded };
+	} else {
+		body = phpStringBody(source, bodyStart, closingStart, absoluteStart, '"');
+	}
 	return { type: 'string', ...body, start, end };
 }
 
@@ -920,10 +995,13 @@ function phpNumberToken(source, start, absoluteStart) {
 			integer = integer * BigInt(radix) + BigInt('0123456789abcdef'.indexOf(digit));
 		}
 		const text = integer.toString();
+		const map = Array.from({ length: text.length }, () => absoluteStart + start);
+		const encoded = encodedPhpText(text, map, absoluteStart + start);
 		return {
 			type: 'static',
 			text,
-			map: Array.from({ length: text.length }, () => absoluteStart + start),
+			map,
+			...encoded,
 			start,
 			end: start + based[0].length,
 		};
@@ -935,7 +1013,7 @@ function phpNumberToken(source, start, absoluteStart) {
 	for (let offset = 0; offset < decimal[0].length; offset++) {
 		if (decimal[0][offset] !== '_') map.push(absoluteStart + start + offset);
 	}
-	return { type: 'static', text, map, start, end: start + decimal[0].length };
+	return { type: 'static', text, map, ...encodedPhpText(text, map, absoluteStart + start), start, end: start + decimal[0].length };
 }
 
 function phpTokens(source, absoluteStart) {
@@ -992,9 +1070,9 @@ function phpTokens(source, absoluteStart) {
 		if (identifier) {
 			const value = identifier[0].toLowerCase();
 			if (value === 'true') {
-				tokens.push({ type: 'static', text: '1', map: [absoluteStart + index], start: index, end: index + identifier[0].length });
+				tokens.push({ type: 'static', text: '1', map: [absoluteStart + index], bytes: Buffer.from('1'), byteMap: [absoluteStart + index], start: index, end: index + identifier[0].length });
 			} else if (value === 'false' || value === 'null') {
-				tokens.push({ type: 'static', text: '', map: [], start: index, end: index + identifier[0].length });
+				tokens.push({ type: 'static', text: '', map: [], bytes: Buffer.alloc(0), byteMap: [], start: index, end: index + identifier[0].length });
 			} else {
 				tokens.push({ type: 'identifier', value, start: index, end: index + identifier[0].length });
 			}
@@ -1008,8 +1086,8 @@ function phpTokens(source, absoluteStart) {
 }
 
 function renderedEchoValue(tokens, absoluteFallback) {
-	let text = '';
-	const map = [];
+	const bytes = [];
+	const byteMap = [];
 	let previous = null;
 	let depth = 0;
 	const depths = new Map();
@@ -1028,35 +1106,39 @@ function renderedEchoValue(tokens, absoluteFallback) {
 				&& (token.value === '.' || (token.value === ',' && depths.get(token) === 0)))
 				&& depths.get(literal) === previousDepth;
 			if (!joins) {
-				text += ' ';
-				map.push(literal.map[0] ?? absoluteFallback);
+				bytes.push(0x20);
+				byteMap.push(literal.map[0] ?? absoluteFallback);
 			}
 		}
-		text += literal.text;
-		map.push(...literal.map);
+		const encoded = literal.bytes
+			? { bytes: literal.bytes, byteMap: literal.byteMap }
+			: encodedPhpText(literal.text, literal.map, absoluteFallback);
+		bytes.push(...encoded.bytes);
+		byteMap.push(...encoded.byteMap);
 		previous = { literal, index };
 	}
-	return { text, map };
+	return decodedPhpBytes(Buffer.from(bytes), byteMap, absoluteFallback);
 }
 
 function renderedEchoOperand(tokens, absoluteFallback) {
 	const collapsed = collapseNestedPrintf(tokens, absoluteFallback);
 	const value = renderedEchoValue(collapsed.tokens, absoluteFallback);
-	return {
-		text: collapsed.text + value.text,
-		map: [...collapsed.map, ...value.map],
-	};
+	return decodedPhpBytes(
+		Buffer.concat([collapsed.bytes, value.bytes]),
+		[...collapsed.byteMap, ...value.byteMap],
+		absoluteFallback,
+	);
 }
 
 function renderedEchoExpression(tokens, absoluteFallback) {
-	let text = '';
-	const map = [];
+	const bytes = [];
+	const byteMap = [];
 	for (const operand of splitPhpArguments(tokens)) {
 		const rendered = renderedEchoOperand(operand, absoluteFallback);
-		text += rendered.text;
-		map.push(...rendered.map);
+		bytes.push(...rendered.bytes);
+		byteMap.push(...rendered.byteMap);
 	}
-	return { text, map };
+	return decodedPhpBytes(Buffer.from(bytes), byteMap, absoluteFallback);
 }
 
 function renderedStaticPhpExpression(tokens, absoluteFallback) {
@@ -1074,7 +1156,7 @@ function renderedStaticPhpExpression(tokens, absoluteFallback) {
 		if (token.type === 'punctuation' && ['+', '-'].includes(token.value)
 			&& collapsed.tokens[index + 1]?.type === 'static'
 			&& (!normalized.length || (normalized.at(-1).type === 'punctuation' && ['.', '('].includes(normalized.at(-1).value)))) {
-			normalized.push({ type: 'static', text: token.value, map: [absoluteFallback], start: token.start, end: token.end });
+			normalized.push({ type: 'static', text: token.value, map: [absoluteFallback], bytes: Buffer.from(token.value), byteMap: [absoluteFallback], start: token.start, end: token.end });
 			continue;
 		}
 		known = false;
@@ -1084,8 +1166,12 @@ function renderedStaticPhpExpression(tokens, absoluteFallback) {
 		known,
 		text: value.text,
 		map: value.map,
+		bytes: value.bytes,
+		byteMap: value.byteMap,
 		effectText: collapsed.text,
 		effectMap: collapsed.map,
+		effectBytes: collapsed.bytes,
+		effectByteMap: collapsed.byteMap,
 	};
 }
 
@@ -1108,89 +1194,82 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 	const argumentsList = splitPhpArguments(tokens);
 	const format = renderedStaticPhpExpression(argumentsList.shift() ?? [], absoluteFallback);
 	const values = argumentsList.map((argument) => renderedStaticPhpExpression(argument, absoluteFallback));
-	let effectText = format.effectText;
-	const effectMap = [...format.effectMap];
+	const effectBytes = [...format.effectBytes];
+	const effectByteMap = [...format.effectByteMap];
 	for (const value of values) {
-		effectText += value.effectText;
-		effectMap.push(...value.effectMap);
+		effectBytes.push(...value.effectBytes);
+		effectByteMap.push(...value.effectByteMap);
 	}
-	let text = '';
-	const map = [];
-	let byteLength = 0;
+	const bytes = [];
+	const byteMap = [];
 	let returnKnown = format.known;
 	let sequential = 0;
-	const append = (value, sourceMap, fallback, bytes = Buffer.byteLength(value, 'utf8')) => {
-		text += value;
-		byteLength += bytes;
-		for (let offset = 0; offset < value.length; offset++) map.push(sourceMap[offset] ?? fallback);
+	const append = (value, sourceMap, fallback) => {
+		bytes.push(...value);
+		byteMap.push(...Array.from({ length: value.length }, (_, offset) => sourceMap[offset] ?? fallback));
 	};
-	for (let index = 0; index < format.text.length;) {
-		if (format.text[index] !== '%') {
-			const point = format.text.codePointAt(index);
-			const literal = String.fromCodePoint(point);
-			append(literal, Array.from({ length: literal.length }, (_, offset) => format.map[index + offset]), absoluteFallback);
-			index += literal.length;
+	const formatText = format.bytes.toString('latin1');
+	for (let index = 0; index < formatText.length;) {
+		if (formatText[index] !== '%') {
+			append(Buffer.from([format.bytes[index]]), [format.byteMap[index]], absoluteFallback);
+			index++;
 			continue;
 		}
-		if (format.text[index + 1] === '%') {
-			append('%', [format.map[index]], absoluteFallback);
+		if (formatText[index + 1] === '%') {
+			append(Buffer.from('%'), [format.byteMap[index]], absoluteFallback);
 			index += 2;
 			continue;
 		}
-		const directive = /^%(?:(\d+)\$)?((?:[-+ 0]|'.)*)(?:(\d+)|(\*))?(?:\.(?:(\d+)|(\*)))?([bcdeEfFgGouxXhHs])/.exec(format.text.slice(index));
+		const directive = /^%(?:(\d+)\$)?((?:[-+ 0]|'.)*)(?:(\d+)|(\*)(?:(\d+)\$)?)?(?:\.(?:(\d+)|(\*)(?:(\d+)\$)?))?([bcdeEfFgGouxXhHs])/.exec(formatText.slice(index));
 		if (!directive) {
-			append('%', [format.map[index]], absoluteFallback);
+			append(Buffer.from('%'), [format.byteMap[index]], absoluteFallback);
 			index++;
 			continue;
 		}
 		let width = directive[3] ? Number.parseInt(directive[3], 10) : null;
 		if (directive[4]) {
-			const widthValue = values[sequential++];
+			const widthValue = values[directive[5] ? Number.parseInt(directive[5], 10) - 1 : sequential++];
 			width = widthValue?.known && /^[+-]?\d+$/.test(widthValue.text) ? Number.parseInt(widthValue.text, 10) : null;
 			if (width === null) returnKnown = false;
 		}
-		let precision = directive[5] ? Number.parseInt(directive[5], 10) : null;
-		if (directive[6]) {
-			const precisionValue = values[sequential++];
+		let precision = directive[6] ? Number.parseInt(directive[6], 10) : null;
+		if (directive[7]) {
+			const precisionValue = values[directive[8] ? Number.parseInt(directive[8], 10) - 1 : sequential++];
 			precision = precisionValue?.known && /^[+-]?\d+$/.test(precisionValue.text) ? Number.parseInt(precisionValue.text, 10) : null;
 			if (precision === null) returnKnown = false;
 		}
 		const valueIndex = directive[1] ? Number.parseInt(directive[1], 10) - 1 : sequential++;
 		const value = values[valueIndex];
-		const specifier = directive[7].toLowerCase();
+		const specifier = directive[9].toLowerCase();
 		if (value?.known) {
-			let renderedValue = value.text;
-			let renderedBytes = Buffer.from(renderedValue, 'utf8');
-			if (specifier === 'c' && /^\d+$/.test(renderedValue)) renderedValue = String.fromCodePoint(Number.parseInt(renderedValue, 10));
-			renderedBytes = Buffer.from(renderedValue, 'utf8');
+			let renderedBytes = value.bytes;
+			if (specifier === 'c' && /^\d+$/.test(value.text)) renderedBytes = Buffer.from([Number.parseInt(value.text, 10) & 0xff]);
 			if (specifier === 's' && precision !== null && precision >= 0) {
 				renderedBytes = renderedBytes.subarray(0, precision);
-				renderedValue = renderedBytes.toString('utf8');
 			}
 			if (width !== null && Math.abs(width) > renderedBytes.length) {
 				const flags = directive[2];
 				const customPad = /'(.)/.exec(flags)?.[1];
-				const pad = customPad || (flags.includes('0') ? '0' : ' ');
-				if (Buffer.byteLength(pad, 'utf8') !== 1) returnKnown = false;
-				const padding = pad.repeat(Math.abs(width) - renderedBytes.length);
-				renderedValue = width < 0 || flags.includes('-') ? renderedValue + padding : padding + renderedValue;
-				renderedBytes = Buffer.from(renderedValue, 'utf8');
+				const pad = customPad ? customPad.charCodeAt(0) : (flags.includes('0') ? 0x30 : 0x20);
+				const padding = Buffer.alloc(Math.abs(width) - renderedBytes.length, pad);
+				renderedBytes = width < 0 || flags.includes('-')
+					? Buffer.concat([renderedBytes, padding])
+					: Buffer.concat([padding, renderedBytes]);
 			}
-			append(renderedValue, value.map, format.map[index] ?? absoluteFallback, renderedBytes.length);
+			append(renderedBytes, value.byteMap, format.byteMap[index] ?? absoluteFallback);
 		} else {
 			returnKnown = false;
-			append(';', [], format.map[index] ?? absoluteFallback);
+			append(Buffer.from(';'), [], format.byteMap[index] ?? absoluteFallback);
 		}
 		index += directive[0].length;
 	}
-	return {
-		text: effectText + text,
-		map: [...effectMap, ...map],
-		formattedText: text,
-		formattedMap: map,
-		formattedByteLength: byteLength,
-		returnKnown,
-	};
+	const formatted = decodedPhpBytes(Buffer.from(bytes), byteMap, absoluteFallback);
+	const rendered = decodedPhpBytes(
+		Buffer.concat([Buffer.from(effectBytes), formatted.bytes]),
+		[...effectByteMap, ...formatted.byteMap],
+		absoluteFallback,
+	);
+	return { ...rendered, formattedText: formatted.text, formattedMap: formatted.map, formattedBytes: formatted.bytes, formattedByteLength: formatted.bytes.length, returnKnown };
 }
 
 function isPhpMemberAccess(tokens, index) {
@@ -1203,8 +1282,8 @@ function isPhpMemberAccess(tokens, index) {
 
 function collapseNestedPrintf(tokens, absoluteFallback) {
 	const collapsed = [];
-	let text = '';
-	const map = [];
+	const bytes = [];
+	const byteMap = [];
 	for (let index = 0; index < tokens.length;) {
 		const callable = tokens[index].type === 'identifier' && tokens[index].value === 'printf'
 			&& tokens[index + 1]?.type === 'punctuation' && tokens[index + 1].value === '('
@@ -1223,20 +1302,23 @@ function collapseNestedPrintf(tokens, absoluteFallback) {
 			if (depth > 0) expression.push(token);
 		}
 		const rendered = renderedPrintfExpression(expression, absoluteFallback);
-		text += rendered.text;
-		map.push(...rendered.map);
+		bytes.push(...rendered.bytes);
+		byteMap.push(...rendered.byteMap);
 		const returnValue = rendered.returnKnown ? String(rendered.formattedByteLength) : '1';
+		const returnMap = Array.from({ length: returnValue.length }, () => absoluteFallback);
+		const encodedReturn = encodedPhpText(returnValue, returnMap, absoluteFallback);
 		collapsed.push({
 			type: 'static',
 			text: returnValue,
-			map: Array.from({ length: returnValue.length }, () => absoluteFallback),
+			map: returnMap,
+			...encodedReturn,
 			known: rendered.returnKnown,
 			start: tokens[index].start,
 			end: tokens[cursor - 1]?.end ?? tokens[index].end,
 		});
 		index = cursor;
 	}
-	return { tokens: collapsed, text, map };
+	return { tokens: collapsed, ...decodedPhpBytes(Buffer.from(bytes), byteMap, absoluteFallback) };
 }
 
 function renderedPhpOutput(php, absoluteStart) {
@@ -1299,16 +1381,16 @@ function renderedPhpOutput(php, absoluteStart) {
 			if (tokens[index]?.value === ';') index++;
 		}
 	}
-	let text = '';
-	const map = [];
+	const bytes = [];
+	const byteMap = [];
 	for (const expression of expressions) {
 		const rendered = expression.kind === 'printf'
 			? renderedPrintfExpression(expression.tokens, absoluteStart + bodyStart)
 			: renderedEchoExpression(expression.tokens, absoluteStart + bodyStart);
-		text += rendered.text;
-		map.push(...rendered.map);
+		bytes.push(...rendered.bytes);
+		byteMap.push(...rendered.byteMap);
 	}
-	return { text, map };
+	return decodedPhpBytes(Buffer.from(bytes), byteMap, absoluteStart + bodyStart);
 }
 
 const HTML_NAMED_CHARACTERS = new Map([
