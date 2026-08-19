@@ -645,6 +645,34 @@ function phpEnd(source, start) {
 // attributes, and raw-text style bodies. Unlike a `<[^>]*>` expression this
 // keeps `>` inside quotes and PHP spans inside the opening tag, so an attribute
 // cannot impersonate `class=` and a PHP close tag cannot truncate `<style>`.
+function startTagAttributeNames(source) {
+	const names = [];
+	let cursor = /^<\s*[A-Za-z][A-Za-z0-9:-]*/.exec(source)?.[0].length ?? source.length;
+	while (cursor < source.length) {
+		while (/[\t\n\f\r ]/.test(source[cursor] || '')) cursor++;
+		if (source.startsWith('/>', cursor) || source[cursor] === '>') break;
+		const start = cursor;
+		while (cursor < source.length && !/[\t\n\f\r "'=<>`/]/.test(source[cursor])) cursor++;
+		if (cursor === start) {
+			cursor++;
+			continue;
+		}
+		names.push(source.slice(start, cursor).toLowerCase());
+		while (/[\t\n\f\r ]/.test(source[cursor] || '')) cursor++;
+		if (source[cursor] !== '=') continue;
+		cursor++;
+		while (/[\t\n\f\r ]/.test(source[cursor] || '')) cursor++;
+		const quote = source[cursor] === '"' || source[cursor] === "'" ? source[cursor++] : null;
+		if (quote) {
+			while (cursor < source.length && source[cursor] !== quote) cursor++;
+			if (source[cursor] === quote) cursor++;
+		} else {
+			while (cursor < source.length && !/[\t\n\f\r >]/.test(source[cursor])) cursor++;
+		}
+	}
+	return names;
+}
+
 function markupContexts(source) {
 	const tags = [];
 	const styles = [];
@@ -685,7 +713,6 @@ function markupContexts(source) {
 		}
 		const name = nameMatch[0].toLowerCase();
 		const attributes = [];
-		const emittedAttributeNames = new Set();
 		let cursor = start + 1 + nameMatch[0].length;
 		let end = null;
 		let selfClosing = false;
@@ -701,12 +728,7 @@ function markupContexts(source) {
 				break;
 			}
 			if (source.startsWith('<?', cursor)) {
-				const phpClose = phpEnd(source, cursor);
-				const rendered = renderedPhpOutput(source.slice(cursor, phpClose), cursor);
-				for (const match of rendered.text.matchAll(/\b(color|face|size)\s*=/gi)) {
-					emittedAttributeNames.add(match[1].toLowerCase());
-				}
-				cursor = phpClose;
+				cursor = phpEnd(source, cursor);
 				continue;
 			}
 			const attributeStart = cursor;
@@ -749,10 +771,11 @@ function markupContexts(source) {
 		}
 		if (end === null) break;
 		let parentNamespace = elementStack.at(-1)?.childNamespace ?? 'html';
-		const fontBreakout = name === 'font' && (
-			attributes.some((attribute) => ['color', 'face', 'size'].includes(attribute.name))
-			|| emittedAttributeNames.size > 0
-		);
+		const renderedAttributeNames = name === 'font'
+			? startTagAttributeNames(renderedCssView(source.slice(start, end), start).text)
+			: [];
+		const fontBreakout = name === 'font'
+			&& renderedAttributeNames.some((attributeName) => ['color', 'face', 'size'].includes(attributeName));
 		if (parentNamespace === 'svg' && (HTML_FOREIGN_BREAKOUT_TAGS.has(name) || fontBreakout)) {
 			while (elementStack.at(-1)?.childNamespace === 'svg') elementStack.pop();
 			parentNamespace = elementStack.at(-1)?.childNamespace ?? 'html';
@@ -984,9 +1007,7 @@ function phpTokens(source, absoluteStart) {
 	return tokens;
 }
 
-function renderedEchoExpression(tokens, absoluteFallback) {
-	const collapsed = collapseNestedPrintf(tokens, absoluteFallback);
-	tokens = collapsed.tokens;
+function renderedEchoValue(tokens, absoluteFallback) {
 	let text = '';
 	const map = [];
 	let previous = null;
@@ -1015,30 +1036,57 @@ function renderedEchoExpression(tokens, absoluteFallback) {
 		map.push(...literal.map);
 		previous = { literal, index };
 	}
+	return { text, map };
+}
+
+function renderedEchoOperand(tokens, absoluteFallback) {
+	const collapsed = collapseNestedPrintf(tokens, absoluteFallback);
+	const value = renderedEchoValue(collapsed.tokens, absoluteFallback);
 	return {
-		text: collapsed.text + text,
-		map: [...collapsed.map, ...map],
+		text: collapsed.text + value.text,
+		map: [...collapsed.map, ...value.map],
 	};
 }
 
+function renderedEchoExpression(tokens, absoluteFallback) {
+	let text = '';
+	const map = [];
+	for (const operand of splitPhpArguments(tokens)) {
+		const rendered = renderedEchoOperand(operand, absoluteFallback);
+		text += rendered.text;
+		map.push(...rendered.map);
+	}
+	return { text, map };
+}
+
 function renderedStaticPhpExpression(tokens, absoluteFallback) {
+	const collapsed = collapseNestedPrintf(tokens, absoluteFallback);
 	const normalized = [];
-	for (let index = 0; index < tokens.length; index++) {
-		const token = tokens[index];
+	let known = true;
+	for (let index = 0; index < collapsed.tokens.length; index++) {
+		const token = collapsed.tokens[index];
+		if (token.known === false) known = false;
 		if (token.type === 'string' || token.type === 'static'
 			|| (token.type === 'punctuation' && ['.', '(', ')'].includes(token.value))) {
 			normalized.push(token);
 			continue;
 		}
 		if (token.type === 'punctuation' && ['+', '-'].includes(token.value)
-			&& tokens[index + 1]?.type === 'static'
+			&& collapsed.tokens[index + 1]?.type === 'static'
 			&& (!normalized.length || (normalized.at(-1).type === 'punctuation' && ['.', '('].includes(normalized.at(-1).value)))) {
 			normalized.push({ type: 'static', text: token.value, map: [absoluteFallback], start: token.start, end: token.end });
 			continue;
 		}
-		return null;
+		known = false;
 	}
-	return renderedEchoExpression(normalized, absoluteFallback);
+	const value = renderedEchoValue(normalized, absoluteFallback);
+	return {
+		known,
+		text: value.text,
+		map: value.map,
+		effectText: collapsed.text,
+		effectMap: collapsed.map,
+	};
 }
 
 function splitPhpArguments(tokens) {
@@ -1059,20 +1107,29 @@ function splitPhpArguments(tokens) {
 function renderedPrintfExpression(tokens, absoluteFallback) {
 	const argumentsList = splitPhpArguments(tokens);
 	const format = renderedStaticPhpExpression(argumentsList.shift() ?? [], absoluteFallback);
-	if (!format) return { text: '', map: [], returnKnown: false };
 	const values = argumentsList.map((argument) => renderedStaticPhpExpression(argument, absoluteFallback));
+	let effectText = format.effectText;
+	const effectMap = [...format.effectMap];
+	for (const value of values) {
+		effectText += value.effectText;
+		effectMap.push(...value.effectMap);
+	}
 	let text = '';
 	const map = [];
-	let returnKnown = true;
+	let byteLength = 0;
+	let returnKnown = format.known;
 	let sequential = 0;
-	const append = (value, sourceMap, fallback) => {
+	const append = (value, sourceMap, fallback, bytes = Buffer.byteLength(value, 'utf8')) => {
 		text += value;
+		byteLength += bytes;
 		for (let offset = 0; offset < value.length; offset++) map.push(sourceMap[offset] ?? fallback);
 	};
 	for (let index = 0; index < format.text.length;) {
 		if (format.text[index] !== '%') {
-			append(format.text[index], [format.map[index]], absoluteFallback);
-			index++;
+			const point = format.text.codePointAt(index);
+			const literal = String.fromCodePoint(point);
+			append(literal, Array.from({ length: literal.length }, (_, offset) => format.map[index + offset]), absoluteFallback);
+			index += literal.length;
 			continue;
 		}
 		if (format.text[index + 1] === '%') {
@@ -1089,36 +1146,51 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 		let width = directive[3] ? Number.parseInt(directive[3], 10) : null;
 		if (directive[4]) {
 			const widthValue = values[sequential++];
-			width = widthValue && /^[+-]?\d+$/.test(widthValue.text) ? Number.parseInt(widthValue.text, 10) : null;
+			width = widthValue?.known && /^[+-]?\d+$/.test(widthValue.text) ? Number.parseInt(widthValue.text, 10) : null;
 			if (width === null) returnKnown = false;
 		}
 		let precision = directive[5] ? Number.parseInt(directive[5], 10) : null;
 		if (directive[6]) {
 			const precisionValue = values[sequential++];
-			precision = precisionValue && /^[+-]?\d+$/.test(precisionValue.text) ? Number.parseInt(precisionValue.text, 10) : null;
+			precision = precisionValue?.known && /^[+-]?\d+$/.test(precisionValue.text) ? Number.parseInt(precisionValue.text, 10) : null;
 			if (precision === null) returnKnown = false;
 		}
 		const valueIndex = directive[1] ? Number.parseInt(directive[1], 10) - 1 : sequential++;
 		const value = values[valueIndex];
 		const specifier = directive[7].toLowerCase();
-		if (value) {
+		if (value?.known) {
 			let renderedValue = value.text;
+			let renderedBytes = Buffer.from(renderedValue, 'utf8');
 			if (specifier === 'c' && /^\d+$/.test(renderedValue)) renderedValue = String.fromCodePoint(Number.parseInt(renderedValue, 10));
-			if (specifier === 's' && precision !== null && precision >= 0) renderedValue = renderedValue.slice(0, precision);
-			if (width !== null && Math.abs(width) > renderedValue.length) {
+			renderedBytes = Buffer.from(renderedValue, 'utf8');
+			if (specifier === 's' && precision !== null && precision >= 0) {
+				renderedBytes = renderedBytes.subarray(0, precision);
+				renderedValue = renderedBytes.toString('utf8');
+			}
+			if (width !== null && Math.abs(width) > renderedBytes.length) {
 				const flags = directive[2];
 				const customPad = /'(.)/.exec(flags)?.[1];
-				const padding = (customPad || (flags.includes('0') ? '0' : ' ')).repeat(Math.abs(width) - renderedValue.length);
+				const pad = customPad || (flags.includes('0') ? '0' : ' ');
+				if (Buffer.byteLength(pad, 'utf8') !== 1) returnKnown = false;
+				const padding = pad.repeat(Math.abs(width) - renderedBytes.length);
 				renderedValue = width < 0 || flags.includes('-') ? renderedValue + padding : padding + renderedValue;
+				renderedBytes = Buffer.from(renderedValue, 'utf8');
 			}
-			append(renderedValue, value.map, format.map[index] ?? absoluteFallback);
+			append(renderedValue, value.map, format.map[index] ?? absoluteFallback, renderedBytes.length);
 		} else {
 			returnKnown = false;
 			append(';', [], format.map[index] ?? absoluteFallback);
 		}
 		index += directive[0].length;
 	}
-	return { text, map, returnKnown };
+	return {
+		text: effectText + text,
+		map: [...effectMap, ...map],
+		formattedText: text,
+		formattedMap: map,
+		formattedByteLength: byteLength,
+		returnKnown,
+	};
 }
 
 function isPhpMemberAccess(tokens, index) {
@@ -1153,11 +1225,12 @@ function collapseNestedPrintf(tokens, absoluteFallback) {
 		const rendered = renderedPrintfExpression(expression, absoluteFallback);
 		text += rendered.text;
 		map.push(...rendered.map);
-		const returnValue = rendered.returnKnown ? String(Buffer.byteLength(rendered.text, 'utf8')) : '1';
+		const returnValue = rendered.returnKnown ? String(rendered.formattedByteLength) : '1';
 		collapsed.push({
 			type: 'static',
 			text: returnValue,
 			map: Array.from({ length: returnValue.length }, () => absoluteFallback),
+			known: rendered.returnKnown,
 			start: tokens[index].start,
 			end: tokens[cursor - 1]?.end ?? tokens[index].end,
 		});

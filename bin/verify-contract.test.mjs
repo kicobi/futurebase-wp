@@ -521,6 +521,22 @@ test('PHP-emitted conditional font attributes pop the SVG namespace', () => {
 	assert.ok(problems.some((problem) => problem.includes('#fff')));
 });
 
+test('PHP-emitted SVG font attributes are parsed as exact complete names', () => {
+	for (const markup of [
+		'<svg><font <?php echo \'col\'; ?>or="red"><script href="2rem#fff"></script></font></svg>',
+		'<svg><font <?php echo \'color\'; ?>><script href="2rem#fff"></script></font></svg>',
+	]) {
+		const problems = raw(markup);
+		assert.ok(problems.some((problem) => problem.includes('2rem')), markup);
+		assert.ok(problems.some((problem) => problem.includes('#fff')), markup);
+	}
+	assert.deepEqual(
+		raw('<svg><font <?php echo \'data-color="red"\'; ?>><script href="2rem#fff"></script></font></svg>'),
+		[],
+		'an emitted data-color attribute is not the conditional SVG font color attribute',
+	);
+});
+
 test('PHP output is reconstructed inside its surrounding CSS and URL context', () => {
 	assert.deepEqual(
 		raw('<style>\n.x { background-image: url(<?php echo get_theme_file_uri( \'assets/2rem.svg\' ); ?>); }\n</style>'),
@@ -626,11 +642,30 @@ test('nested printf side effects retain PHP evaluation order', () => {
 	}
 });
 
+test('comma-separated echo operands interleave nested printf side effects', () => {
+	assert.ok(
+		raw('<style><?php echo "x", printf("url(2rem)"); ?></style>')
+			.some((problem) => problem.includes('2rem')),
+	);
+});
+
+test('printf recursively emits nested printf argument side effects', () => {
+	const problems = raw('<style><?php printf("%s%s", printf("2rem;"), printf("#fff;")); ?></style>');
+	assert.ok(problems.some((problem) => problem.includes('2rem')));
+	assert.ok(problems.some((problem) => problem.includes('#fff')));
+});
+
 test('dynamic printf output does not lend its placeholder length to the return value', () => {
 	assert.ok(
 		raw('<style><?php $value = ";"; echo printf("%s", $value) . "rem"; ?></style>')
 			.some((problem) => problem.includes('1rem')),
 	);
+});
+
+test('printf string width and return counts use PHP byte lengths', () => {
+	const problems = raw('<style><?php echo printf("%3s;", "é") . "rem"; ?></style>');
+	assert.ok(problems.some((problem) => problem.includes('4rem')));
+	assert.ok(problems.every((problem) => !problem.includes('5rem')));
 });
 
 test('HTML character references are decoded before context and CSS checks', () => {
