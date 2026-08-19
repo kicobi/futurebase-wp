@@ -915,6 +915,51 @@ test('dynamic printf width preserves padding that can form raw values', () => {
 	);
 });
 
+test('dynamic printf alternatives preserve their original markup context', () => {
+	assert.ok(
+		raw('<div <?php $width = 1; $value = ""; printf("style=\\"color:%\'#*.0sfff\\">", $width, $value); ?></div>')
+			.some((problem) => problem.includes('hex color')),
+	);
+	assert.deepEqual(
+		raw('<style>.x{background:url(<?php $width = 1; $value = ""; printf("%\'#*.0sfff);color:var(--token)", $width, $value); ?>}</style>'),
+		[],
+	);
+});
+
+test('dynamic printf alternatives include possible empty results', () => {
+	for (const markup of [
+		'<style><?php $value = ""; printf("r%sgb(1 2 3)", $value); ?></style>',
+		'<style><?php $value = ""; printf("r%.1sgb(1 2 3)", $value); ?></style>',
+		'<style><?php $precision = 1; $value = 2; printf("r%.*xgb(1 2 3)", $precision, $value); ?></style>',
+	]) {
+		assert.ok(raw(markup).some((problem) => problem.includes('color function')), markup);
+	}
+});
+
+test('dynamic printf alternatives combine and survive the branch limit', () => {
+	assert.ok(
+		raw('<style><?php $width = 1; $value = ""; printf("%\'r*.0s%\'g*.0sb(1 2 3)", $width, $value, $width, $value); ?></style>')
+			.some((problem) => problem.includes('color function')),
+	);
+	assert.ok(
+		raw('<style><?php $outer = 1; $middle = 0; $value = ""; printf("%\'r*.0s%\'q*.0s%\'g*.0sb(1 2 3)", $outer, $value, $middle, $value, $outer, $value); ?></style>')
+			.some((problem) => problem.includes('color function')),
+	);
+	const format = `${"%'q*.0s;".repeat(31)}%'#*.0sfff`;
+	const argumentsList = Array.from({ length: 32 }, () => '$width, $value').join(', ');
+	const markup = `<style><?php $width = 1; $value = ""; printf("${format}", ${argumentsList}); ?></style>`;
+	const problems = raw(markup);
+	assert.ok(problems.some((problem) => problem.includes('hex color')), markup);
+	assert.ok(problems.some((problem) => problem.includes('too many dynamic formatter alternatives')), markup);
+});
+
+test('nested dynamic printf counts preserve outer precision possibilities', () => {
+	assert.ok(
+		raw('<style><?php $width = 5; $value = ""; printf("%.*s", printf("%0*.0s;", $width, $value), ";;2remX"); ?></style>')
+			.some((problem) => problem.includes('2rem')),
+	);
+});
+
 test('printf accepts PHP bare-dot precision directives', () => {
 	for (const markup of [
 		'<style><?php printf("%.drem", 2); ?></style>',

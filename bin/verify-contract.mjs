@@ -939,6 +939,86 @@ function decodedPhpBytes(bytes, byteMap = [], fallback = 0) {
 	return { text, map, bytes, byteMap };
 }
 
+function renderingSelections(groups) {
+	if (!groups.length) {
+		const empty = [[]];
+		empty.complete = true;
+		return empty;
+	}
+	const selections = [];
+	let combinations = 1;
+	for (const group of groups) {
+		combinations *= Math.max(1, group.length);
+		if (combinations > 4096) break;
+	}
+	if (combinations <= 4096) {
+		const selection = Array.from({ length: groups.length }, () => 0);
+		const visit = (groupIndex) => {
+			if (groupIndex === groups.length) {
+				selections.push([...selection]);
+				return;
+			}
+			for (let choice = 0; choice < groups[groupIndex].length; choice++) {
+				selection[groupIndex] = choice;
+				visit(groupIndex + 1);
+			}
+		};
+		visit(0);
+		selections.complete = true;
+		return selections;
+	}
+	const seen = new Set();
+	const add = (selection) => {
+		const key = selection.join(',');
+		if (seen.has(key)) return;
+		seen.add(key);
+		selections.push(selection);
+	};
+	const primary = groups.map(() => 0);
+	add(primary);
+	const maximumChoices = Math.max(...groups.map((group) => group.length));
+	for (let choice = 1; choice < maximumChoices; choice++) {
+		add(groups.map((group) => choice < group.length ? choice : 0));
+	}
+	add(groups.map((group) => Math.max(0, group.length - 1)));
+	for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+		for (let choice = 1; choice < groups[groupIndex].length; choice++) {
+			const single = [...primary];
+			single[groupIndex] = choice;
+			add(single);
+		}
+	}
+	const prefix = [...primary];
+	for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+		prefix[groupIndex] = Math.max(0, groups[groupIndex].length - 1);
+		add([...prefix]);
+	}
+	const suffix = [...primary];
+	for (let groupIndex = groups.length - 1; groupIndex >= 0; groupIndex--) {
+		suffix[groupIndex] = Math.max(0, groups[groupIndex].length - 1);
+		add([...suffix]);
+	}
+	selections.complete = false;
+	return selections;
+}
+
+function combinedByteVariants(groups, fallback = 0) {
+	const normalized = groups.map((group) => group?.length ? group : [decodedPhpBytes(Buffer.alloc(0), [], fallback)]);
+	const variants = [];
+	const seen = new Set();
+	const selections = renderingSelections(normalized);
+	for (const selection of selections) {
+		const bytes = Buffer.concat(normalized.map((group, index) => Buffer.from(group[selection[index]].bytes)));
+		const key = bytes.toString('hex');
+		if (seen.has(key)) continue;
+		seen.add(key);
+		const byteMap = normalized.flatMap((group, index) => group[selection[index]].byteMap);
+		variants.push(decodedPhpBytes(bytes, byteMap, fallback));
+	}
+	variants.complete = selections.complete && normalized.every((group) => group.complete !== false);
+	return variants.length ? variants : [decodedPhpBytes(Buffer.alloc(0), [], fallback)];
+}
+
 function phpStringBody(source, start, end, absoluteStart, quote, sourcePositions = null) {
 	let index = start;
 	const bytes = [];
@@ -1250,22 +1330,21 @@ function renderedEchoValue(tokens, absoluteFallback) {
 function renderedEchoOperand(tokens, absoluteFallback) {
 	const collapsed = collapseNestedPrintf(tokens, absoluteFallback);
 	const value = renderedEchoValue(collapsed.tokens, absoluteFallback);
-	return decodedPhpBytes(
-		Buffer.concat([collapsed.bytes, value.bytes]),
-		[...collapsed.byteMap, ...value.byteMap],
-		absoluteFallback,
-	);
+	const variants = combinedByteVariants([
+		collapsed.variants ?? [collapsed],
+		[value],
+	], absoluteFallback);
+	return { ...variants[0], variants };
 }
 
 function renderedEchoExpression(tokens, absoluteFallback) {
-	const bytes = [];
-	const byteMap = [];
+	const groups = [];
 	for (const operand of splitPhpArguments(tokens)) {
 		const rendered = renderedEchoOperand(operand, absoluteFallback);
-		bytes.push(...rendered.bytes);
-		byteMap.push(...rendered.byteMap);
+		groups.push(rendered.variants ?? [rendered]);
 	}
-	return decodedPhpBytes(Buffer.from(bytes), byteMap, absoluteFallback);
+	const variants = combinedByteVariants(groups, absoluteFallback);
+	return { ...variants[0], variants };
 }
 
 function renderedStaticPhpExpression(tokens, absoluteFallback) {
@@ -1317,6 +1396,7 @@ function renderedStaticPhpExpression(tokens, absoluteFallback) {
 		effectMap: collapsed.map,
 		effectBytes: collapsed.bytes,
 		effectByteMap: collapsed.byteMap,
+		effectVariants: collapsed.variants ?? [collapsed],
 	};
 }
 
@@ -1373,44 +1453,36 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 	const argumentsList = splitPhpArguments(tokens);
 	const format = renderedStaticPhpExpression(argumentsList.shift() ?? [], absoluteFallback);
 	const values = argumentsList.map((argument) => renderedStaticPhpExpression(argument, absoluteFallback));
-	const effectBytes = [...format.effectBytes];
-	const effectByteMap = [...format.effectByteMap];
-	for (const value of values) {
-		effectBytes.push(...value.effectBytes);
-		effectByteMap.push(...value.effectByteMap);
-	}
-	const variants = [{ bytes: [], byteMap: [] }];
-	const bytes = variants[0].bytes;
-	const byteMap = variants[0].byteMap;
+	const effectGroups = [format.effectVariants, ...values.map((value) => value.effectVariants)];
+	const segments = [];
 	let returnKnown = format.known;
 	let sequential = 0;
 	const append = (value, sourceMap, fallback) => {
-		for (const variant of variants) {
-			variant.bytes.push(...value);
-			variant.byteMap.push(...Array.from({ length: value.length }, (_, offset) => sourceMap[offset] ?? fallback));
-		}
+		segments.push([decodedPhpBytes(
+			Buffer.from(value),
+			Array.from({ length: value.length }, (_, offset) => sourceMap[offset] ?? fallback),
+			fallback,
+		)]);
 	};
 	const appendWithAlternatives = (value, sourceMap, fallback, alternatives) => {
-		// Keep the primary rendering exact enough for nested return counts, then
-		// carry a bounded set of fail-closed alternatives through the remaining
-		// static suffix so possible padding can still form a detectable CSS token.
-		const prefixBytes = [...bytes];
-		const prefixMap = [...byteMap];
-		append(value, sourceMap, fallback);
+		const choices = [decodedPhpBytes(
+			Buffer.from(value),
+			Array.from({ length: value.length }, (_, offset) => sourceMap[offset] ?? fallback),
+			fallback,
+		)];
+		const seen = new Set([Buffer.from(value).toString('hex')]);
 		for (const alternative of alternatives) {
-			if (variants.length >= 32) break;
-			if (Buffer.from(alternative.bytes).equals(Buffer.from(value))) continue;
-			variants.push({
-				bytes: [...prefixBytes, ...alternative.bytes],
-				byteMap: [
-					...prefixMap,
-					...Array.from(
-						{ length: alternative.bytes.length },
-						(_, offset) => alternative.byteMap[offset] ?? fallback,
-					),
-				],
-			});
+			const bytes = Buffer.from(alternative.bytes);
+			const key = bytes.toString('hex');
+			if (seen.has(key)) continue;
+			seen.add(key);
+			choices.push(decodedPhpBytes(
+				bytes,
+				Array.from({ length: bytes.length }, (_, offset) => alternative.byteMap[offset] ?? fallback),
+				fallback,
+			));
 		}
+		segments.push(choices);
 	};
 	const formatText = format.bytes.toString('latin1');
 	for (let index = 0; index < formatText.length;) {
@@ -1511,6 +1583,8 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 			renderedBytes = Buffer.concat([Buffer.from('+'), renderedBytes]);
 			renderedByteMap = [format.byteMap[index] ?? absoluteFallback, ...renderedByteMap];
 		}
+		const unconstrainedBytes = Buffer.from(renderedBytes);
+		const unconstrainedByteMap = [...renderedByteMap];
 		if (precisionUnknown) {
 			renderedBytes = Buffer.from('0');
 			renderedByteMap = [value?.byteMap[0] ?? format.byteMap[index] ?? absoluteFallback];
@@ -1532,27 +1606,50 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 			renderedExact = true;
 		}
 		const leftAligned = width !== null && (width < 0 || ordinaryFlags.includes('-'));
-		const widthCanBeModeled = specifier !== 'c' && !(leftAligned && !renderedExact);
-		if (widthCanBeModeled && width !== null && Math.abs(width) > renderedBytes.length) {
+		const applyKnownWidth = (candidateBytes, candidateByteMap, candidateExact) => {
+			let widenedBytes = Buffer.from(candidateBytes);
+			let widenedByteMap = [...candidateByteMap];
+			const widthCanBeModeled = specifier !== 'c' && !(leftAligned && !candidateExact);
+			if (!widthCanBeModeled || width === null || Math.abs(width) <= widenedBytes.length) {
+				return { bytes: widenedBytes, byteMap: widenedByteMap };
+			}
 			const zeroPad = ordinaryFlags.includes('0') && !(leftAligned && ['d', 'u'].includes(specifier));
 			const pad = customPad ? customPad.charCodeAt(0) : (zeroPad ? 0x30 : 0x20);
-			const padding = Buffer.alloc(Math.abs(width) - renderedBytes.length, pad);
+			const padding = Buffer.alloc(Math.abs(width) - widenedBytes.length, pad);
 			const paddingMap = Array.from({ length: padding.length }, () => format.byteMap[index] ?? absoluteFallback);
 			if (leftAligned) {
-				renderedBytes = Buffer.concat([renderedBytes, padding]);
-				renderedByteMap = [...renderedByteMap, ...paddingMap];
-			} else if (pad === 0x30 && (renderedBytes[0] === 0x2d || renderedBytes[0] === 0x2b)) {
-				renderedBytes = Buffer.concat([renderedBytes.subarray(0, 1), padding, renderedBytes.subarray(1)]);
-				renderedByteMap = [renderedByteMap[0], ...paddingMap, ...renderedByteMap.slice(1)];
+				widenedBytes = Buffer.concat([widenedBytes, padding]);
+				widenedByteMap = [...widenedByteMap, ...paddingMap];
+			} else if (pad === 0x30 && (widenedBytes[0] === 0x2d || widenedBytes[0] === 0x2b)) {
+				widenedBytes = Buffer.concat([widenedBytes.subarray(0, 1), padding, widenedBytes.subarray(1)]);
+				widenedByteMap = [widenedByteMap[0], ...paddingMap, ...widenedByteMap.slice(1)];
 			} else {
-				renderedBytes = Buffer.concat([padding, renderedBytes]);
-				renderedByteMap = [...paddingMap, ...renderedByteMap];
+				widenedBytes = Buffer.concat([padding, widenedBytes]);
+				widenedByteMap = [...paddingMap, ...widenedByteMap];
 			}
-		}
+			return { bytes: widenedBytes, byteMap: widenedByteMap };
+		};
+		({ bytes: renderedBytes, byteMap: renderedByteMap } = applyKnownWidth(renderedBytes, renderedByteMap, renderedExact));
 		const alternatives = [];
 		const mayRenderEmpty = renderedBytes.length === 0
 			|| (specifier === 's' && !sourceExact)
 			|| (['b', 'o', 'x'].includes(specifier) && (precision !== null || precisionUnknown));
+		if (mayRenderEmpty) {
+			alternatives.push(applyKnownWidth(Buffer.alloc(0), [], true));
+		}
+		if (precisionUnknown && unconstrainedBytes.length > 0) {
+			if (specifier === 's') {
+				for (let length = 1; length <= unconstrainedBytes.length; length++) {
+					alternatives.push(applyKnownWidth(
+						unconstrainedBytes.subarray(0, length),
+						unconstrainedByteMap.slice(0, length),
+						renderedExact,
+					));
+				}
+			} else {
+				alternatives.push(applyKnownWidth(unconstrainedBytes, unconstrainedByteMap, renderedExact));
+			}
+		}
 		const possibleZeroPad = ordinaryFlags.includes('0') && !(leftAligned && ['d', 'u'].includes(specifier));
 		const possiblePad = customPad ? customPad.charCodeAt(0) : (possibleZeroPad ? 0x30 : null);
 		if (widthSpecified && (widthUnknown || Math.abs(width ?? 0) > 0) && mayRenderEmpty && possiblePad !== null) {
@@ -1564,19 +1661,19 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 		appendWithAlternatives(renderedBytes, renderedByteMap, format.byteMap[index] ?? absoluteFallback, alternatives);
 		index += directive[0].length;
 	}
-	const formatted = decodedPhpBytes(Buffer.from(bytes), byteMap, absoluteFallback);
-	const probeBytes = [];
-	const probeByteMap = [];
-	for (const variant of variants.slice(1)) {
-		probeBytes.push(0x3b, ...variant.bytes);
-		probeByteMap.push(format.byteMap[0] ?? absoluteFallback, ...variant.byteMap);
-	}
-	const rendered = decodedPhpBytes(
-		Buffer.concat([Buffer.from(effectBytes), formatted.bytes, Buffer.from(probeBytes)]),
-		[...effectByteMap, ...formatted.byteMap, ...probeByteMap],
-		absoluteFallback,
-	);
-	return { ...rendered, formattedText: formatted.text, formattedMap: formatted.map, formattedBytes: formatted.bytes, formattedByteLength: formatted.bytes.length, returnKnown };
+	const formattedVariants = combinedByteVariants(segments, absoluteFallback);
+	const formatted = formattedVariants[0];
+	const variants = combinedByteVariants([...effectGroups, formattedVariants], absoluteFallback);
+	return {
+		...variants[0],
+		variants,
+		formattedVariants,
+		formattedText: formatted.text,
+		formattedMap: formatted.map,
+		formattedBytes: formatted.bytes,
+		formattedByteLength: formatted.bytes.length,
+		returnKnown,
+	};
 }
 
 function isPhpMemberAccess(tokens, index) {
@@ -1589,8 +1686,7 @@ function isPhpMemberAccess(tokens, index) {
 
 function collapseNestedPrintf(tokens, absoluteFallback) {
 	const collapsed = [];
-	const bytes = [];
-	const byteMap = [];
+	const effectGroups = [];
 	for (let index = 0; index < tokens.length;) {
 		const callable = tokens[index].type === 'identifier' && tokens[index].value === 'printf'
 			&& tokens[index + 1]?.type === 'punctuation' && tokens[index + 1].value === '('
@@ -1609,8 +1705,7 @@ function collapseNestedPrintf(tokens, absoluteFallback) {
 			if (depth > 0) expression.push(token);
 		}
 		const rendered = renderedPrintfExpression(expression, absoluteFallback);
-		bytes.push(...rendered.bytes);
-		byteMap.push(...rendered.byteMap);
+		effectGroups.push(rendered.variants ?? [rendered]);
 		const returnValue = rendered.returnKnown ? String(rendered.formattedByteLength) : '1';
 		const callableStart = absoluteFallback + (tokens[index].start ?? 0);
 		const returnMap = Array.from({ length: returnValue.length }, () => callableStart);
@@ -1626,7 +1721,8 @@ function collapseNestedPrintf(tokens, absoluteFallback) {
 		});
 		index = cursor;
 	}
-	return { tokens: collapsed, ...decodedPhpBytes(Buffer.from(bytes), byteMap, absoluteFallback) };
+	const variants = combinedByteVariants(effectGroups, absoluteFallback);
+	return { tokens: collapsed, ...variants[0], variants };
 }
 
 function renderedPhpOutput(php, absoluteStart) {
@@ -1689,16 +1785,15 @@ function renderedPhpOutput(php, absoluteStart) {
 			if (tokens[index]?.value === ';') index++;
 		}
 	}
-	const bytes = [];
-	const byteMap = [];
+	const groups = [];
 	for (const expression of expressions) {
 		const rendered = expression.kind === 'printf'
 			? renderedPrintfExpression(expression.tokens, absoluteStart + bodyStart)
 			: renderedEchoExpression(expression.tokens, absoluteStart + bodyStart);
-		bytes.push(...rendered.bytes);
-		byteMap.push(...rendered.byteMap);
+		groups.push(rendered.variants ?? [rendered]);
 	}
-	return decodedPhpBytes(Buffer.from(bytes), byteMap, absoluteStart + bodyStart);
+	const variants = combinedByteVariants(groups, absoluteStart + bodyStart);
+	return { ...variants[0], variants };
 }
 
 const HTML_NAMED_CHARACTERS = new Map([
@@ -1756,18 +1851,39 @@ function decodeHtmlReferences(view) {
 	return { text, map };
 }
 
+function combinedTextVariants(groups) {
+	const variants = [];
+	const seen = new Set();
+	const selections = renderingSelections(groups);
+	for (const selection of selections) {
+		let text = '';
+		const map = [];
+		const resumeMap = [];
+		for (let index = 0; index < groups.length; index++) {
+			const choice = groups[index][selection[index]];
+			text += choice.text;
+			map.push(...choice.map);
+			resumeMap.push(...choice.resumeMap);
+		}
+		if (seen.has(text)) continue;
+		seen.add(text);
+		variants.push({ text, map, resumeMap });
+	}
+	variants.complete = selections.complete && groups.every((group) => group.complete !== false);
+	return variants.length ? variants : [{ text: '', map: [], resumeMap: [] }];
+}
+
 function renderedCssView(source, absoluteStart, { attribute = false } = {}) {
-	let text = '';
-	const map = [];
-	const resumeMap = [];
+	const groups = [];
 	let index = 0;
 	const appendDirect = (end) => {
-		while (index < end) {
-			text += source[index];
-			map.push(absoluteStart + index);
-			resumeMap.push(absoluteStart + index + 1);
-			index++;
-		}
+		if (end <= index) return;
+		groups.push([{
+			text: source.slice(index, end),
+			map: Array.from({ length: end - index }, (_, offset) => absoluteStart + index + offset),
+			resumeMap: Array.from({ length: end - index }, (_, offset) => absoluteStart + index + offset + 1),
+		}]);
+		index = end;
 	};
 	while (index < source.length) {
 		const phpStart = source.indexOf('<?', index);
@@ -1778,13 +1894,18 @@ function renderedCssView(source, absoluteStart, { attribute = false } = {}) {
 		appendDirect(phpStart);
 		const end = phpEnd(source, phpStart);
 		const rendered = renderedPhpOutput(source.slice(phpStart, end), absoluteStart + phpStart);
-		text += rendered.text;
-		map.push(...rendered.map);
-		resumeMap.push(...Array.from({ length: rendered.text.length }, () => absoluteStart + end));
+		const choices = (rendered.variants ?? [rendered]).map((variant) => ({
+			text: variant.text,
+			map: variant.map,
+			resumeMap: Array.from({ length: variant.text.length }, () => absoluteStart + end),
+		}));
+		choices.complete = rendered.variants?.complete !== false;
+		groups.push(choices);
 		index = end;
 	}
-	const view = { text, map, resumeMap };
-	return attribute ? decodeHtmlReferences(view) : view;
+	let variants = combinedTextVariants(groups);
+	if (attribute) variants = variants.map((variant) => decodeHtmlReferences(variant));
+	return { ...variants[0], variants, complete: variants.complete !== false };
 }
 
 function cssDeclarations(css) {
@@ -1911,47 +2032,54 @@ export function checkRawValues(files) {
 			sourceWithoutBlockJson = sourceWithoutBlockJson.slice(0, start) + blankOut(sourceWithoutBlockJson.slice(start, end)) + sourceWithoutBlockJson.slice(end);
 		}
 		const scannable = scannableSource(sourceWithoutBlockJson);
-		const renderedMarkup = renderedCssView(scannable, 0);
-		const contexts = markupContexts(renderedMarkup.text);
-		for (const style of contexts.styles) {
-			addHits({
-				text: renderedMarkup.text.slice(style.start, style.end),
-				map: renderedMarkup.map.slice(style.start, style.end),
-			});
+		const rendered = renderedCssView(scannable, 0);
+		if (rendered.complete === false) {
+			const formatterIndex = source.search(/\bprintf\s*\(/i);
+			const line = source.slice(0, formatterIndex < 0 ? 0 : formatterIndex).split('\n').length;
+			problems.push(`${file}:${line}: too many dynamic formatter alternatives — raw values cannot be verified exhaustively`);
 		}
-		for (const tag of contexts.tags) {
-			const attributes = new Map();
-			for (const attribute of tag.attributes) {
-				const directView = attribute.value === null ? null : decodeHtmlReferences({
-					text: attribute.value,
-					map: renderedMarkup.map.slice(attribute.valueStart, attribute.valueEnd),
+		for (const renderedMarkup of rendered.variants ?? [rendered]) {
+			const contexts = markupContexts(renderedMarkup.text);
+			for (const style of contexts.styles) {
+				addHits({
+					text: renderedMarkup.text.slice(style.start, style.end),
+					map: renderedMarkup.map.slice(style.start, style.end),
 				});
-				attribute.decodedView = directView;
-				attribute.decodedValue = directView?.text ?? null;
-				if (!attributes.has(attribute.name)) attributes.set(attribute.name, attribute);
 			}
-			const classes = attributes.get('class')?.decodedValue?.split(/[\t\n\f\r ]+/).filter(Boolean) ?? [];
-			for (const attribute of tag.attributes) {
-				if (attribute.value === null || isMarkupUrlAttribute(attribute.name, tag.name, tag.namespace, attributes)) continue;
-				if (attribute.name !== 'style') {
-					addHits(attribute.decodedView);
-					continue;
+			for (const tag of contexts.tags) {
+				const attributes = new Map();
+				for (const attribute of tag.attributes) {
+					const directView = attribute.value === null ? null : decodeHtmlReferences({
+						text: attribute.value,
+						map: renderedMarkup.map.slice(attribute.valueStart, attribute.valueEnd),
+					});
+					attribute.decodedView = directView;
+					attribute.decodedValue = directView?.text ?? null;
+					if (!attributes.has(attribute.name)) attributes.set(attribute.name, attribute);
 				}
-				let css = attribute.value;
-				if (classes.includes('wp-block-cover')) {
-					css = withoutGeneratedDeclaration(css, 'min-height', /^\d+(?:\.\d+)?(?:px|rem|em|vh|vw)$/i);
+				const classes = attributes.get('class')?.decodedValue?.split(/[\t\n\f\r ]+/).filter(Boolean) ?? [];
+				for (const attribute of tag.attributes) {
+					if (attribute.value === null || isMarkupUrlAttribute(attribute.name, tag.name, tag.namespace, attributes)) continue;
+					if (attribute.name !== 'style') {
+						addHits(attribute.decodedView);
+						continue;
+					}
+					let css = attribute.value;
+					if (classes.includes('wp-block-cover')) {
+						css = withoutGeneratedDeclaration(css, 'min-height', /^\d+(?:\.\d+)?(?:px|rem|em|vh|vw)$/i);
+					}
+					if (tag.name === 'div' && classes.includes('wp-block-spacer')) {
+						css = withoutGeneratedDeclaration(css, 'height', /^\d+(?:\.\d+)?px$/i);
+					}
+					addHits(decodeHtmlReferences({
+						text: css,
+						map: renderedMarkup.map.slice(attribute.valueStart, attribute.valueEnd),
+					}));
 				}
-				if (tag.name === 'div' && classes.includes('wp-block-spacer')) {
-					css = withoutGeneratedDeclaration(css, 'height', /^\d+(?:\.\d+)?px$/i);
-				}
-				addHits(decodeHtmlReferences({
-					text: css,
-					map: renderedMarkup.map.slice(attribute.valueStart, attribute.valueEnd),
-				}));
 			}
 		}
 	}
-	return problems;
+	return [...new Set(problems)];
 }
 
 // theme.json preset and settings.custom values are definitions, so raw values
