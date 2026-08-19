@@ -645,49 +645,27 @@ function phpEnd(source, start) {
 // attributes, and raw-text style bodies. Unlike a `<[^>]*>` expression this
 // keeps `>` inside quotes and PHP spans inside the opening tag, so an attribute
 // cannot impersonate `class=` and a PHP close tag cannot truncate `<style>`.
-function startTagAttributeNames(source) {
+function tokenizeStartTag(source) {
 	const names = [];
 	let cursor = /^<\s*[A-Za-z][A-Za-z0-9:-]*/.exec(source)?.[0].length ?? source.length;
-	while (cursor < source.length) {
-		while (/[\t\n\f\r ]/.test(source[cursor] || '')) cursor++;
-		if (source.startsWith('/>', cursor) || source[cursor] === '>') break;
-		const start = cursor;
-		while (cursor < source.length && !/[\t\n\f\r "'=<>`/]/.test(source[cursor])) cursor++;
-		if (cursor === start) {
-			cursor++;
-			continue;
-		}
-		names.push(source.slice(start, cursor).toLowerCase());
-		while (/[\t\n\f\r ]/.test(source[cursor] || '')) cursor++;
-		if (source[cursor] !== '=') continue;
-		cursor++;
-		while (/[\t\n\f\r ]/.test(source[cursor] || '')) cursor++;
-		const quote = source[cursor] === '"' || source[cursor] === "'" ? source[cursor++] : null;
-		if (quote) {
-			while (cursor < source.length && source[cursor] !== quote) cursor++;
-			if (source[cursor] === quote) cursor++;
-		} else {
-			while (cursor < source.length && !/[\t\n\f\r >]/.test(source[cursor])) cursor++;
-		}
-	}
-	return names;
-}
-
-function renderedStartTag(source, start) {
-	const view = renderedCssView(source.slice(start), start);
-	let cursor = /^<\s*[A-Za-z][A-Za-z0-9:-]*/.exec(view.text)?.[0].length ?? view.text.length;
 	let state = 'before-name';
 	let quote = null;
-	while (cursor < view.text.length) {
-		const char = view.text[cursor];
+	let currentName = '';
+	let selfClosing = false;
+	const commitName = () => {
+		if (currentName) names.push(currentName.toLowerCase());
+		currentName = '';
+	};
+	while (cursor < source.length) {
+		const char = source[cursor];
 		if (state === 'quoted-value') {
-			if (char === quote) state = 'after-name';
+			if (char === quote) state = 'after-quoted-value';
 			cursor++;
 			continue;
 		}
 		if (state === 'unquoted-value') {
 			if (/[\t\n\f\r ]/.test(char)) state = 'before-name';
-			else if (char === '>') break;
+			else if (char === '>') return { names, endIndex: cursor, selfClosing, complete: true };
 			cursor++;
 			continue;
 		}
@@ -702,33 +680,104 @@ function renderedStartTag(source, start) {
 				cursor++;
 				continue;
 			}
-			if (char === '>') break;
+			if (char === '>') return { names, endIndex: cursor, selfClosing, complete: true };
 			state = 'unquoted-value';
 			continue;
 		}
 		if (state === 'name') {
-			if (/[\t\n\f\r ]/.test(char)) state = 'after-name';
-			else if (char === '=') state = 'before-value';
-			else if (char === '>') break;
+			if (/[\t\n\f\r ]/.test(char)) {
+				commitName();
+				state = 'after-name';
+				cursor++;
+				continue;
+			}
+			if (char === '/') {
+				commitName();
+				state = 'self-closing';
+				cursor++;
+				continue;
+			}
+			if (char === '=') {
+				commitName();
+				state = 'before-value';
+				cursor++;
+				continue;
+			}
+			if (char === '>') {
+				commitName();
+				return { names, endIndex: cursor, selfClosing, complete: true };
+			}
+			currentName += char;
 			cursor++;
 			continue;
 		}
-		if (/[\t\n\f\r ]/.test(char) || (state === 'before-name' && char === '/')) {
+		if (state === 'after-name') {
+			if (/[\t\n\f\r ]/.test(char)) {
+				cursor++;
+				continue;
+			}
+			if (char === '/') {
+				state = 'self-closing';
+				cursor++;
+				continue;
+			}
+			if (char === '=') {
+				state = 'before-value';
+				cursor++;
+				continue;
+			}
+			if (char === '>') return { names, endIndex: cursor, selfClosing, complete: true };
+			state = 'name';
+			continue;
+		}
+		if (state === 'after-quoted-value') {
+			if (/[\t\n\f\r ]/.test(char)) {
+				state = 'before-name';
+				cursor++;
+				continue;
+			}
+			if (char === '/') {
+				state = 'self-closing';
+				cursor++;
+				continue;
+			}
+			if (char === '>') return { names, endIndex: cursor, selfClosing, complete: true };
+			state = 'before-name';
+			continue;
+		}
+		if (state === 'self-closing') {
+			if (char === '>') return { names, endIndex: cursor, selfClosing: true, complete: true };
+			selfClosing = false;
+			state = 'before-name';
+			continue;
+		}
+		if (/[\t\n\f\r ]/.test(char)) {
 			cursor++;
 			continue;
 		}
-		if (char === '>') break;
-		if (state === 'after-name' && char === '=') {
-			state = 'before-value';
+		if (char === '/') {
+			state = 'self-closing';
 			cursor++;
 			continue;
 		}
+		if (char === '>') return { names, endIndex: cursor, selfClosing, complete: true };
 		state = 'name';
+		continue;
 	}
-	if (view.text[cursor] !== '>') return { text: view.text, sourceEnd: source.length };
+	commitName();
+	return { names, endIndex: source.length, selfClosing: false, complete: false };
+}
+
+const startTagAttributeNames = (source) => tokenizeStartTag(source).names;
+
+function renderedStartTag(source, start) {
+	const view = renderedCssView(source.slice(start), start);
+	const token = tokenizeStartTag(view.text);
+	if (!token.complete) return { text: view.text, sourceEnd: source.length, complete: false };
 	return {
-		text: view.text.slice(0, cursor + 1),
-		sourceEnd: view.resumeMap[cursor] ?? source.length,
+		text: view.text.slice(0, token.endIndex + 1),
+		sourceEnd: view.resumeMap[token.endIndex] ?? source.length,
+		complete: true,
 	};
 }
 
@@ -1078,6 +1127,7 @@ function phpNumberToken(source, start, absoluteStart) {
 			text,
 			map,
 			...encoded,
+			numericKind: 'int-literal',
 			start,
 			end: start + based[0].length,
 		};
@@ -1089,7 +1139,15 @@ function phpNumberToken(source, start, absoluteStart) {
 	for (let offset = 0; offset < decimal[0].length; offset++) {
 		if (decimal[0][offset] !== '_') map.push(absoluteStart + start + offset);
 	}
-	return { type: 'static', text, map, ...encodedPhpText(text, map, absoluteStart + start), start, end: start + decimal[0].length };
+	let numericKind = 'float-literal';
+	if (/^\d+$/.test(text)) {
+		try {
+			numericKind = BigInt(text) <= 0x7fffffffffffffffn ? 'int-literal' : 'float-literal';
+		} catch {
+			numericKind = 'float-literal';
+		}
+	}
+	return { type: 'static', text, map, ...encodedPhpText(text, map, absoluteStart + start), numericKind, start, end: start + decimal[0].length };
 }
 
 function phpTokens(source, absoluteStart) {
@@ -1232,14 +1290,22 @@ function renderedStaticPhpExpression(tokens, absoluteFallback) {
 		if (token.type === 'punctuation' && ['+', '-'].includes(token.value)
 			&& collapsed.tokens[index + 1]?.type === 'static'
 			&& (!normalized.length || (normalized.at(-1).type === 'punctuation' && ['.', '('].includes(normalized.at(-1).value)))) {
-			normalized.push({ type: 'static', text: token.value, map: [absoluteFallback], bytes: Buffer.from(token.value), byteMap: [absoluteFallback], start: token.start, end: token.end });
+			normalized.push({ type: 'static', text: token.value, map: [absoluteFallback], bytes: Buffer.from(token.value), byteMap: [absoluteFallback], unarySign: true, start: token.start, end: token.end });
 			continue;
 		}
 		known = false;
 	}
 	const value = renderedEchoValue(normalized, absoluteFallback);
+	const literalTokens = normalized.filter((token) => token.type === 'string' || token.type === 'static');
+	let origin = 'computed';
+	if (literalTokens.length === 1) {
+		origin = literalTokens[0].numericKind ?? (literalTokens[0].type === 'string' ? 'string' : 'computed');
+	} else if (literalTokens.length === 2 && literalTokens[0].unarySign && literalTokens[1].numericKind) {
+		origin = literalTokens[1].numericKind;
+	}
 	return {
 		known,
+		origin,
 		text: value.text,
 		map: value.map,
 		bytes: value.bytes,
@@ -1266,12 +1332,18 @@ function splitPhpArguments(tokens) {
 	return argumentsList;
 }
 
-function phpIntegerValue(text) {
+function phpIntegerValue(text, origin = 'computed') {
 	const numeric = /^[\t\n\r\f\v ]*([+-]?(?:(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?))/i.exec(text)?.[1];
 	if (!numeric) return null;
 	if (/^[+-]?\d+$/.test(numeric)) {
 		try {
-			return BigInt(numeric);
+			const integer = BigInt(numeric);
+			if (origin === 'string') {
+				if (integer > 0x7fffffffffffffffn) return 0x7fffffffffffffffn;
+				if (integer < -0x8000000000000000n) return -0x8000000000000000n;
+			}
+			if (origin === 'float-literal') return BigInt.asIntN(64, BigInt(Number(numeric)));
+			return integer;
 		} catch {
 			return null;
 		}
@@ -1345,10 +1417,12 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 		const value = values[valueIndex];
 		const rawSpecifier = directive[9];
 		const specifier = rawSpecifier.toLowerCase();
+		const flags = directive[2];
+		const numericSpecifier = ['b', 'c', 'd', 'e', 'f', 'g', 'h', 'o', 'u', 'x'].includes(specifier);
 		if (value?.known) {
 			let renderedBytes = value.bytes;
 			let renderedByteMap = [...value.byteMap];
-			const integer = phpIntegerValue(value.text);
+			const integer = phpIntegerValue(value.text, value.origin);
 			if (specifier === 'c') {
 				if (integer === null) {
 					returnKnown = false;
@@ -1375,12 +1449,16 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 				renderedBytes = Buffer.from('0');
 				renderedByteMap = [format.byteMap[index] ?? absoluteFallback];
 			}
+			const signedSpecifier = specifier === 'd' || ['e', 'f', 'g', 'h'].includes(specifier);
+			if (signedSpecifier && flags.includes('+') && renderedBytes[0] !== 0x2d && renderedBytes[0] !== 0x2b) {
+				renderedBytes = Buffer.concat([Buffer.from('+'), renderedBytes]);
+				renderedByteMap = [format.byteMap[index] ?? absoluteFallback, ...renderedByteMap];
+			}
 			if (specifier === 's' && precision !== null && precision >= 0) {
 				renderedBytes = renderedBytes.subarray(0, precision);
 				renderedByteMap = renderedByteMap.slice(0, precision);
 			}
 			if (width !== null && Math.abs(width) > renderedBytes.length) {
-				const flags = directive[2];
 				const customPad = /'(.)/.exec(flags)?.[1];
 				const pad = customPad ? customPad.charCodeAt(0) : (flags.includes('0') ? 0x30 : 0x20);
 				const padding = Buffer.alloc(Math.abs(width) - renderedBytes.length, pad);
@@ -1388,6 +1466,9 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 				if (width < 0 || flags.includes('-')) {
 					renderedBytes = Buffer.concat([renderedBytes, padding]);
 					renderedByteMap = [...renderedByteMap, ...paddingMap];
+				} else if (pad === 0x30 && (renderedBytes[0] === 0x2d || renderedBytes[0] === 0x2b)) {
+					renderedBytes = Buffer.concat([renderedBytes.subarray(0, 1), padding, renderedBytes.subarray(1)]);
+					renderedByteMap = [renderedByteMap[0], ...paddingMap, ...renderedByteMap.slice(1)];
 				} else {
 					renderedBytes = Buffer.concat([padding, renderedBytes]);
 					renderedByteMap = [...paddingMap, ...renderedByteMap];
@@ -1396,7 +1477,8 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 			append(renderedBytes, renderedByteMap, format.byteMap[index] ?? absoluteFallback);
 		} else {
 			returnKnown = false;
-			append(Buffer.from(';'), [], format.byteMap[index] ?? absoluteFallback);
+			const placeholder = numericSpecifier ? '0' : ';';
+			append(Buffer.from(placeholder), [], format.byteMap[index] ?? absoluteFallback);
 		}
 		index += directive[0].length;
 	}
@@ -1740,16 +1822,20 @@ export function checkRawValues(files) {
 			sourceWithoutBlockJson = sourceWithoutBlockJson.slice(0, start) + blankOut(sourceWithoutBlockJson.slice(start, end)) + sourceWithoutBlockJson.slice(end);
 		}
 		const scannable = scannableSource(sourceWithoutBlockJson);
-		const contexts = markupContexts(scannable);
+		const renderedMarkup = renderedCssView(scannable, 0);
+		const contexts = markupContexts(renderedMarkup.text);
 		for (const style of contexts.styles) {
-			addHits(renderedCssView(scannable.slice(style.start, style.end), style.start));
+			addHits({
+				text: renderedMarkup.text.slice(style.start, style.end),
+				map: renderedMarkup.map.slice(style.start, style.end),
+			});
 		}
 		for (const tag of contexts.tags) {
 			const attributes = new Map();
 			for (const attribute of tag.attributes) {
 				const directView = attribute.value === null ? null : decodeHtmlReferences({
 					text: attribute.value,
-					map: Array.from({ length: attribute.value.length }, (_, index) => attribute.valueStart + index),
+					map: renderedMarkup.map.slice(attribute.valueStart, attribute.valueEnd),
 				});
 				attribute.decodedView = directView;
 				attribute.decodedValue = directView?.text ?? null;
@@ -1769,7 +1855,10 @@ export function checkRawValues(files) {
 				if (tag.name === 'div' && classes.includes('wp-block-spacer')) {
 					css = withoutGeneratedDeclaration(css, 'height', /^\d+(?:\.\d+)?px$/i);
 				}
-				addHits(renderedCssView(css, attribute.valueStart, { attribute: true }));
+				addHits(decodeHtmlReferences({
+					text: css,
+					map: renderedMarkup.map.slice(attribute.valueStart, attribute.valueEnd),
+				}));
 			}
 		}
 	}

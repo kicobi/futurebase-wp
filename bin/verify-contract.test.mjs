@@ -567,6 +567,24 @@ test('SVG font reconstruction follows HTML unquoted values and PHP-emitted tag b
 	);
 });
 
+test('markup emitted after a PHP tag close still updates the HTML namespace', () => {
+	for (const markup of [
+		'<svg><font <?php echo "><div>"; ?><script href="2rem#fff"></script></div></font></svg>',
+		'<svg><font <?php echo ">"; ?><?php echo "<div>"; ?><script href="2rem#fff"></script></div></font></svg>',
+	]) {
+		const problems = raw(markup);
+		assert.ok(problems.some((problem) => problem.includes('2rem')), markup);
+		assert.ok(problems.some((problem) => problem.includes('#fff')), markup);
+	}
+});
+
+test('post-quoted SVG font attribute syntax follows HTML reconsume rules', () => {
+	assert.deepEqual(
+		raw('<svg><font data-x="x"<?php echo \'=">\'; ?><script href="2rem#fff"></script></font></svg>'),
+		[],
+	);
+});
+
 test('PHP output is reconstructed inside its surrounding CSS and URL context', () => {
 	assert.deepEqual(
 		raw('<style>\n.x { background-image: url(<?php echo get_theme_file_uri( \'assets/2rem.svg\' ); ?>); }\n</style>'),
@@ -757,6 +775,29 @@ test('numeric printf conversions cannot hide adjacent CSS units', () => {
 	assert.ok(
 		raw('<style><?php printf("%drem", "2x"); ?></style>')
 			.some((problem) => problem.includes('rem')),
+	);
+});
+
+test('unknown numeric printf arguments fail closed beside CSS units', () => {
+	for (const specifier of ['d', 'u', 'x', 'f']) {
+		const markup = `<style><?php $value = 2; printf("%${specifier}rem", $value); ?></style>`;
+		assert.ok(raw(markup).some((problem) => problem.includes('rem')), markup);
+	}
+});
+
+test('printf signs and zero padding preserve PHP token boundaries', () => {
+	assert.ok(raw('<style><?php printf("a%+drem", 2); ?></style>').some((problem) => problem.includes('+2rem')));
+	assert.ok(raw('<style><?php printf("%05drem", -2); ?></style>').some((problem) => problem.includes('-0002rem')));
+});
+
+test('integer printf coercion follows PHP 8.4 signed 64-bit bounds', () => {
+	assert.ok(
+		raw('<style><?php printf("%drem", 9223372036854775808); ?></style>')
+			.some((problem) => problem.includes('-9223372036854775808rem')),
+	);
+	assert.ok(
+		raw('<style><?php printf("%drem", "9223372036854775808"); ?></style>')
+			.some((problem) => problem.includes('9223372036854775807rem')),
 	);
 });
 
