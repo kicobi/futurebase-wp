@@ -7,7 +7,7 @@
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { EXIT, die, ok, info, fail, emitJson, c } from '../lib/output.mjs';
+import { EXIT, die, ok, warn, info, fail, emitJson, c } from '../lib/output.mjs';
 import { findProjectRoot, projectPaths, latestRunId, isRunId, readRunSummary, evidenceVerdict } from '../lib/baseline.mjs';
 import { readYaml } from '../lib/yaml.mjs';
 import { loadMetrics } from '../lib/metrics.mjs';
@@ -100,9 +100,26 @@ export function compare(_positional, flags) {
 	const improved = comparison.rows.filter((r) => r.change === 'better').length;
 	const regressed = comparison.rows.filter((r) => r.change === 'worse').length;
 
-	if (json) emitJson({ status: 'ok', baseline_run: baseId, final_run: finalId, improved, regressed, rows: comparison.rows, limitations: comparison.limitations, report: htmlPath });
+	if (json) emitJson({
+		status: 'ok',
+		baseline_run: baseId,
+		final_run: finalId,
+		improved,
+		regressed,
+		rows: comparison.rows,
+		limitations: comparison.limitations,
+		blocking: comparison.blocking,
+		mismatch_allowed: comparison.blocking.length > 0 && !!flags['allow-mismatch'],
+		report: htmlPath,
+	});
 
 	ok(`compared ${baseId} → ${finalId}`);
+	if (comparison.blocking.length) {
+		warn('blocking mismatches were explicitly allowed:');
+		for (const b of comparison.blocking) info(`- ${b}`);
+		info('Client-facing improvement figures were withheld.');
+		console.log('');
+	}
 	info(`${improved} improved · ${regressed} regressed · ${comparison.rows.length} measures`);
 	for (const r of comparison.rows) {
 		const mark = r.change === 'better' ? c.green('▲') : r.change === 'worse' ? c.red('▼') : c.dim('–');

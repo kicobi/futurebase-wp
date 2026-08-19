@@ -10,7 +10,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { compareTargets } from '../lib/compare.mjs';
+import { compareTargets, renderComparison } from '../lib/compare.mjs';
 
 const run = (over = {}) => ({
 	run_id: '2026-07-30T100000Z',
@@ -145,4 +145,24 @@ test('several differences are reported together, not just the first', () => {
 	const { limitations, blocking } = compareTargets(run(), final);
 	assert.equal(blocking.length, 1, 'viewports block');
 	assert.ok(limitations.length >= 2, `host and module set both disclosed (got ${limitations.length})`);
+});
+
+test('blocking reasons render everywhere and client improvement figures are withheld', () => {
+	const reason = 'viewports differ (baseline: mobile:390x844 · final: desktop:1440x900)';
+	const rendered = renderComparison({
+		projectName: 'Probe',
+		baselineRun: 'before',
+		finalRun: 'after',
+		comparison: {
+			rows: [{ label: 'Broken links', before: 9, after: 0, unit: '', change: 'better' }],
+			limitations: [],
+			blocking: [reason],
+		},
+		metrics: null,
+	});
+	assert.match(rendered.internalMd, /viewports differ/);
+	assert.match(rendered.html, /viewports differ/);
+	assert.match(rendered.clientMd, /viewports differ/);
+	assert.match(rendered.clientMd, /figures are withheld/);
+	assert.doesNotMatch(rendered.clientMd, /9 → 0/);
 });
