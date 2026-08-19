@@ -1002,6 +1002,8 @@ function renderingSelections(groups) {
 	return selections;
 }
 
+const MAX_DYNAMIC_STRING_PREFIXES = 256;
+
 function combinedByteVariants(groups, fallback = 0) {
 	const normalized = groups.map((group) => group?.length ? group : [decodedPhpBytes(Buffer.alloc(0), [], fallback)]);
 	const variants = [];
@@ -1482,6 +1484,7 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 				fallback,
 			));
 		}
+		choices.complete = alternatives.complete !== false;
 		segments.push(choices);
 	};
 	const formatText = format.bytes.toString('latin1');
@@ -1632,19 +1635,24 @@ function renderedPrintfExpression(tokens, absoluteFallback) {
 		({ bytes: renderedBytes, byteMap: renderedByteMap } = applyKnownWidth(renderedBytes, renderedByteMap, renderedExact));
 		const alternatives = [];
 		const mayRenderEmpty = renderedBytes.length === 0
-			|| (specifier === 's' && !sourceExact)
+			|| (specifier === 's' && (!sourceExact || precisionUnknown))
 			|| (['b', 'o', 'x'].includes(specifier) && (precision !== null || precisionUnknown));
 		if (mayRenderEmpty) {
 			alternatives.push(applyKnownWidth(Buffer.alloc(0), [], true));
 		}
 		if (precisionUnknown && unconstrainedBytes.length > 0) {
 			if (specifier === 's') {
-				for (let length = 1; length <= unconstrainedBytes.length; length++) {
+				const prefixLimit = Math.min(unconstrainedBytes.length, MAX_DYNAMIC_STRING_PREFIXES);
+				for (let length = 1; length <= prefixLimit; length++) {
 					alternatives.push(applyKnownWidth(
 						unconstrainedBytes.subarray(0, length),
 						unconstrainedByteMap.slice(0, length),
 						renderedExact,
 					));
+				}
+				if (unconstrainedBytes.length > prefixLimit) {
+					alternatives.push(applyKnownWidth(unconstrainedBytes, unconstrainedByteMap, renderedExact));
+					alternatives.complete = false;
 				}
 			} else {
 				alternatives.push(applyKnownWidth(unconstrainedBytes, unconstrainedByteMap, renderedExact));

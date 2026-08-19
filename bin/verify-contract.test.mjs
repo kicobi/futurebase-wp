@@ -936,6 +936,22 @@ test('dynamic printf alternatives include possible empty results', () => {
 	}
 });
 
+test('unknown printf precision includes empty known strings before width padding', () => {
+	for (const value of ['x', 'é']) {
+		const markup = `<style><?php $precision = 0; printf("%'#1.*sfff", $precision, "${value}"); ?></style>`;
+		assert.ok(raw(markup).some((problem) => problem.includes('hex color')), markup);
+	}
+});
+
+test('unknown printf precision bounds long known-string alternatives', { timeout: 2_000 }, () => {
+	const value = 'x'.repeat(5_000);
+	const started = performance.now();
+	const problems = raw(`<style><?php $precision = 1; printf("%.*s", $precision, "${value}"); ?></style>`);
+	const elapsed = performance.now() - started;
+	assert.ok(problems.some((problem) => problem.includes('too many dynamic formatter alternatives')));
+	assert.ok(elapsed < 2_000, `long unknown-precision string took ${Math.round(elapsed)}ms`);
+});
+
 test('dynamic printf alternatives combine and survive the branch limit', () => {
 	assert.ok(
 		raw('<style><?php $width = 1; $value = ""; printf("%\'r*.0s%\'g*.0sb(1 2 3)", $width, $value, $width, $value); ?></style>')
