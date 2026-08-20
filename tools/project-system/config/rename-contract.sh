@@ -23,6 +23,7 @@ FUTUREBASE_DISPLAY_SENTINEL='Futurebase'
 # permanently; bin/test-rename.sh asserts the guard is present and exact.
 FUTUREBASE_TEMPLATE_REPOSITORY='kicobi/futurebase-wp'
 FUTUREBASE_PATH_FLAG='--futurebase-path'
+FUTUREBASE_RENAME_KEEP_MARKER='<!-- futurebase-rename: keep-line -->'
 
 FUTUREBASE_LEGACY_FORMS=(
 	'wp-starter'

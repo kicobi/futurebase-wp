@@ -168,32 +168,38 @@ while IFS= read -r file; do TARGETS+=("$file"); done < <(
 
 # PHPCS stores the text domain and prefix in identically-shaped nested value
 # elements, so the owning property provides the context for each replacement.
-# Do this before the generic quoted-slug substitutions below.
-NEW_SNAKE="$NEW_SNAKE" NEW_SLUG="$NEW_SLUG" perl -0777 -i -pe '
-	s#(<property\s+name="prefixes".*?<element\s+value=")futurebase("\s*/>.*?</property>)#$1$ENV{NEW_SNAKE}$2#s;
-	s#(<property\s+name="text_domain".*?<element\s+value=")futurebase("\s*/>.*?</property>)#$1$ENV{NEW_SLUG}$2#s;
+# Track the property line-by-line so the same keep-line contract applies here.
+KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" BASE_SLUG="$FUTUREBASE_BASE_SLUG" NEW_SNAKE="$NEW_SNAKE" NEW_SLUG="$NEW_SLUG" perl -i -pe '
+	$property = "prefixes" if /<property\s+name="prefixes"/;
+	$property = "text_domain" if /<property\s+name="text_domain"/;
+	if (index($_, $ENV{KEEP_MARKER}) < 0 && /<element\s+value="\Q$ENV{BASE_SLUG}\E"\s*\/>/) {
+		s/value="\Q$ENV{BASE_SLUG}\E"/value="$ENV{NEW_SNAKE}"/ if $property eq "prefixes";
+		s/value="\Q$ENV{BASE_SLUG}\E"/value="$ENV{NEW_SLUG}"/ if $property eq "text_domain";
+	}
+	$property = "" if /<\/property>/;
 ' phpcs.xml.dist
 
 for file in "${TARGETS[@]}"; do
 	# PHP functions/options/meta and other underscore-prefixed identifiers.
-	perl -pi -e "s/(?<![A-Za-z0-9])${FUTUREBASE_BASE_SNAKE}_/${NEW_SNAKE}_/g" "$file"
+	KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" perl -pi -e "next if index(\$_, \$ENV{KEEP_MARKER}) >= 0; s/(?<![A-Za-z0-9])${FUTUREBASE_BASE_SNAKE}_/${NEW_SNAKE}_/g" "$file"
 	# Constants and the client-owned distribution environment variable.
-	perl -pi -e "s/(?<![A-Za-z0-9])${FUTUREBASE_BASE_UPPER}_/${NEW_UPPER}_/g" "$file"
+	KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" perl -pi -e "next if index(\$_, \$ENV{KEEP_MARKER}) >= 0; s/(?<![A-Za-z0-9])${FUTUREBASE_BASE_UPPER}_/${NEW_UPPER}_/g" "$file"
 	# Slug contexts: exact strings, pattern namespaces, handles, package names,
 	# docblocks, and the style.css text-domain header.
-	perl -pi -e "s/'${FUTUREBASE_BASE_SLUG}'/'${NEW_SLUG}'/g" "$file"
-	perl -pi -e "s/\"${FUTUREBASE_BASE_SLUG}\"/\"${NEW_SLUG}\"/g" "$file"
-	perl -pi -e "s/\`${FUTUREBASE_BASE_SLUG}\`/\`${NEW_SLUG}\`/g" "$file"
-	perl -pi -e "s#(?<!/)${FUTUREBASE_BASE_SLUG}/#${NEW_SLUG}/#g" "$file"
-	perl -pi -e "s#/${FUTUREBASE_BASE_SLUG}\"#/${NEW_SLUG}\"#g" "$file"
+	KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" perl -pi -e "next if index(\$_, \$ENV{KEEP_MARKER}) >= 0; s/'${FUTUREBASE_BASE_SLUG}'/'${NEW_SLUG}'/g" "$file"
+	KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" perl -pi -e "next if index(\$_, \$ENV{KEEP_MARKER}) >= 0; s/\"${FUTUREBASE_BASE_SLUG}\"/\"${NEW_SLUG}\"/g" "$file"
+	KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" perl -pi -e "next if index(\$_, \$ENV{KEEP_MARKER}) >= 0; s/\`${FUTUREBASE_BASE_SLUG}\`/\`${NEW_SLUG}\`/g" "$file"
+	KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" perl -pi -e "next if index(\$_, \$ENV{KEEP_MARKER}) >= 0; s#(?<!/)${FUTUREBASE_BASE_SLUG}/#${NEW_SLUG}/#g" "$file"
+	KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" perl -pi -e "next if index(\$_, \$ENV{KEEP_MARKER}) >= 0; s#/${FUTUREBASE_BASE_SLUG}\"#/${NEW_SLUG}\"#g" "$file"
 	# Only these dashed identifiers belong to the theme. Family-level lifecycle
 	# names such as futurebase-context and --futurebase-path remain canonical.
-	perl -pi -e "s/\b${FUTUREBASE_BASE_SLUG}-(style|main|script)\b/${NEW_SLUG}-\$1/g" "$file"
-	perl -pi -e "s/(\@package\s+)${FUTUREBASE_BASE_SLUG}\b/\$1${NEW_SLUG}/g" "$file"
-	perl -pi -e "s/(Text Domain:\s*)${FUTUREBASE_BASE_SLUG}\b/\$1${NEW_SLUG}/g" "$file"
+	KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" perl -pi -e "next if index(\$_, \$ENV{KEEP_MARKER}) >= 0; s/\b${FUTUREBASE_BASE_SLUG}-(style|main|script)\b/${NEW_SLUG}-\$1/g" "$file"
+	KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" perl -pi -e "next if index(\$_, \$ENV{KEEP_MARKER}) >= 0; s/(\@package\s+)${FUTUREBASE_BASE_SLUG}\b/\$1${NEW_SLUG}/g" "$file"
+	KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" perl -pi -e "next if index(\$_, \$ENV{KEEP_MARKER}) >= 0; s/(Text Domain:\s*)${FUTUREBASE_BASE_SLUG}\b/\$1${NEW_SLUG}/g" "$file"
 	# Consume the full two-token product display name. Bare family references are
 	# provenance or base-only prose and must never be globally rewritten.
-	BASE_DISPLAY="$FUTUREBASE_BASE_DISPLAY" DISPLAY="$THEME_NAME" perl -i -pe '
+	KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" BASE_DISPLAY="$FUTUREBASE_BASE_DISPLAY" DISPLAY="$THEME_NAME" perl -i -pe '
+		next if index($_, $ENV{KEEP_MARKER}) >= 0;
 		s/\Q$ENV{BASE_DISPLAY}\E/$ENV{DISPLAY}/g;
 	' "$file"
 done

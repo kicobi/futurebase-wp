@@ -182,6 +182,11 @@ fi
 readme_count="$(grep -o "$FUTUREBASE_DISPLAY_SENTINEL" "$WT2/README.md" 2>/dev/null | wc -l | tr -d ' ')"
 [ "$readme_count" = "1" ] || problems+=("client README has $readme_count Futurebase occurrences; expected one")
 grep -qF 'Built on Futurebase WP.' "$WT2/README.md" 2>/dev/null || problems+=("client README provenance sentence missing")
+grep -qF "not \`$FUTUREBASE_BASE_SLUG\`" "$WT2/docs/deployment.md" 2>/dev/null || problems+=("deployment comparison was rewritten into a self-contradiction")
+grep -qF "The starter ships with the slug \`$FUTUREBASE_BASE_SLUG\`" "$WT2/docs/conventions.md" 2>/dev/null || problems+=("starter-history prose was rewritten")
+grep -qF "$FUTUREBASE_RENAME_KEEP_MARKER" "$WT2/docs/conventions.md" 2>/dev/null || problems+=("rename keep-line marker did not survive")
+grep -qF "project based on \`$FUTUREBASE_BASE_SLUG\`" "$WT2/docs/homepage-build-spec.md" 2>/dev/null || problems+=("starter identity in homepage guidance was rewritten")
+grep -qF "\`$REAL_SLUG/section-hero\`" "$WT2/docs/pattern-composition.md" 2>/dev/null || problems+=("unmarked client technical context was not renamed")
 if grep -qF '<!-- template-setup:' "$WT2/README.md" 2>/dev/null \
 	|| grep -qF '## Rename checklist' "$WT2/README.md" 2>/dev/null \
 	|| grep -qF '## Quick start with GitHub CLI' "$WT2/README.md" 2>/dev/null; then
@@ -216,7 +221,9 @@ upper_left="$(find "$WT2" -type f \
 	-not -name 'rename-theme.sh' \
 	-not -name 'test-rename.sh' \
 	-not -name 'audit-identity.sh' \
-	-exec grep -IHn -- "$FUTUREBASE_UPPER_SENTINEL" {} + 2>/dev/null | head -20 || true)"
+	-exec grep -IHn -- "$FUTUREBASE_UPPER_SENTINEL" {} + 2>/dev/null \
+	| grep -vF "$FUTUREBASE_RENAME_KEEP_MARKER" \
+	| head -20 || true)"
 if [ -n "$upper_left" ]; then
 	problems+=("uppercase Futurebase names survived outside tools: $upper_left")
 fi

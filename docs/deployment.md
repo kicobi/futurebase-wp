@@ -6,7 +6,7 @@ What's different about deploying a site built from this template vs. any other W
 
 Checklist — all must be true before pushing to a production host:
 
-- [ ] `npm run rename -- <slug>` ran; theme slug is the project's, not `futurebase`. Verify by grep: `grep -rn "futurebase" --include="*.php" --include="*.json"` returns nothing unexpected.
+- [ ] `npm run rename -- <slug>` ran; theme slug is the project's, not `futurebase`. Verify by grep: `grep -rn "futurebase" --include="*.php" --include="*.json"` returns nothing unexpected. <!-- futurebase-rename: keep-line -->
 - [ ] `style.css` header is project-specific: `Theme Name`, `Description`, `Author`, `Author URI`, `Tags`. The rename script does *not* touch these.
 - [ ] `npm run verify` passes locally. CI should run the same script.
 - [ ] ACF Pro license is wired — either `ACF_PRO_LICENSE` env var on the host, or a `composer.json` with `auth.json` / `COMPOSER_AUTH`. See [acf-pro-setup.md](acf-pro-setup.md).
