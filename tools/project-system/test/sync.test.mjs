@@ -536,6 +536,38 @@ test('an older client receives the complete verifier closure together', () => {
 	}
 });
 
+test('a runner changed only by a historical client rename upgrades with the complete verifier closure', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const starter = join(dir, 'starter');
+		const projectRoot = join(dir, 'project');
+		initRepo(starter);
+		mkdirSync(projectRoot);
+		write(starter, 'style.css', '/*\nTheme Name: Futurebase WP\nText Domain: futurebase\n*/\n');
+		for (const rel of VERIFIER_CLOSURE) {
+			const old = rel === 'bin/verify-theme.sh' ? '# Futurebase WP calls futurebase_register_blocks()\n' : `old ${rel}\n`;
+			write(starter, rel, old, rel.endsWith('.sh') ? 0o755 : 0o644);
+		}
+		commitAll(starter, 'historical rename-sensitive verifier');
+		for (const rel of VERIFIER_CLOSURE) write(starter, rel, `new ${rel}\n`, rel.endsWith('.sh') ? 0o755 : 0o644);
+		const head = commitAll(starter, 'portable verifier closure');
+
+		write(projectRoot, 'style.css', '/*\nTheme Name: Acme Client\nText Domain: acme-client\n*/\n');
+		for (const rel of VERIFIER_CLOSURE) {
+			const promoted = rel === 'bin/verify-theme.sh' ? '# Acme Client calls acme_client_register_blocks()\n' : `old ${rel}\n`;
+			write(projectRoot, rel, promoted, rel.endsWith('.sh') ? 0o755 : 0o644);
+		}
+
+		const entries = planFiles({ projectRoot, starter, ref: head }).filter((entry) => VERIFIER_CLOSURE.includes(entry.rel));
+		assert.deepEqual(entries.map((entry) => entry.rel).sort(), VERIFIER_CLOSURE.slice().sort());
+		assert.ok(entries.every((entry) => entry.state === 'update'), `the deterministic historical rename is not a local edit: ${JSON.stringify(entries)}`);
+		for (const entry of entries) assert.equal(applyEntry(entry, { projectRoot, starter }), true);
+		for (const rel of VERIFIER_CLOSURE) assert.equal(readFileSync(join(projectRoot, rel), 'utf8'), `new ${rel}\n`);
+	} finally {
+		cleanup();
+	}
+});
+
 test('a locally modified verifier runner remains a conflict and is never overwritten', () => {
 	const { dir, cleanup } = sandbox();
 	try {

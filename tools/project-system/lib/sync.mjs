@@ -216,26 +216,27 @@ function themeTechnicalIdentity(styleCss) {
 	return { slug, snake, upper: snake.toUpperCase() };
 }
 
+function themeDisplayName(styleCss) {
+	return /^Theme Name:\s*(.+?)\s*$/im.exec(String(styleCss || ''))?.[1] ?? null;
+}
+
 function escapeRegExp(value) {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// REVIEW files often differ solely because promotion renamed the theme. Undo
-// only the same bounded technical contexts rename-theme.sh owns; display-name
-// prose and unquoted client language deliberately remain untouched.
-export function reverseNormalizeReviewIdentity(content, projectIdentity, starterIdentity) {
-	if (!projectIdentity || !starterIdentity || projectIdentity.slug === starterIdentity.slug) return String(content);
-	const from = Object.fromEntries(Object.entries(projectIdentity).map(([key, value]) => [key, escapeRegExp(value)]));
-	const to = starterIdentity;
-	let normalized = String(content);
+function translateTechnicalIdentity(content, fromIdentity, toIdentity) {
+	if (!fromIdentity || !toIdentity || fromIdentity.slug === toIdentity.slug) return String(content);
+	const from = Object.fromEntries(Object.entries(fromIdentity).map(([key, value]) => [key, escapeRegExp(value)]));
+	const to = toIdentity;
+	let translated = String(content);
 
 	// PHPCS uses the same bare value shape for its prefix and text-domain
 	// properties, so the owning property is the only safe discriminator.
-	normalized = normalized.replace(
+	translated = translated.replace(
 		new RegExp(`(<property\\s+name="prefixes"[\\s\\S]*?<element\\s+value=")${from.snake}("\\s*\\/>[\\s\\S]*?<\\/property>)`, 'g'),
 		`$1${to.snake}$2`,
 	);
-	normalized = normalized.replace(
+	translated = translated.replace(
 		new RegExp(`(<property\\s+name="text_domain"[\\s\\S]*?<element\\s+value=")${from.slug}("\\s*\\/>[\\s\\S]*?<\\/property>)`, 'g'),
 		`$1${to.slug}$2`,
 	);
@@ -243,16 +244,23 @@ export function reverseNormalizeReviewIdentity(content, projectIdentity, starter
 	// PHP/global prefixes, exact quoted slug literals, pattern namespaces,
 	// package annotations, the Text Domain header, and the three registered
 	// frontend asset handles are the rename contract's technical identity set.
-	normalized = normalized.replace(new RegExp(`(?<![A-Za-z0-9])${from.snake}_`, 'g'), `${to.snake}_`);
-	normalized = normalized.replace(new RegExp(`(?<![A-Za-z0-9])${from.upper}_`, 'g'), `${to.upper}_`);
-	normalized = normalized.replace(new RegExp(`(['"\\x60])${from.slug}\\1`, 'g'), `$1${to.slug}$1`);
-	normalized = normalized.replace(new RegExp(`(?<!/)${from.slug}/`, 'g'), `${to.slug}/`);
-	normalized = normalized.replace(new RegExp(`/${from.slug}"`, 'g'), `/${to.slug}"`);
-	normalized = normalized.replace(new RegExp(`\\b${from.slug}-(style|main|script)\\b`, 'g'), `${to.slug}-$1`);
-	normalized = normalized.replace(new RegExp(`(@package\\s+)${from.slug}\\b`, 'g'), `$1${to.slug}`);
-	normalized = normalized.replace(new RegExp(`(Text Domain:\\s*)${from.slug}\\b`, 'g'), `$1${to.slug}`);
+	translated = translated.replace(new RegExp(`(?<![A-Za-z0-9])${from.snake}_`, 'g'), `${to.snake}_`);
+	translated = translated.replace(new RegExp(`(?<![A-Za-z0-9])${from.upper}_`, 'g'), `${to.upper}_`);
+	translated = translated.replace(new RegExp(`(['"\\x60])${from.slug}\\1`, 'g'), `$1${to.slug}$1`);
+	translated = translated.replace(new RegExp(`(?<!/)${from.slug}/`, 'g'), `${to.slug}/`);
+	translated = translated.replace(new RegExp(`/${from.slug}"`, 'g'), `/${to.slug}"`);
+	translated = translated.replace(new RegExp(`\\b${from.slug}-(style|main|script)\\b`, 'g'), `${to.slug}-$1`);
+	translated = translated.replace(new RegExp(`(@package\\s+)${from.slug}\\b`, 'g'), `$1${to.slug}`);
+	translated = translated.replace(new RegExp(`(Text Domain:\\s*)${from.slug}\\b`, 'g'), `$1${to.slug}`);
 
-	return normalized;
+	return translated;
+}
+
+// REVIEW files often differ solely because promotion renamed the theme. Undo
+// only the same bounded technical contexts rename-theme.sh owns; display-name
+// prose and unquoted client language deliberately remain untouched.
+export function reverseNormalizeReviewIdentity(content, projectIdentity, starterIdentity) {
+	return translateTechnicalIdentity(content, projectIdentity, starterIdentity);
 }
 
 // Has this exact content ever been the upstream version of this path?
@@ -267,6 +275,36 @@ export function isKnownUpstreamVersion(starter, ref, rel, blob, limit = 80) {
 	if (!r.ok || !r.stdout) return false;
 	for (const commit of r.stdout.split('\n').filter(Boolean)) {
 		if (blobAt(starter, commit, rel) === blob) return true;
+	}
+	return false;
+}
+
+// verify-theme.sh became SAFE only after its last rename-sensitive reference
+// was removed. A client promoted from the earlier runner therefore has one
+// deterministic project-prefix substitution even when nobody edited it. This
+// is a one-time classification migration, not SAFE-file normalization: derive
+// the exact bytes the historical promotion produced and require an exact match.
+// A genuinely edited runner still matches no upstream-derived version and
+// remains a conflict.
+function isKnownPromotedVerifierRunner(starter, ref, rel, projectRoot, projectIdentity, limit = 80) {
+	if (rel !== 'bin/verify-theme.sh' || !projectIdentity) return false;
+	const projectBytes = readFileSync(join(projectRoot, rel));
+	if (projectBytes.includes(0)) return false;
+	const projectDisplay = themeDisplayName(readFileSync(join(projectRoot, 'style.css'), 'utf8'));
+	const commits = git(starter, ['rev-list', `--max-count=${limit}`, ref, '--', rel]);
+	if (!commits.ok || !commits.stdout) return false;
+	for (const commit of commits.stdout.split('\n').filter(Boolean)) {
+		const historical = blobBytes(starter, blobAt(starter, commit, rel));
+		const historicalStyle = textAt(starter, commit, 'style.css');
+		const historicalIdentity = themeTechnicalIdentity(historicalStyle);
+		const historicalDisplay = themeDisplayName(historicalStyle);
+		if (!historical || historical.includes(0)) continue;
+		let promoted = translateTechnicalIdentity(historical.toString('utf8'), historicalIdentity, projectIdentity);
+		// The historical rename also replaced the full template display name.
+		// This is deliberately absent from REVIEW normalization, where prose is
+		// client-owned; here it is part of reproducing one exact old promotion.
+		if (historicalDisplay && projectDisplay) promoted = promoted.replaceAll(historicalDisplay, projectDisplay);
+		if (promoted === projectBytes.toString('utf8')) return true;
 	}
 	return false;
 }
@@ -320,7 +358,9 @@ export function planFiles({ projectRoot, starter, ref, only }) {
 				}
 			}
 		}
-		const stale = isKnownUpstreamVersion(starter, ref, rel, projectBlob);
+		const stale =
+			isKnownUpstreamVersion(starter, ref, rel, projectBlob) ||
+			(cls === CLASS.SAFE && isKnownPromotedVerifierRunner(starter, ref, rel, projectRoot, projectIdentity));
 		entries.push({ rel, cls, state: stale ? 'update' : 'conflict', starterBlob, projectBlob, mode });
 	}
 
