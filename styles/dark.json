@@ -86,8 +86,8 @@
 					"outline": {
 						"color": "var(--wp--preset--color--contrast)",
 						"style": "solid",
-						"width": "2px",
-						"offset": "2px"
+						"width": "var(--wp--custom--focus--outline--width)",
+						"offset": "var(--wp--custom--focus--outline--offset)"
 					}
 				}
 			},
@@ -104,8 +104,8 @@
 					"outline": {
 						"color": "var(--wp--preset--color--contrast)",
 						"style": "solid",
-						"width": "2px",
-						"offset": "2px"
+						"width": "var(--wp--custom--focus--outline--width)",
+						"offset": "var(--wp--custom--focus--outline--offset)"
 					}
 				}
 			}

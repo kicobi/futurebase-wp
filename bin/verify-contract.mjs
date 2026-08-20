@@ -11,8 +11,9 @@
 //   item 4  validated pattern filenames and headers but never looked at what
 //           the page-level pattern composes.
 //   item 7  matched `"fluid": true` anywhere in theme.json, including inside a
-//           preset, and only examined rem-denominated sizes — a 32px preset
-//           needs fluid just as much and was skipped.
+//           preset, and only examined root rem-denominated sizes — a 32px or
+//           per-block preset needs fluid just as much and was skipped. Style
+//           variations were syntax-checked elsewhere but never inspected.
 //   item 9  parsed customTemplates with an AWK state machine that read compact
 //           JSON as "no templates declared", passing by finding nothing.
 //
@@ -23,8 +24,8 @@
 //
 // Slug-free by construction: the theme slug is read from style.css at runtime.
 
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
+import { isAbsolute, join, relative, sep } from 'node:path';
 
 // --- block markup ------------------------------------------------------------
 
@@ -142,16 +143,34 @@ export function scannableSource(source) {
 const TOLERATED = [/"width":"\d+px"/g, /<div style="height:\s*\d+px"/g];
 
 const RAW_VALUE_RULES = [
-	['hex color', /#[0-9a-fA-F]{3,8}\b/],
-	['rgb()/rgba()', /\brgba?\([^)]*\)/],
-	['px value', /\b\d+px\b/],
-	['rem value', /\b\d+(?:\.\d+)?rem\b/],
+	['hex color', /#[0-9a-f]{3,8}\b/i],
+	['color function', /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color(?:-mix)?)\s*\([^)]*\)/i],
+	['length', /(?<![A-Za-z0-9_.-])[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:px|rem|em|ch|ex|lh|rlh|vmin|vmax|svw|svh|lvw|lvh|dvw|dvh|vw|vh|cm|mm|q|in|pt|pc)\b/i],
 ];
+
+function rawValueHits(value) {
+	const text = String(value);
+	const hits = [];
+	for (const [label, re] of RAW_VALUE_RULES) {
+		const hit = text.match(re);
+		if (hit) hits.push({ label, value: hit[0] });
+	}
+	return hits;
+}
 
 // Spaces, not deletion: removing the text would join its neighbours into tokens
 // that were never written (`#ff` + `0000`), and the column a value sits at is
 // the only way to read a reported line back against the file.
-const withoutTolerated = (line) => TOLERATED.reduce((acc, re) => acc.replace(re, blankOut), line);
+const withoutTolerated = (line) => {
+	let result = TOLERATED.reduce((acc, re) => acc.replace(re, blankOut), line);
+	// core/cover serializes its numeric minHeight + minHeightUnit attributes as
+	// an inline min-height. Like image width and spacer height, no token-valued
+	// block attribute exists; keep the exemption bounded to the generated class.
+	if (/class="[^"]*\bwp-block-cover\b/.test(line)) {
+		result = result.replace(/min-height:\s*\d+(?:\.\d+)?(?:px|rem|em|vh|vw)\b/gi, blankOut);
+	}
+	return result;
+};
 
 export function checkRawValues(files) {
 	const problems = [];
@@ -159,12 +178,34 @@ export function checkRawValues(files) {
 		const lines = scannableSource(contents).split('\n');
 		lines.forEach((line, index) => {
 			const scannable = withoutTolerated(line);
-			for (const [label, re] of RAW_VALUE_RULES) {
-				const hit = scannable.match(re);
-				if (hit) problems.push(`${file}:${index + 1}: raw ${label} "${hit[0]}" — every value resolves to a theme.json preset`);
+			for (const hit of rawValueHits(scannable)) {
+				problems.push(`${file}:${index + 1}: raw ${hit.label} "${hit.value}" — every value resolves to a theme.json preset`);
 			}
 		});
 	}
+	return problems;
+}
+
+// theme.json preset and settings.custom values are definitions, so raw values
+// are legitimate there. Only the `styles` usage tree must consume those
+// definitions through var(--wp--preset--*) or var(--wp--custom--*) references.
+export function checkThemeStyleValues(theme, { file = 'theme.json' } = {}) {
+	const problems = [];
+	const walk = (value, path) => {
+		if (typeof value === 'string') {
+			for (const hit of rawValueHits(value)) {
+				problems.push(`${file}: ${path}: raw ${hit.label} "${hit.value}" — styles values resolve to a theme.json preset or settings.custom token`);
+			}
+			return;
+		}
+		if (Array.isArray(value)) {
+			value.forEach((child, index) => walk(child, `${path}[${index}]`));
+			return;
+		}
+		if (!value || typeof value !== 'object') return;
+		for (const [key, child] of Object.entries(value)) walk(child, `${path}.${key}`);
+	};
+	if (theme?.styles && typeof theme.styles === 'object') walk(theme.styles, 'styles');
 	return problems;
 }
 
@@ -313,39 +354,76 @@ export function checkPageComposition(php, themeSlug, { file = 'patterns/home.php
 const REM_PX = 16;
 
 function sizeInRem(size) {
-	const rem = /^([\d.]+)rem$/.exec(size ?? '');
-	if (rem) return parseFloat(rem[1]);
-	const px = /^([\d.]+)px$/.exec(size ?? '');
-	if (px) return parseFloat(px[1]) / REM_PX;
-	return null; // em, %, clamp(), var() — unmeasurable; the caller reports it
+	if (typeof size !== 'string') return null;
+	const match = /^([+]?(?:\d+(?:\.\d*)?|\.\d+))(rem|px)$/i.exec(size.trim());
+	if (!match) return null;
+	const amount = Number.parseFloat(match[1]);
+	if (!Number.isFinite(amount) || amount <= 0) return null;
+	return match[2].toLowerCase() === 'px' ? amount / REM_PX : amount;
 }
 
-export function checkFluidTypography(theme) {
+function typographyScopes(theme) {
+	const settings = theme?.settings ?? {};
+	const scopes = [];
+	if (settings.typography !== undefined) scopes.push({ path: 'settings.typography', typography: settings.typography });
+	for (const [block, blockSettings] of Object.entries(settings.blocks ?? {})) {
+		if (blockSettings?.typography !== undefined) scopes.push({ path: `settings.blocks.${block}.typography`, typography: blockSettings.typography });
+	}
+	return scopes;
+}
+
+export function checkFluidTypography(theme, { file = 'theme.json', requireGlobalFluid = true } = {}) {
 	const problems = [];
-	const typography = theme?.settings?.typography ?? {};
+	const globalTypography = theme?.settings?.typography;
 
 	// Exactly settings.typography.fluid, not "the string appears somewhere".
-	if (typography.fluid !== true) {
-		problems.push(`theme.json: settings.typography.fluid must be true (found ${JSON.stringify(typography.fluid ?? null)})`);
+	if (requireGlobalFluid && globalTypography?.fluid !== true) {
+		problems.push(`${file}: settings.typography.fluid must be true (found ${JSON.stringify(globalTypography?.fluid ?? null)})`);
 	}
 
-	for (const preset of typography.fontSizes ?? []) {
-		const rem = sizeInRem(preset.size);
-		// A size the rule cannot measure used to be skipped, so a `2em` heading
-		// escaped the fluid requirement entirely — the check reported OK because
-		// it had quietly declined to look. If it cannot be measured it cannot be
-		// held to the contract, so say that rather than passing it.
-		if (rem === null) {
-			problems.push(`theme.json: fontSize '${preset.slug}' is ${JSON.stringify(preset.size ?? null)} — sizes must be rem or px so the fluid rule can measure them`);
+	for (const { path, typography } of typographyScopes(theme)) {
+		if (!typography || typeof typography !== 'object' || Array.isArray(typography)) {
+			problems.push(`${file}: ${path} must be an object`);
 			continue;
 		}
-		if (rem <= 1) continue;
-		if (!preset.fluid || typeof preset.fluid !== 'object') {
-			problems.push(`theme.json: fontSize '${preset.slug}' is ${preset.size} (> 1rem) but declares no fluid { min, max }`);
+		if (typography.fluid !== undefined && typography.fluid !== true) {
+			problems.push(`${file}: ${path}.fluid must be true when declared (found ${JSON.stringify(typography.fluid)})`);
+		}
+		if (typography.fontSizes !== undefined && !Array.isArray(typography.fontSizes)) {
+			problems.push(`${file}: ${path}.fontSizes must be an array`);
 			continue;
 		}
-		if (typeof preset.fluid.min !== 'string' || typeof preset.fluid.max !== 'string') {
-			problems.push(`theme.json: fontSize '${preset.slug}' fluid must carry both min and max as strings`);
+		for (const preset of typography.fontSizes ?? []) {
+			const slug = typeof preset?.slug === 'string' && preset.slug ? preset.slug : '<unnamed>';
+			const prefix = `${file}: ${path} fontSize '${slug}'`;
+			const size = sizeInRem(preset?.size);
+			if (size === null) {
+				problems.push(`${prefix} size ${JSON.stringify(preset?.size ?? null)} must be rem or px so the fluid rule can measure it`);
+			}
+
+			const fluid = preset?.fluid;
+			let min = null;
+			let max = null;
+			if (fluid !== undefined) {
+				if (!fluid || typeof fluid !== 'object' || Array.isArray(fluid)) {
+					problems.push(`${prefix} fluid must be an object carrying both min and max`);
+				} else if (!Object.hasOwn(fluid, 'min') || !Object.hasOwn(fluid, 'max')) {
+					problems.push(`${prefix} fluid must carry both min and max`);
+				} else {
+					min = sizeInRem(fluid.min);
+					max = sizeInRem(fluid.max);
+					if (min === null) problems.push(`${prefix} fluid min ${JSON.stringify(fluid.min)} must be rem or px`);
+					if (max === null) problems.push(`${prefix} fluid max ${JSON.stringify(fluid.max)} must be rem or px`);
+					if (min !== null && max !== null) {
+						if (min > max) problems.push(`${prefix} fluid min ${fluid.min} is greater than max ${fluid.max}`);
+					}
+				}
+			}
+
+			const largest = Math.max(...[size, min, max].filter((value) => value !== null));
+			if (Number.isFinite(largest) && largest > 1 && fluid === undefined) {
+				problems.push(`${prefix} reaches ${largest}rem (> 1rem) but declares no fluid { min, max }`);
+			}
 		}
 	}
 	return problems;
@@ -353,23 +431,52 @@ export function checkFluidTypography(theme) {
 
 // --- item 9: custom templates exist ------------------------------------------
 
-export function checkCustomTemplates(theme, hasTemplate) {
+export function checkCustomTemplates(theme, hasTemplate, { file = 'theme.json' } = {}) {
 	const problems = [];
 	const entries = theme?.customTemplates;
 	if (entries === undefined) return problems;
 	if (!Array.isArray(entries)) {
-		problems.push('theme.json: customTemplates must be an array');
+		problems.push(`${file}: customTemplates must be an array`);
 		return problems;
 	}
 	for (const entry of entries) {
 		const name = entry?.name;
 		if (typeof name !== 'string' || !name) {
-			problems.push(`theme.json: customTemplates entry has no name (${JSON.stringify(entry)})`);
+			problems.push(`${file}: customTemplates entry has no name (${JSON.stringify(entry)})`);
 			continue;
 		}
-		if (!hasTemplate(name)) problems.push(`theme.json: customTemplate '${name}' has no templates/${name}.html`);
+		if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(name)) {
+			problems.push(`${file}: customTemplate '${name}' name must be a safe slug (lowercase letters, digits, and single dashes)`);
+			continue;
+		}
+		const target = hasTemplate(name);
+		if (target === true) continue;
+		if (!target || target.exists === false) {
+			problems.push(`${file}: customTemplate '${name}' has no templates/${name}.html`);
+		} else if (target.symlink) {
+			problems.push(`${file}: customTemplate '${name}' target must not be a symlink`);
+		} else if (target.contained === false) {
+			problems.push(`${file}: customTemplate '${name}' target is not contained in the theme`);
+		} else if (!target.regular) {
+			problems.push(`${file}: customTemplate '${name}' target must be a regular file`);
+		}
 	}
 	return problems;
+}
+
+export function templateTargetStatus(root, name) {
+	const abs = join(root, 'templates', `${name}.html`);
+	try {
+		const stat = lstatSync(abs);
+		if (stat.isSymbolicLink()) return { exists: true, symlink: true, regular: false, contained: false };
+		const rootReal = realpathSync(root);
+		const targetReal = realpathSync(abs);
+		const rel = relative(rootReal, targetReal);
+		const contained = rel === '' || (!isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`));
+		return { exists: true, symlink: false, regular: stat.isFile(), contained };
+	} catch {
+		return { exists: false, symlink: false, regular: false, contained: false };
+	}
 }
 
 // --- item 5: theme-path references -------------------------------------------
@@ -448,6 +555,40 @@ export function collect(dirs, root) {
 	return out;
 }
 
+// Root theme.json and every direct styles/*.json variation enter one parsed
+// pipeline. Keeping variation parsing in the shell created two rule sets that
+// could only drift: the shell knew whether JSON parsed, while the JavaScript
+// checker knew what valid JSON was allowed to say.
+export function loadThemeJsonDocuments(root) {
+	const documents = [];
+	const problems = [];
+	const files = ['theme.json'];
+	const stylesDir = join(root, 'styles');
+	if (existsSync(stylesDir)) {
+		try {
+			for (const entry of readdirSync(stylesDir, { withFileTypes: true })) {
+				if (entry.name.endsWith('.json')) files.push(`styles/${entry.name}`);
+			}
+		} catch (err) {
+			problems.push(`styles/: cannot read style variations — ${err.message}`);
+		}
+	}
+
+	for (const file of files.sort((a, b) => a.localeCompare(b))) {
+		const path = join(root, file);
+		if (!existsSync(path)) {
+			if (file === 'theme.json') problems.push('theme.json is missing');
+			continue;
+		}
+		try {
+			documents.push({ file, theme: JSON.parse(readFileSync(path, 'utf8')) });
+		} catch (err) {
+			problems.push(`${file}: does not parse — ${err.message}`);
+		}
+	}
+	return { documents, problems };
+}
+
 function main() {
 	const root = process.cwd();
 	const problems = [];
@@ -492,19 +633,14 @@ function main() {
 		problems.push(...checkPageComposition(pattern.contents, themeSlug, { file: pattern.file, knownPatterns }));
 	}
 
-	const themeJsonPath = join(root, 'theme.json');
-	if (existsSync(themeJsonPath)) {
-		let theme;
-		try {
-			theme = JSON.parse(readFileSync(themeJsonPath, 'utf8'));
-		} catch (err) {
-			console.error(`verify-contract: theme.json does not parse — ${err.message}`);
-			process.exit(1);
+	const themeDocuments = loadThemeJsonDocuments(root);
+	problems.push(...themeDocuments.problems);
+	for (const { file, theme } of themeDocuments.documents) {
+		problems.push(...checkFluidTypography(theme, { file, requireGlobalFluid: file === 'theme.json' }));
+		problems.push(...checkThemeStyleValues(theme, { file }));
+		if (file === 'theme.json') {
+			problems.push(...checkCustomTemplates(theme, (name) => templateTargetStatus(root, name), { file }));
 		}
-		problems.push(...checkFluidTypography(theme));
-		problems.push(...checkCustomTemplates(theme, (name) => existsSync(join(root, 'templates', `${name}.html`))));
-	} else {
-		problems.push('theme.json is missing');
 	}
 
 	const markup = collect(['patterns', 'templates', 'parts'], root);

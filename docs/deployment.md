@@ -132,7 +132,7 @@ This starter ships `.github/workflows/ci.yml` — a GitHub Actions workflow that
 | `a11y` | Starts `wp-env`, runs `npm run a11y` at desktop/mobile widths, then stops `wp-env` | `node` |
 | `verify` | `bin/verify-theme.sh` | `node` + `php` |
 
-`bin/verify-theme.sh` re-runs the lint/build/phpcs/phpstan stack (redundant but cheap) and adds the block-theme contract greps plus the `pa11y-ci` WCAG2AA gate. The `verify` job does not boot `wp-env`, so that embedded a11y check still degrades to a yellow warning there. The separate `a11y` job boots `wp-env` and makes WCAG2AA a hard CI gate.
+`bin/verify-theme.sh` re-runs the lint/build/phpcs/phpstan stack (redundant but cheap) and adds parsed block-theme contract checks across markup, root `theme.json`, and every style variation, plus the `pa11y-ci` WCAG2AA gate. The `verify` job does not boot `wp-env`, so that embedded a11y check still degrades to a yellow warning there. The separate `a11y` job boots `wp-env` and makes WCAG2AA a hard CI gate.
 
 GitHub-hosted runners ship Docker preinstalled, so `wp-env` works in the default `ubuntu-latest` image without extra setup. Expect the `a11y` job to add roughly 90 seconds per run.
 

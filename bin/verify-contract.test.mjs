@@ -502,3 +502,234 @@ test('a symlinked pattern file is scanned, a symlinked directory is not followed
 		rmSync(root, { recursive: true, force: true });
 	}
 });
+
+// --- verifier completion: frozen negative fixtures --------------------------
+//
+// These five categories came from the PR #101 follow-up audit. Keep them as
+// whole-checker fixtures: the bug was not merely in a helper, but in which
+// files and settings the executable gate opened at all.
+
+test('a style variation cannot disable fluid typography', () => {
+	const root = mkdtempSync(join(tmpdir(), 'contract-variation-fluid-'));
+	try {
+		fixtureTheme(root);
+		mkdirSync(join(root, 'styles'));
+		writeFileSync(join(root, 'styles', 'dark.json'), JSON.stringify({ version: 3, title: 'Dark', settings: { typography: { fluid: false } } }));
+		const result = runChecker(root);
+		assert.equal(result.status, 1, 'every styles/*.json document must enter the parsed checker');
+		assert.match(result.stderr, /styles\/dark\.json.*fluid/);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test('style-variation per-block typography is checked too', () => {
+	const root = mkdtempSync(join(tmpdir(), 'contract-variation-block-fluid-'));
+	try {
+		fixtureTheme(root);
+		mkdirSync(join(root, 'styles'));
+		writeFileSync(join(root, 'styles', 'editorial.json'), JSON.stringify({
+			version: 3,
+			title: 'Editorial',
+			settings: { blocks: { 'core/post-title': { typography: { fontSizes: [{ slug: 'hero', size: '48px' }] } } } },
+		}));
+		const result = runChecker(root);
+		assert.equal(result.status, 1);
+		assert.match(result.stderr, /styles\/editorial\.json.*core\/post-title.*hero.*fluid/);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test('per-block typography presets cannot bypass the fluid rule', () => {
+	const root = mkdtempSync(join(tmpdir(), 'contract-block-fluid-'));
+	try {
+		fixtureTheme(root);
+		writeFileSync(join(root, 'theme.json'), JSON.stringify({
+			version: 3,
+			settings: {
+				typography: { fluid: true, fontSizes: [] },
+				blocks: { 'core/heading': { typography: { fontSizes: [{ slug: 'display', size: '3rem' }] } } },
+			},
+		}));
+		const result = runChecker(root);
+		assert.equal(result.status, 1, 'settings.blocks.*.typography.fontSizes must be validated');
+		assert.match(result.stderr, /core\/heading.*display.*fluid/);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test('fluid range endpoints must be measurable', () => {
+	const root = mkdtempSync(join(tmpdir(), 'contract-fluid-range-'));
+	try {
+		fixtureTheme(root);
+		writeFileSync(join(root, 'theme.json'), JSON.stringify({
+			version: 3,
+			settings: { typography: { fluid: true, fontSizes: [{ slug: 'display', size: '2rem', fluid: { min: '1rem', max: '4em' } }] } },
+		}));
+		const result = runChecker(root);
+		assert.equal(result.status, 1, 'a string is not enough; min and max must be measurable rem/px values');
+		assert.match(result.stderr, /display.*max.*rem or px/);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test('a custom-template directory is not a template file', () => {
+	const root = mkdtempSync(join(tmpdir(), 'contract-template-directory-'));
+	try {
+		fixtureTheme(root);
+		writeFileSync(join(root, 'theme.json'), JSON.stringify({
+			version: 3,
+			customTemplates: [{ name: 'page-wide', title: 'Wide' }],
+			settings: { typography: { fluid: true, fontSizes: [] } },
+		}));
+		mkdirSync(join(root, 'templates', 'page-wide.html'));
+		const result = runChecker(root);
+		assert.equal(result.status, 1, 'existsSync() must not let a directory satisfy customTemplates');
+		assert.match(result.stderr, /page-wide.*regular file/);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test('uppercase CSS units and color functions cannot bypass raw-value detection', () => {
+	const root = mkdtempSync(join(tmpdir(), 'contract-uppercase-css-'));
+	try {
+		fixtureTheme(root);
+		writeFileSync(
+			join(root, 'patterns', '_section-hero.php'),
+			'<?php\n/**\n * Title: Hero\n * Slug: acme-theme/section-hero\n */\n?>\n<!-- wp:group {"style":{"spacing":{"padding":"24PX"},"color":{"text":"RGB(1 2 3)","background":"OKLCH(50% .2 20)"}}} /-->\n',
+		);
+		const result = runChecker(root);
+		assert.equal(result.status, 1, 'CSS syntax is ASCII case-insensitive');
+		assert.match(result.stderr, /24PX|RGB|OKLCH/);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+// Adjacent probes were added before the checker changed as well. They bound
+// the fix so it cannot reject legitimate definitions or solve only the exact
+// spelling used by the original reproductions.
+
+test('raw color and length values in root and variation styles are rejected, but settings definitions are allowed', () => {
+	for (const [label, theme, variation] of [
+		['root styles', { version: 3, settings: { typography: { fluid: true, fontSizes: [] } }, styles: { color: { text: '#123456' } } }, null],
+		['variation styles', { version: 3, settings: { typography: { fluid: true, fontSizes: [] } } }, { version: 3, title: 'Dark', styles: { elements: { button: { border: { width: '2px' } } } } }],
+	]) {
+		const root = mkdtempSync(join(tmpdir(), 'contract-style-values-'));
+		try {
+			fixtureTheme(root);
+			writeFileSync(join(root, 'theme.json'), JSON.stringify(theme));
+			if (variation) {
+				mkdirSync(join(root, 'styles'));
+				writeFileSync(join(root, 'styles', 'dark.json'), JSON.stringify(variation));
+			}
+			const result = runChecker(root);
+			assert.equal(result.status, 1, `${label} must be scanned`);
+			assert.match(result.stderr, /raw (?:hex color|length)/);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	}
+
+	const root = mkdtempSync(join(tmpdir(), 'contract-style-definitions-'));
+	try {
+		fixtureTheme(root);
+		writeFileSync(join(root, 'theme.json'), JSON.stringify({
+			version: 3,
+			settings: {
+				typography: { fluid: true, fontSizes: [{ slug: 'large', size: '2rem', fluid: { min: '1rem', max: '2rem' } }] },
+				color: { palette: [{ slug: 'brand', name: 'Brand', color: '#123456' }] },
+				custom: { focus: { width: '2px' } },
+			},
+			styles: { color: { text: 'var(--wp--preset--color--brand)' }, outline: { width: 'var(--wp--custom--focus--width)' } },
+		}));
+		const result = runChecker(root);
+		assert.equal(result.status, 0, result.stdout + result.stderr);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test('raw CSS detection reports signed decimals and modern color functions exactly', () => {
+	for (const value of ['-.5rem', '-2.25PX', '.75em', 'HSL(10 20% 30%)', 'color(display-p3 1 0 0)', 'oklab(50% .1 -.1)']) {
+		const problems = raw(`<!-- wp:group {"style":{"css":"${value}"}} /-->`);
+		assert.ok(problems.some((problem) => problem.includes(`"${value}"`)), `must report the complete raw value: ${value}`);
+	}
+});
+
+test('fluid ranges reject incomplete and inverted endpoints and use the largest endpoint', () => {
+	const fixtures = [
+		[{ slug: 'incomplete', size: '1rem', fluid: { min: '1rem' } }, /both min and max/],
+		[{ slug: 'inverted', size: '1rem', fluid: { min: '2rem', max: '1rem' } }, /min.*greater than max/],
+		[{ slug: 'large-max', size: '1rem', fluid: { min: '1rem', max: '2rem' } }, null],
+	];
+	for (const [preset, expected] of fixtures) {
+		const problems = checkFluidTypography(themeWith({ fontSizes: [preset] }));
+		if (expected) assert.ok(problems.some((problem) => expected.test(problem)), preset.slug);
+		else assert.deepEqual(problems, [], 'a complete range is valid even when size itself is body scale');
+	}
+});
+
+test('custom-template names are safe slugs and targets cannot traverse or symlink', () => {
+	for (const kind of ['traversal', 'symlink']) {
+		const root = mkdtempSync(join(tmpdir(), `contract-template-${kind}-`));
+		try {
+			fixtureTheme(root);
+			const name = kind === 'traversal' ? '../outside' : 'page-linked';
+			writeFileSync(join(root, 'theme.json'), JSON.stringify({
+				version: 3,
+				customTemplates: [{ name, title: 'Unsafe' }],
+				settings: { typography: { fluid: true, fontSizes: [] } },
+			}));
+			writeFileSync(join(root, 'outside.html'), '<!-- wp:paragraph /-->');
+			if (kind === 'symlink') symlinkSync(join(root, 'outside.html'), join(root, 'templates', 'page-linked.html'));
+			const result = runChecker(root);
+			assert.equal(result.status, 1, `${kind} custom template must fail closed`);
+			assert.match(result.stderr, kind === 'traversal' ? /safe slug/ : /symlink/);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	}
+});
+
+test('a regular custom-template file reached through an escaping templates directory is rejected', () => {
+	const base = mkdtempSync(join(tmpdir(), 'contract-template-contained-'));
+	const root = join(base, 'theme');
+	const outside = join(base, 'outside-templates');
+	try {
+		fixtureTheme(root);
+		rmSync(join(root, 'templates'), { recursive: true, force: true });
+		mkdirSync(outside);
+		writeFileSync(join(outside, 'front-page.html'), WIRING);
+		writeFileSync(join(outside, 'page-wide.html'), '<!-- wp:paragraph /-->');
+		symlinkSync(outside, join(root, 'templates'));
+		writeFileSync(join(root, 'theme.json'), JSON.stringify({
+			version: 3,
+			customTemplates: [{ name: 'page-wide', title: 'Wide' }],
+			settings: { typography: { fluid: true, fontSizes: [] } },
+		}));
+		const result = runChecker(root);
+		assert.equal(result.status, 1);
+		assert.match(result.stderr, /page-wide.*not contained/);
+	} finally {
+		rmSync(base, { recursive: true, force: true });
+	}
+});
+
+test('malformed style variations are reported by the parsed checker', () => {
+	const root = mkdtempSync(join(tmpdir(), 'contract-variation-json-'));
+	try {
+		fixtureTheme(root);
+		mkdirSync(join(root, 'styles'));
+		writeFileSync(join(root, 'styles', 'broken.json'), '{ invalid');
+		const result = runChecker(root);
+		assert.equal(result.status, 1);
+		assert.match(result.stderr, /styles\/broken\.json.*does not parse/);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});

@@ -143,7 +143,7 @@ Also capture:
 **Preview delivery** (structural, agent-verifiable):
 
 - `npm run verify` passes. Verify includes a `pa11y-ci` WCAG2AA gate that runs against the live wp-env instance when it's reachable; when wp-env isn't up, the gate degrades to a yellow warning so non-a11y workflows aren't blocked.
-  - The verify script wraps: contract greps (hex/rgb/px/clamp/fluid:true/customTemplates-on-disk/front-page-is-thin), comment grammar (`TODO(kind)` only), `lint`, `lint:css`, `phpcs`, `phpstan`, and finally `pa11y-ci`.
+  - The verify script wraps: parsed contract checks for markup plus root/variation `theme.json` (tokens, fluid typography, custom-template targets, front-page wiring), comment grammar (`TODO(kind)` only), `lint`, `lint:css`, `phpcs`, `phpstan`, and finally `pa11y-ci`.
 - `preview_inspect` assertions pass for every section at 1440 and 390.
 - `preview_console_logs` clean; `preview_network` no 404s (fonts especially).
 - Fresh-checkout render shows core's auto-injected skip link on first Tab press and reaches `#wp--skip-link--target` on activation.
