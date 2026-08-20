@@ -14,6 +14,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { normalizeBaseUrl, sanitizeTargetUrl, targetUrlHasSecret } from './targets.mjs';
 
 const readJsonSafe = (p) => {
 	try {
@@ -40,25 +41,37 @@ function row(label, before, after, direction, unit = '') {
 	return { label, before, after, unit, change };
 }
 
-const hostOf = (url) => {
+const baseIdentity = (url) => {
 	try {
-		return new URL(url).host;
+		const normalized = normalizeBaseUrl(url);
+		return { valid: true, origin: normalized ? new URL(normalized).origin : null };
 	} catch {
-		return url ?? null;
+		return { valid: false, origin: null };
 	}
 };
 // Trailing slash is not a difference worth blocking a comparison over.
 // Query strings are: they can select a language, product, filter, or other
 // materially different resource while keeping the same pathname. Fragments
 // stay irrelevant because they never reach the server.
-const pathOf = (url) => {
+const pageIdentity = (url, base) => {
+	if (!base.valid) return { valid: false, key: null, onBase: false };
 	try {
-		const parsed = new URL(url);
-		return `${parsed.pathname.replace(/\/+$/, '') || '/'}${parsed.search}`;
+		const parsed = base.origin ? new URL(url, `${base.origin}/`) : new URL(url);
+		if (!['http:', 'https:'].includes(parsed.protocol)) return { valid: false, key: null, onBase: false };
+		const onBase = base.origin !== null && parsed.origin === base.origin;
+		const originKey = onBase ? '<base-origin>' : parsed.origin;
+		return {
+			valid: true,
+			onBase,
+			key: `${originKey}\0${parsed.username}\0${parsed.password}\0${parsed.pathname.replace(/\/+$/, '') || '/'}${parsed.search}`,
+		};
 	} catch {
-		return String(url ?? '').replace(/\/+$/, '') || '/';
+		return { valid: false, key: null, onBase: false };
 	}
 };
+
+const safeBaseUrl = (value) => sanitizeTargetUrl(value, { originOnly: true });
+const safePageUrl = (value, baseUrl) => sanitizeTargetUrl(value, { baseUrl: safeBaseUrl(baseUrl) });
 const viewportKey = (vs) =>
 	(vs ?? [])
 		.map((v) => `${v.name}:${v.width}x${v.height}`)
@@ -92,14 +105,29 @@ export function compareTargets(baselineSummary, finalSummary) {
 		blocking.push(`viewports differ (baseline: ${bVp || 'none'} · final: ${fVp || 'none'}) — page-weight, layout and screenshot metrics are not comparable across different viewports`);
 	}
 
-	const bHost = hostOf(b.base_url);
-	const fHost = hostOf(f.base_url);
-	if (bHost !== fHost) {
-		limitations.push(`base URL host differs (baseline: ${bHost ?? 'none'} · final: ${fHost ?? 'none'}) — expected for a redesign that moves domain, but confirm it is deliberate`);
+	const bBase = baseIdentity(b.base_url);
+	const fBase = baseIdentity(f.base_url);
+	if (!bBase.valid || !fBase.valid) {
+		blocking.push('one or both base URLs are malformed or unsafe — target identity cannot be verified');
+	} else if ((bBase.origin === null) !== (fBase.origin === null)) {
+		blocking.push('one run declares a base URL and the other does not — target identity cannot be verified');
+	} else if (bBase.origin !== fBase.origin) {
+		limitations.push(`base URL origin differs (baseline: ${bBase.origin ?? 'none'} · final: ${fBase.origin ?? 'none'}) — expected for a redesign that moves domain, but confirm it is deliberate`);
 	}
 
 	const bPages = (b.pages ?? []).map((p) => p.name).sort();
 	const fPages = (f.pages ?? []).map((p) => p.name).sort();
+	let pageTargetHasSecret = false;
+	let pageTargetIsInvalid = false;
+	for (const [target, base] of [
+		[b, bBase],
+		[f, fBase],
+	]) {
+		for (const page of target.pages ?? []) {
+			if (targetUrlHasSecret(page.url, { baseUrl: base.origin })) pageTargetHasSecret = true;
+			if (base.valid && !pageIdentity(page.url, base).valid) pageTargetIsInvalid = true;
+		}
+	}
 	if (bPages.join('|') !== fPages.join('|')) {
 		const onlyB = bPages.filter((p) => !fPages.includes(p));
 		const onlyF = fPages.filter((p) => !bPages.includes(p));
@@ -115,21 +143,54 @@ export function compareTargets(baselineSummary, finalSummary) {
 	// nothing reported, and case-study will happily publish the difference as an
 	// improvement.
 	//
-	// On a moved domain the paths are expected to change too, and that is
-	// already disclosed above — blocking there would break the redesign
-	// workflow this tool exists for. On the SAME host there is no benign reason
-	// for a label to point somewhere else, so that blocks.
+	// On a declared origin move the paths are expected to change too, and that is
+	// already disclosed above — blocking there would break the redesign workflow
+	// this tool exists for. An off-base origin receives no such exemption: it is a
+	// different capture target even when the declared base itself moved.
 	const bByName = new Map((b.pages ?? []).map((p) => [p.name, p.url]));
-	const moved = [];
-	for (const p of f.pages ?? []) {
-		const was = bByName.get(p.name);
-		if (was === undefined) continue;
-		if (pathOf(was) !== pathOf(p.url)) moved.push(`${p.name}: ${was} → ${p.url}`);
+	if (bBase.valid && fBase.valid) {
+		const blockingMoves = [];
+		const allowedMoves = [];
+		for (const p of f.pages ?? []) {
+			const was = bByName.get(p.name);
+			if (was === undefined) continue;
+			const beforeIdentity = pageIdentity(was, bBase);
+			const afterIdentity = pageIdentity(p.url, fBase);
+			if (!beforeIdentity.valid || !afterIdentity.valid) {
+				blockingMoves.push(`${p.name}: one or both targets are malformed or unsafe`);
+				continue;
+			}
+			const secretBearing = targetUrlHasSecret(was, { baseUrl: bBase.origin }) || targetUrlHasSecret(p.url, { baseUrl: fBase.origin });
+			if (secretBearing) {
+				const beforeDisplay = safePageUrl(was, b.base_url);
+				const afterDisplay = safePageUrl(p.url, f.base_url);
+				blockingMoves.push(
+					beforeDisplay === afterDisplay
+						? `${p.name}: secret-bearing target differs or cannot support a public comparison`
+						: `${p.name}: secret-bearing target differs (${beforeDisplay} → ${afterDisplay}) and cannot support a public comparison`,
+				);
+				continue;
+			}
+			if (beforeIdentity.key === afterIdentity.key) continue;
+
+			const beforeDisplay = safePageUrl(was, b.base_url);
+			const afterDisplay = safePageUrl(p.url, f.base_url);
+			const detail = `${p.name}: ${beforeDisplay} → ${afterDisplay}`;
+			const followsDeclaredMove = Boolean(bBase.origin && fBase.origin) && beforeIdentity.onBase && afterIdentity.onBase && bBase.origin !== fBase.origin;
+			(followsDeclaredMove ? allowedMoves : blockingMoves).push(detail);
+		}
+		if (blockingMoves.length) {
+			blocking.push(`the same page name measures a different path, query, or origin (${blockingMoves.join(' · ')}) — that is a different page, not a changed one`);
+		}
+		if (allowedMoves.length) {
+			limitations.push(`the same page name measures a different path, query, or origin (${allowedMoves.join(' · ')}) — expected alongside the declared origin move, but confirm each pairing is the page you mean`);
+		}
 	}
-	if (moved.length) {
-		const message = `the same page name measures a different path or query (${moved.join(' · ')})`;
-		if (bHost === fHost) blocking.push(`${message} — on the same host, that is a different page, not a changed one`);
-		else limitations.push(`${message} — expected alongside the domain move, but confirm each pairing is the page you mean`);
+	if (pageTargetHasSecret && !blocking.some((reason) => reason.includes('secret-bearing target'))) {
+		blocking.push('a secret-bearing target differs or cannot support a public comparison — every historical page target must be public and unauthenticated');
+	}
+	if (pageTargetIsInvalid && !blocking.some((reason) => reason.includes('targets are malformed or unsafe'))) {
+		blocking.push('one or more page targets are malformed or have no verifiable HTTP(S) origin');
 	}
 
 	const bMods = (b.modules ?? []).slice().sort();
@@ -155,6 +216,9 @@ export function buildComparison(baselineRunDir, finalRunDir) {
 	const limitations = [];
 
 	// Comparability first: a mismatch here changes what every row below means.
+	// Historical summaries predate capture validation and can contain durable
+	// credentials. compareTargets keeps raw identities in memory so redaction
+	// cannot erase a difference, but formats every reason from safe display URLs.
 	const bSummary = readJsonSafe(join(baselineRunDir, 'summary.json'));
 	const fSummary = readJsonSafe(join(finalRunDir, 'summary.json'));
 	const { limitations: targetLimits, blocking } = compareTargets(bSummary, fSummary);

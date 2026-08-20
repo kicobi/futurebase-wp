@@ -517,6 +517,185 @@ test('allow-mismatch stays successful, records blocking JSON, and withholds clie
 	}
 });
 
+test('historical target secrets never reach comparison or case-study output', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const sentinel = 'HistoricalSecret987';
+		const complete = [{ module: 'crawl', status: 'complete' }];
+		const { root, report: caseStudyReport } = caseStudyFixture(dir, complete, 'completed');
+		const baselineDir = join(root, '.project', 'baseline', '2026-07-30T100000Z');
+		const finalDir = join(root, '.project', 'final', '2026-08-01T100000Z');
+		for (const [runDir, pageUrl] of [
+			[baselineDir, `https://example.test/preview?token=${sentinel}`],
+			[finalDir, 'https://example.test/preview?lang=sv'],
+		]) {
+			const summaryPath = join(runDir, 'summary.json');
+			const summary = JSON.parse(readFileSync(summaryPath, 'utf8'));
+			summary.target = {
+				base_url: 'https://example.test/',
+				pages: [{ name: 'home', url: pageUrl }],
+				viewports: [{ name: 'mobile', width: 390, height: 844 }],
+				modules: ['crawl'],
+			};
+			writeFileSync(summaryPath, JSON.stringify(summary, null, 2));
+		}
+
+		const blockedHuman = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root], { encoding: 'utf8' });
+		assert.equal(blockedHuman.status, EXIT.INVALID_CONFIG);
+		assert.doesNotMatch(blockedHuman.stdout + blockedHuman.stderr, new RegExp(sentinel));
+
+		const blockedJson = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--json'], { encoding: 'utf8' });
+		assert.equal(blockedJson.status, EXIT.INVALID_CONFIG);
+		assert.doesNotMatch(blockedJson.stdout + blockedJson.stderr, new RegExp(sentinel));
+		assert.match(JSON.parse(blockedJson.stdout).blocking[0], /lang=sv/);
+
+		const allowedJson = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--allow-mismatch', '--json'], { encoding: 'utf8' });
+		assert.equal(allowedJson.status, EXIT.OK, allowedJson.stderr || allowedJson.stdout);
+		assert.doesNotMatch(allowedJson.stdout + allowedJson.stderr, new RegExp(sentinel));
+
+		const reports = join(root, '.project', 'reports');
+		for (const file of [
+			'comparison-2026-08-01T100000Z.md',
+			'comparison-2026-08-01T100000Z-client.md',
+			'comparison-2026-08-01T100000Z.html',
+		]) {
+			assert.doesNotMatch(readFileSync(join(reports, file), 'utf8'), new RegExp(sentinel), file);
+		}
+
+		const allowedHuman = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--allow-mismatch'], { encoding: 'utf8' });
+		assert.equal(allowedHuman.status, EXIT.OK, allowedHuman.stderr || allowedHuman.stdout);
+		assert.doesNotMatch(allowedHuman.stdout + allowedHuman.stderr, new RegExp(sentinel));
+
+		const caseStudy = spawnSync(process.execPath, [COMPARE_CLI, 'project', 'case-study', '--project-root', root, '--json'], { encoding: 'utf8' });
+		assert.equal(caseStudy.status, EXIT.OK, caseStudy.stderr || caseStudy.stdout);
+		assert.doesNotMatch(caseStudy.stdout + caseStudy.stderr, new RegExp(sentinel));
+		assert.doesNotMatch(readFileSync(caseStudyReport, 'utf8'), new RegExp(sentinel));
+	} finally {
+		cleanup();
+	}
+});
+
+test('redaction never turns secret-selected historical targets into a clean client claim', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const sentinel = /BaselineSecret987|FinalSecret987/;
+		const complete = [{ module: 'crawl', status: 'complete' }];
+		const { root } = caseStudyFixture(dir, complete, 'completed');
+		const baselineDir = join(root, '.project', 'baseline', '2026-07-30T100000Z');
+		const finalDir = join(root, '.project', 'final', '2026-08-01T100000Z');
+		const setTarget = (runDir, url, broken) => {
+			const summaryPath = join(runDir, 'summary.json');
+			const summary = JSON.parse(readFileSync(summaryPath, 'utf8'));
+			summary.target = {
+				base_url: 'https://example.test/',
+				pages: [{ name: 'home', url }],
+				viewports: [],
+				modules: ['crawl'],
+			};
+			writeFileSync(summaryPath, JSON.stringify(summary, null, 2));
+			writeFileSync(join(runDir, 'crawl', 'crawl.json'), JSON.stringify({ summary: { fetched: 1, brokenLinkCount: broken, missingMetaDesc: 0 } }));
+		};
+		setTarget(baselineDir, '/preview?token=BaselineSecret987', 9);
+		setTarget(finalDir, '/preview?token=FinalSecret987', 0);
+
+		const blocked = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--json'], { encoding: 'utf8' });
+		assert.equal(blocked.status, EXIT.INVALID_CONFIG);
+		assert.doesNotMatch(blocked.stdout + blocked.stderr, sentinel);
+		const secretBlocking = JSON.parse(blocked.stdout).blocking[0];
+		assert.match(secretBlocking, /secret-bearing (?:query|target) differs/);
+		assert.doesNotMatch(secretBlocking, /\[redacted|→/);
+
+		const allowed = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--allow-mismatch', '--json'], { encoding: 'utf8' });
+		assert.equal(allowed.status, EXIT.OK, allowed.stderr || allowed.stdout);
+		assert.doesNotMatch(allowed.stdout + allowed.stderr, sentinel);
+		const client = readFileSync(join(root, '.project', 'reports', 'comparison-2026-08-01T100000Z-client.md'), 'utf8');
+		assert.doesNotMatch(client, sentinel);
+		assert.doesNotMatch(client, /Broken internal links: 9 → 0/);
+		assert.match(client, /figures are withheld/);
+
+		setTarget(finalDir, '/preview', 0);
+		const absent = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--json'], { encoding: 'utf8' });
+		assert.equal(absent.status, EXIT.INVALID_CONFIG);
+		assert.doesNotMatch(absent.stdout + absent.stderr, sentinel);
+		assert.match(JSON.parse(absent.stdout).blocking[0], /secret-bearing (?:query|target) differs/);
+	} finally {
+		cleanup();
+	}
+});
+
+test('fragment credentials and off-base origins cannot leak or support a client claim', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const sentinel = /BaselineSecret987|FinalSecret987/;
+		const complete = [{ module: 'crawl', status: 'complete' }];
+		const { root, report: caseStudyReport } = caseStudyFixture(dir, complete, 'completed');
+		const baselineDir = join(root, '.project', 'baseline', '2026-07-30T100000Z');
+		const finalDir = join(root, '.project', 'final', '2026-08-01T100000Z');
+		const setTarget = (runDir, baseUrl, url, broken, name = 'home') => {
+			const summaryPath = join(runDir, 'summary.json');
+			const summary = JSON.parse(readFileSync(summaryPath, 'utf8'));
+			summary.target = { base_url: baseUrl, pages: [{ name, url }], viewports: [], modules: ['crawl'] };
+			writeFileSync(summaryPath, JSON.stringify(summary, null, 2));
+			writeFileSync(join(runDir, 'crawl', 'crawl.json'), JSON.stringify({ summary: { fetched: 1, brokenLinkCount: broken, missingMetaDesc: 0 } }));
+		};
+
+		setTarget(baselineDir, 'https://example.test/', '/old#access_token=BaselineSecret987', 9);
+		setTarget(finalDir, 'https://example.test/', '/new', 0);
+		for (const args of [
+			['compare', '--json'],
+			['compare', '--allow-mismatch'],
+			['project', 'case-study', '--json'],
+		]) {
+			const result = spawnSync(process.execPath, [COMPARE_CLI, ...args, '--project-root', root], { encoding: 'utf8' });
+			assert.doesNotMatch(result.stdout + result.stderr, sentinel, args.join(' '));
+		}
+		for (const file of [
+			'comparison-2026-08-01T100000Z.md',
+			'comparison-2026-08-01T100000Z-client.md',
+			'comparison-2026-08-01T100000Z.html',
+		]) {
+			const output = readFileSync(join(root, '.project', 'reports', file), 'utf8');
+			assert.doesNotMatch(output, sentinel, file);
+			if (file.endsWith('-client.md')) assert.doesNotMatch(output, /Broken internal links: 9 → 0/);
+		}
+		assert.doesNotMatch(readFileSync(caseStudyReport, 'utf8'), sentinel);
+
+		setTarget(baselineDir, 'https://example.test/', '/preview#/callback?access_token=BaselineSecret987', 9);
+		setTarget(finalDir, 'https://example.test/', '/preview#public', 0);
+		const samePublicIdentity = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--allow-mismatch', '--json'], { encoding: 'utf8' });
+		assert.equal(samePublicIdentity.status, EXIT.OK, samePublicIdentity.stderr || samePublicIdentity.stdout);
+		assert.doesNotMatch(samePublicIdentity.stdout + samePublicIdentity.stderr, sentinel);
+		assert.ok(JSON.parse(samePublicIdentity.stdout).blocking.length > 0);
+		const fragmentClient = readFileSync(join(root, '.project', 'reports', 'comparison-2026-08-01T100000Z-client.md'), 'utf8');
+		assert.doesNotMatch(fragmentClient, /Broken internal links: 9 → 0/);
+		assert.match(fragmentClient, /figures are withheld/);
+
+		setTarget(baselineDir, 'https://example.test/', '/preview#/callback?access_token=BaselineSecret987', 9, 'old');
+		setTarget(finalDir, 'https://example.test/', '/preview#public', 0, 'new');
+		const unmatchedSecret = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--allow-mismatch', '--json'], { encoding: 'utf8' });
+		assert.equal(unmatchedSecret.status, EXIT.OK, unmatchedSecret.stderr || unmatchedSecret.stdout);
+		assert.doesNotMatch(unmatchedSecret.stdout + unmatchedSecret.stderr, sentinel);
+		assert.ok(JSON.parse(unmatchedSecret.stdout).blocking.length > 0);
+		const unmatchedClient = readFileSync(join(root, '.project', 'reports', 'comparison-2026-08-01T100000Z-client.md'), 'utf8');
+		assert.doesNotMatch(unmatchedClient, /Broken internal links: 9 → 0/);
+		assert.match(unmatchedClient, /figures are withheld/);
+
+		setTarget(baselineDir, 'https://example.test/', 'https://one.test/preview?token=SameSecret987', 9);
+		setTarget(finalDir, 'https://example.test/', 'https://two.test/preview?token=SameSecret987', 0);
+		const offBase = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--json'], { encoding: 'utf8' });
+		assert.equal(offBase.status, EXIT.INVALID_CONFIG);
+		assert.doesNotMatch(offBase.stdout + offBase.stderr, /SameSecret987/);
+
+		setTarget(baselineDir, 'https://admin%3ABaselineSecret987%40one.test', '/preview', 9);
+		setTarget(finalDir, 'https://admin%3AFinalSecret987%40two.test', '/preview', 0);
+		const malformedBase = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--json'], { encoding: 'utf8' });
+		assert.equal(malformedBase.status, EXIT.INVALID_CONFIG);
+		assert.doesNotMatch(malformedBase.stdout + malformedBase.stderr, sentinel);
+	} finally {
+		cleanup();
+	}
+});
+
 // --- a module may not report evidence it did not gather ----------------------
 //
 // Both of these returned `complete`. A comparison then treats `complete` as the

@@ -55,14 +55,48 @@ test('page targets preserve public queries but reject userinfo and secret parame
 	}
 });
 
+test('page targets fail closed on malformed encoded credentials and session keys', () => {
+	const safe = { base_url: 'https://example.test/', pages: [{ name: 'sv', url: '/about?lang=sv' }] };
+	assert.deepEqual(captureTargetErrors(safe), [], 'ordinary relative pages and public queries remain valid');
+
+	for (const url of [
+		'https://admin%3AFakeEncodedPassword987%40example.test',
+		'/preview?session_id=FakeSessionSecret987',
+		'/preview?sessionid=FakeSessionSecret987',
+		'/preview?jsessionid=FakeSessionSecret987',
+		'/preview?phpsessid=FakeSessionSecret987',
+		'/preview?auth[sessionid]=FakeSessionSecret987',
+		'/preview?auth[token][scope]=FakeSessionSecret987',
+		'/preview?auth.session_id=FakeSessionSecret987',
+		'/preview?auth-sessionid=FakeSessionSecret987',
+		'/preview?%73essionid=FakeSessionSecret987',
+		'/preview;jsessionid=FakeSessionSecret987',
+		'/preview#access_token=FakeSessionSecret987',
+		'/preview#/callback?auth[token]=FakeSessionSecret987',
+		'/preview#route;jsessionid=FakeSessionSecret987',
+	]) {
+		const errors = captureTargetErrors({ ...safe, pages: [{ name: 'unsafe', url }] });
+		assert.equal(errors.length, 1, `must reject ${url.split('=')[0]}`);
+		assert.doesNotMatch(errors[0], /FakeEncodedPassword987|FakeSessionSecret987/);
+	}
+	assert.deepEqual(captureTargetErrors({ ...safe, pages: [{ name: 'public', url: '/preview;lang=sv?lang=sv' }] }), []);
+	assert.deepEqual(captureTargetErrors({ ...safe, pages: [{ name: 'public', url: '/preview?lang=sv#details' }] }), []);
+});
+
 test('defensive sanitization strips credentials while retaining public query parameters', () => {
 	const config = sanitizeCaptureConfig({
 		base_url: 'https://admin:base-secret@example.test/private?token=base-secret',
-		pages: [{ name: 'sv', url: 'https://user:page-secret@example.test/about?lang=sv&access_token=page-secret' }],
+		pages: [
+			{ name: 'sv', url: 'https://user:page-secret@example.test/about?lang=sv&access_token=page-secret' },
+			{ name: 'session', url: '/preview;jsessionid=path-secret?auth[sessionid]=query-secret&lang=sv' },
+			{ name: 'fragment', url: '/callback?lang=sv#/done?access_token=fragment-secret' },
+		],
 	});
 	assert.equal(config.base_url, 'https://example.test/');
 	assert.equal(config.pages[0].url, 'https://example.test/about?lang=sv');
-	assert.doesNotMatch(JSON.stringify(config), /base-secret|page-secret|admin|user/);
+	assert.equal(config.pages[1].url, '/preview?lang=sv');
+	assert.equal(config.pages[2].url, '/callback?lang=sv');
+	assert.doesNotMatch(JSON.stringify(config), /base-secret|page-secret|path-secret|query-secret|fragment-secret|admin|user/);
 
 	const summary = sanitizeRunSummary({ target: config, status: 'completed' });
 	assert.equal(summary.target.pages[0].url, 'https://example.test/about?lang=sv');
@@ -82,6 +116,43 @@ test('baseline init rejects credentials without creating config or echoing the v
 	}
 });
 
+test('baseline init rejects malformed, nested, encoded, and path-form credentials without persisting or echoing them', () => {
+	const sentinel = 'FakeSessionSecret987';
+	for (const url of [
+		`https://admin%3A${sentinel}%40example.test`,
+		`/preview?auth[sessionid]=${sentinel}`,
+		`/preview?auth[token][scope]=${sentinel}`,
+		`/preview?auth.session_id=${sentinel}`,
+		`/preview?auth-sessionid=${sentinel}`,
+		`/preview?PHPSESSID=${sentinel}`,
+		`/preview?%73essionid=${sentinel}`,
+		`/preview;jsessionid=${sentinel}`,
+		`/preview#access_token=${sentinel}`,
+		`/preview#/callback?auth[token]=${sentinel}`,
+		`/preview#route;jsessionid=${sentinel}`,
+	]) {
+		const { dir, cleanup } = sandbox();
+		try {
+			const result = run([
+				'baseline',
+				'init',
+				'--url',
+				'https://example.test',
+				'--page',
+				`probe=${url}`,
+				'--force',
+				'--json',
+			], dir);
+			assert.equal(result.status, 2, url);
+			assert.equal(existsSync(join(dir, '.project', 'baseline.config.yml')), false, url);
+			assert.doesNotMatch(result.stdout + result.stderr, new RegExp(sentinel));
+			assert.match(result.stdout + result.stderr, /page URL|credentials|HTTP\(S\)/i);
+		} finally {
+			cleanup();
+		}
+	}
+});
+
 test('capture rejects a secret page before creating a run and keeps JSON secret-free', () => {
 	const { dir, cleanup } = sandbox();
 	try {
@@ -92,7 +163,7 @@ test('capture rejects a secret page before creating a run and keeps JSON secret-
 		assert.doesNotMatch(result.stdout + result.stderr, new RegExp(sentinel));
 		assert.equal(existsSync(join(dir, '.project', 'baseline')), false);
 		const payload = JSON.parse(result.stdout);
-		assert.match(payload.message, /secret query parameters/);
+		assert.match(payload.message, /secret parameters/);
 	} finally {
 		cleanup();
 	}
@@ -102,7 +173,7 @@ test('inspection and historical report regeneration redact old unsafe targets', 
 	const { dir, cleanup } = sandbox();
 	try {
 		const sentinel = 'HistoricalSecret987';
-		writeFileSync(join(dir, '.project', 'baseline.config.yml'), `schema_version: 1\nkind: baseline-config\nmode: redesign\nbase_url: https://admin:${sentinel}@example.test/private?password=${sentinel}\npages:\n  - name: home\n    url: /?lang=sv&token=${sentinel}\nmodules: [manual]\nviewports: []\n`);
+		writeFileSync(join(dir, '.project', 'baseline.config.yml'), `schema_version: 1\nkind: baseline-config\nmode: redesign\nbase_url: https://admin:${sentinel}@example.test/private?password=${sentinel}\npages:\n  - name: home\n    url: /?lang=sv#access_token=${sentinel}\nmodules: [manual]\nviewports: []\n`);
 		const runId = '2026-08-19T120000Z';
 		const runDir = join(dir, '.project', 'baseline', runId);
 		mkdirSync(runDir, { recursive: true });
@@ -114,7 +185,7 @@ test('inspection and historical report regeneration redact old unsafe targets', 
 			status: 'partial',
 			target: {
 				base_url: `https://admin:${sentinel}@example.test/private`,
-				pages: [{ name: 'home', url: `https://example.test/?lang=sv&token=${sentinel}` }],
+				pages: [{ name: 'home', url: `https://example.test/?lang=sv#/callback?access_token=${sentinel}` }],
 				viewports: [],
 				modules: ['manual'],
 			},

@@ -25,6 +25,10 @@ const SECRET_PARAMETERS = new Set([
 	'private_key',
 	'refresh_token',
 	'secret',
+	'jsessionid',
+	'phpsessid',
+	'session_id',
+	'sessionid',
 	'session_token',
 	'token',
 ]);
@@ -35,8 +39,8 @@ function canonicalParameter(name) {
 
 export function isSecretParameter(name) {
 	const canonical = canonicalParameter(name);
-	if (SECRET_PARAMETERS.has(canonical)) return true;
-	return /(?:^|_)(?:password|passwd|secret|access_token|auth_token|client_secret|private_key|refresh_token|session_token)$/.test(canonical);
+	const bounded = `_${canonical}_`;
+	return [...SECRET_PARAMETERS].some((secret) => bounded.includes(`_${secret}_`));
 }
 
 function isAbsoluteReference(value) {
@@ -54,6 +58,60 @@ function hasSecretQuery(url) {
 		if (isSecretParameter(name)) return true;
 	}
 	return false;
+}
+
+const PATH_PARAMETER_RE = /;([^=;/]+)=([^;/]*)/g;
+
+function decoded(value) {
+	try {
+		return decodeURIComponent(value);
+	} catch {
+		return value;
+	}
+}
+
+function hasSecretPath(url) {
+	const pathname = decoded(url.pathname);
+	for (const match of pathname.matchAll(PATH_PARAMETER_RE)) {
+		if (isSecretParameter(decoded(match[1]))) return true;
+	}
+	return false;
+}
+
+// OAuth callbacks and SPA routers commonly place query-shaped data after `#`.
+// Fragments never reach the server, but they are still durable configuration
+// here and are copied into inspection/report output, so treat recognized names
+// exactly as we do in the real query and matrix/path components.
+const FRAGMENT_PARAMETER_RE = /(?:^|[?&;])([^=/?#&;]+)=([^#&;]*)/g;
+
+function hasSecretFragment(url) {
+	const fragment = decoded(url.hash.replace(/^#/, ''));
+	for (const match of fragment.matchAll(FRAGMENT_PARAMETER_RE)) {
+		if (isSecretParameter(decoded(match[1]))) return true;
+	}
+	return false;
+}
+
+// Strip literal matrix/path parameters such as `;jsessionid=...`. If the
+// delimiter itself was encoded, rewriting only part of the encoded path risks
+// leaving a credential behind after a downstream decode, so redact the whole
+// target instead.
+function stripSecretPath(url) {
+	url.pathname = url.pathname.replace(PATH_PARAMETER_RE, (match, name) => {
+		if (!isSecretParameter(decoded(name))) return match;
+		return '';
+	});
+	return !hasSecretPath(url);
+}
+
+export function targetUrlHasSecret(value, { baseUrl = null } = {}) {
+	if (value == null || value === '') return false;
+	try {
+		const url = parsePageUrl(String(value), baseUrl);
+		return !!(url.username || url.password || hasSecretQuery(url) || hasSecretPath(url) || hasSecretFragment(url));
+	} catch {
+		return true;
+	}
 }
 
 export function normalizeBaseUrl(value) {
@@ -93,19 +151,19 @@ export function captureTargetErrors(config) {
 		try {
 			url = parsePageUrl(page.url, baseUrl);
 		} catch {
-			// URL syntax remains the capture module's concern, but credential-like
-			// values fail closed even when the URL parser cannot interpret them.
-			if (/:\/\/[^/?#]*@/i.test(page.url) || /(?:^|[?&])[^=]*(?:password|passwd|secret|token|api[_-]?key)[^=]*=/i.test(page.url)) {
-				errors.push(`/pages/${index}/url must not contain credentials or secret query parameters`);
-			}
+			// A parser failure is not evidence that a target is harmless. Encoded
+			// userinfo can make an absolute URL unparseable while still preserving
+			// the credential bytes for a config/report to persist. Fail closed and
+			// keep the error value-free.
+			errors.push(`/pages/${index}/url must be a valid HTTP(S) page URL without credentials or secret parameters`);
 			continue;
 		}
 		if (!['http:', 'https:'].includes(url.protocol)) {
 			errors.push(`/pages/${index}/url must resolve to HTTP(S)`);
 			continue;
 		}
-		if (url.username || url.password || hasSecretQuery(url)) {
-			errors.push(`/pages/${index}/url must not contain credentials or secret query parameters`);
+		if (url.username || url.password || hasSecretQuery(url) || hasSecretPath(url) || hasSecretFragment(url)) {
+			errors.push(`/pages/${index}/url must not contain credentials or secret parameters`);
 		}
 	}
 	return errors;
@@ -131,6 +189,8 @@ export function sanitizeTargetUrl(value, { baseUrl = null, originOnly = false } 
 	if (!['http:', 'https:'].includes(url.protocol)) return REDACTED_TARGET;
 	url.username = '';
 	url.password = '';
+	if (!stripSecretPath(url)) return REDACTED_TARGET;
+	if (hasSecretFragment(url)) url.hash = '';
 	for (const name of [...url.searchParams.keys()]) {
 		if (isSecretParameter(name)) url.searchParams.delete(name);
 	}
