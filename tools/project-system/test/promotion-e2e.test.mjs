@@ -139,7 +139,46 @@ function makeFakeComposer(root, { missing = false } = {}) {
 	return { bin, state, log };
 }
 
+function makeFakeNpm(root, { missing = false } = {}) {
+	const bin = join(root, 'fake-npm-bin');
+	const log = join(root, 'fake-npm-log.jsonl');
+	mkdirSync(bin, { recursive: true });
+	const executable = join(bin, 'npm');
+	writeFileSync(
+		executable,
+		missing
+			? '#!/bin/sh\nexit 127\n'
+			: [
+					'#!/usr/bin/env node',
+					"import { appendFileSync } from 'node:fs';",
+					"import { spawnSync } from 'node:child_process';",
+					'const args = process.argv.slice(2);',
+					"if (args[0] === '--version') { console.log('npm test'); process.exit(0); }",
+					"appendFileSync(process.env.FAKE_NPM_LOG, JSON.stringify({ args, cwd: process.cwd() }) + '\\n');",
+					"const install = ['ci', '--prefix', 'tools/project-system', '--ignore-scripts'];",
+					'if (JSON.stringify(args) === JSON.stringify(install)) {',
+					"  if (process.env.FAKE_NPM_FAIL === 'ci') { console.error('simulated project-system install failure'); process.exit(1); }",
+					'  process.exit(0);',
+					'}',
+					"const result = spawnSync(process.env.REAL_NPM, args, { stdio: 'inherit' });",
+					'process.exit(result.status ?? 1);',
+					'',
+			  ].join('\n'),
+	);
+	chmodSync(executable, 0o755);
+	return { bin, log };
+}
+
 function composerCalls(harness) {
+	if (!existsSync(harness.log)) return [];
+	return readFileSync(harness.log, 'utf8')
+		.trim()
+		.split('\n')
+		.filter(Boolean)
+		.map((line) => JSON.parse(line));
+}
+
+function npmCalls(harness) {
 	if (!existsSync(harness.log)) return [];
 	return readFileSync(harness.log, 'utf8')
 		.trim()
@@ -183,7 +222,7 @@ function makeLead(root, { staging = null, stagingYaml = null } = {}) {
 	return workspace;
 }
 
-function promote({ root, template, workspace, resume = false, failCommit = false, composer = null, composerFail = null }) {
+function promote({ root, template, workspace, resume = false, failCommit = false, composer = null, composerFail = null, npm = null, npmFail = null }) {
 	const dest = join(root, 'dest');
 	const args = [
 		CLI,
@@ -203,13 +242,17 @@ function promote({ root, template, workspace, resume = false, failCommit = false
 	];
 	if (resume) args.push('--resume');
 	const composerHarness = composer || makeFakeComposer(root);
+	const npmHarness = npm || makeFakeNpm(root);
 	const env = {
 		...process.env,
 		FUTUREBASE_PROMOTE_CLONE_FROM: template,
 		FAKE_COMPOSER_STATE: composerHarness.state,
 		FAKE_COMPOSER_LOG: composerHarness.log,
 		...(composerFail ? { FAKE_COMPOSER_FAIL: composerFail } : {}),
-		PATH: `${composerHarness.bin}:${process.env.PATH}`,
+		FAKE_NPM_LOG: npmHarness.log,
+		...(npmFail ? { FAKE_NPM_FAIL: npmFail } : {}),
+		REAL_NPM: spawnSync('which', ['npm'], { encoding: 'utf8' }).stdout.trim(),
+		PATH: `${npmHarness.bin}:${composerHarness.bin}:${process.env.PATH}`,
 		GIT_AUTHOR_NAME: 'Promotion Test',
 		GIT_AUTHOR_EMAIL: 'promotion@example.test',
 		GIT_COMMITTER_NAME: 'Promotion Test',
@@ -316,13 +359,16 @@ function promoteViaFakeGh({ root, workspace, fake, reuse = false, composer = nul
 	if (reuse) args.push('--reuse-remote');
 	if (json) args.push('--json');
 	const composerHarness = composer || makeFakeComposer(root);
+	const npmHarness = makeFakeNpm(root);
 	const result = spawnSync(process.execPath, args, {
 		encoding: 'utf8',
 		env: {
 			...process.env,
-			PATH: `${fake.bin}:${composerHarness.bin}:${process.env.PATH}`,
+			PATH: `${fake.bin}:${npmHarness.bin}:${composerHarness.bin}:${process.env.PATH}`,
 			FAKE_COMPOSER_STATE: composerHarness.state,
 			FAKE_COMPOSER_LOG: composerHarness.log,
+			FAKE_NPM_LOG: npmHarness.log,
+			REAL_NPM: spawnSync('which', ['npm'], { encoding: 'utf8' }).stdout.trim(),
 			FAKE_GH_STATE: fake.state,
 			FAKE_GH_TEMPLATE: join(root, 'template'),
 			FAKE_GH_TEMPLATE_SHA: fake.templateSha,
@@ -407,7 +453,8 @@ test('offline promotion completes, commits, and removes its checkpoint', () => {
 		const template = makeTemplate(dir);
 		const workspace = makeLead(dir);
 		const composer = makeFakeComposer(dir);
-		const result = promote({ root: dir, template, workspace, composer });
+		const npm = makeFakeNpm(dir);
+		const result = promote({ root: dir, template, workspace, composer, npm });
 
 		assert.equal(result.status, 0, result.output);
 		assert.match(readFileSync(join(result.dest, 'style.css'), 'utf8'), /Text Domain: acme/);
@@ -427,6 +474,27 @@ test('offline promotion completes, commits, and removes its checkpoint', () => {
 			],
 		);
 		assert.ok(composerCalls(composer).every((call) => call.text_domain === 'acme'), 'Composer must run after rename');
+		assert.deepEqual(
+			npmCalls(npm).filter((call) => call.args[0] === 'ci').map((call) => call.args),
+			[['ci', '--prefix', 'tools/project-system', '--ignore-scripts']],
+		);
+		assert.match(npmCalls(npm).find((call) => call.args[0] === 'ci')?.cwd || '', /\/dest$/, 'nested install must run inside the promoted destination');
+	} finally {
+		cleanup();
+	}
+});
+
+test('missing npm fails before the offline clone seam creates a destination', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const template = makeTemplate(dir);
+		const workspace = makeLead(dir);
+		const npm = makeFakeNpm(dir, { missing: true });
+		const result = promote({ root: dir, template, workspace, npm });
+
+		assert.equal(result.status, 3, result.output);
+		assert.match(result.output, /npm is required for promotion/);
+		assert.equal(existsSync(result.dest), false);
 	} finally {
 		cleanup();
 	}
@@ -483,6 +551,32 @@ test('Composer validation failure is noisy, checkpointed, and succeeds on resume
 		assert.equal(resumed.status, 0, resumed.output);
 		assert.deepEqual(composerCalls(composer).map((call) => call.args[0]), ['update', 'validate', 'update', 'validate']);
 		assert.equal(existsSync(join(resumed.dest, '.futurebase-promotion.json')), false);
+	} finally {
+		cleanup();
+	}
+});
+
+test('project-system dependency failure is named, checkpointed, and succeeds on resume', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const template = makeTemplate(dir);
+		const workspace = makeLead(dir);
+		const composer = makeFakeComposer(dir);
+		const npm = makeFakeNpm(dir);
+		const interrupted = promote({ root: dir, template, workspace, composer, npm, npmFail: 'ci' });
+
+		assert.equal(interrupted.status, 5, interrupted.output);
+		assert.match(interrupted.output, /promotion failed at step: project-system-deps/);
+		assert.match(interrupted.output, /npm ci --prefix tools\/project-system --ignore-scripts failed/);
+		assert.equal(existsSync(join(interrupted.dest, '.futurebase-promotion.json')), true);
+		assert.match(readFileSync(join(workspace, 'acme', 'project.yml'), 'utf8'), /status: won/);
+		assert.equal(npmCalls(npm).filter((call) => call.args[0] === 'ci').length, 1);
+
+		const resumed = promote({ root: dir, template, workspace, composer, npm, resume: true });
+		assert.equal(resumed.status, 0, resumed.output);
+		assert.equal(npmCalls(npm).filter((call) => call.args[0] === 'ci').length, 2);
+		assert.equal(existsSync(join(resumed.dest, '.futurebase-promotion.json')), false);
+		assert.match(readFileSync(join(workspace, 'acme', 'project.yml'), 'utf8'), /status: promoted/);
 	} finally {
 		cleanup();
 	}

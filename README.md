@@ -56,7 +56,7 @@ npm run rename -- <theme-slug> \
   --theme-uri https://kicobi.com \
   --repository kicobi/<new-project-name>
 composer update --lock --no-install --no-interaction
-npm install && composer install
+npm install && npm ci --prefix tools/project-system --ignore-scripts && composer install
 npm run env:start
 ```
 
@@ -71,7 +71,7 @@ Enabling and verifying GitHub's **Template repository** flag is a manual reposit
 1. On GitHub, confirm the repository has **Template repository** enabled, then click **"Use this template → Create a new repository"**.
 2. Clone the new repo locally into `wp-content/themes/<your-slug>/` (or anywhere, if using `wp-env`).
 3. Run the **rename checklist** below *before* writing any project code.
-4. `npm install && composer install`.
+4. `npm install && npm ci --prefix tools/project-system --ignore-scripts && composer install`.
 5. `npm run env:start` to boot a local WordPress at `http://localhost:8888` (admin at `/wp-admin`, user `admin` / password `password`).
 
 ## Rename checklist (mandatory on every new project)

@@ -3,9 +3,6 @@
 // deprecation guidance is written to stderr only.
 
 console.error('warning: wp-starter is deprecated; use futurebase (supported through Futurebase 2.x)');
-const { main } = await import('../cli/dispatch.mjs');
+const { runCli } = await import('./bootstrap.mjs');
 
-main(process.argv.slice(2)).catch((error) => {
-	console.error(`✗ ${error?.stack || error?.message || error}`);
-	process.exit(5);
-});
+await runCli(process.argv.slice(2));
