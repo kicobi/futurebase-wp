@@ -172,8 +172,8 @@ fi
 
 # ---------------------------------------------------------------------------
 # Theme-bound blocks — every src/blocks/<slug>/block.json must have a matching
-# build/blocks/<slug>/block.json. futurebase_register_blocks() in
-# functions.php only sees the compiled tree, so a source block without a
+# build/blocks/<slug>/block.json. The server registration loader only sees the
+# compiled tree, so a source block without a
 # build is silently unregistered until someone runs `npm run build`. Catch
 # drift here instead of in the editor.
 # ---------------------------------------------------------------------------
@@ -276,9 +276,9 @@ else
 fi
 
 if node "$ROOT/bin/verify-version-surfaces.mjs"; then
-	pass "Futurebase WP version surfaces"
+	pass "theme and lifecycle version surfaces"
 else
-	fail "Futurebase WP version surfaces — see output above"
+	fail "theme and lifecycle version surfaces — see output above"
 fi
 
 if bash "$ROOT/bin/test-rename.sh"; then

@@ -287,10 +287,10 @@ if ! bash "$WT3/bin/rename-theme.sh" "$STANDALONE_SLUG" >"$LOG" 2>&1; then
 fi
 grep -qF "Theme Name: $STANDALONE_NAME" "$WT3/style.css" 2>/dev/null || standalone_problems+=("standalone display-name default mismatch")
 grep -qE "^Text Domain:[[:space:]]*$STANDALONE_SLUG$" "$WT3/style.css" 2>/dev/null || standalone_problems+=("standalone text domain mismatch")
-grep -qE '^Theme URI:[[:space:]]*https://github\.com/kicobi/futurebase-wp$' "$WT3/style.css" 2>/dev/null || standalone_problems+=("standalone Theme URI compatibility exception missing")
-grep -qF 'kicobi/futurebase-wp' "$WT3/package.json" 2>/dev/null || standalone_problems+=("standalone npm repository identity was rewritten")
-grep -qF 'references/futurebase-context.md' "$WT3/docs/project-lifecycle.md" 2>/dev/null || standalone_problems+=("family lifecycle context name was rewritten")
-grep -qF -- '--futurebase-path' "$WT3/docs/project-lifecycle.md" 2>/dev/null || standalone_problems+=("family lifecycle path flag was rewritten")
+grep -qF "Theme URI: https://github.com/$FUTUREBASE_TEMPLATE_REPOSITORY" "$WT3/style.css" 2>/dev/null || standalone_problems+=("standalone Theme URI compatibility exception missing")
+grep -qF "$FUTUREBASE_TEMPLATE_REPOSITORY" "$WT3/package.json" 2>/dev/null || standalone_problems+=("standalone npm repository identity was rewritten")
+grep -qF "$FUTUREBASE_TOOL_TEMPLATE_SENTINEL" "$WT3/docs/project-lifecycle.md" 2>/dev/null || standalone_problems+=("family lifecycle context name was rewritten")
+grep -qF -- "$FUTUREBASE_PATH_FLAG" "$WT3/docs/project-lifecycle.md" 2>/dev/null || standalone_problems+=("family lifecycle path flag was rewritten")
 grep -qF 'Futurebase 2.x' "$WT3/docs/project-lifecycle.md" 2>/dev/null || standalone_problems+=("family lifecycle display name was rewritten")
 unexpected_repository="${STANDALONE_SLUG}-wp"
 if grep -rIn --exclude-dir=tools -- "$unexpected_repository" "$WT3" >/dev/null 2>&1; then
