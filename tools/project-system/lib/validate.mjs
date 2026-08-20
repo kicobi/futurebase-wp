@@ -8,6 +8,7 @@ import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import { schemasDir } from './paths.mjs';
 import { readJson } from './yaml.mjs';
+import { captureTargetErrors } from './targets.mjs';
 
 const cache = new Map();
 
@@ -30,7 +31,11 @@ export function validateAgainst(schemaFile, data) {
 
 export const validateProject = (data) => validateAgainst('project.schema.json', data);
 export const validateMetrics = (data) => validateAgainst('metrics.schema.json', data);
-export const validateBaselineConfig = (data) => validateAgainst('baseline-config.schema.json', data);
+export const validateBaselineConfig = (data) => {
+	const schema = validateAgainst('baseline-config.schema.json', data);
+	const targetErrors = captureTargetErrors(data);
+	return { valid: schema.valid && targetErrors.length === 0, errors: [...schema.errors, ...targetErrors] };
+};
 export const validateBaselineRun = (data) => validateAgainst('baseline-run.schema.json', data);
 export const validateSurveyResults = (data) => validateAgainst('survey-results.schema.json', data);
 export const validateObservations = (data) => validateAgainst('observations.schema.json', data);

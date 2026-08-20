@@ -10,7 +10,7 @@
 		"schema_version": { "type": "integer", "const": 1 },
 		"kind": { "type": "string", "const": "baseline-config" },
 		"mode": { "type": "string", "enum": ["new", "redesign"] },
-		"base_url": { "type": ["string", "null"], "description": "Origin for relative page URLs. May be null for new-site projects with no existing site." },
+		"base_url": { "type": ["string", "null"], "description": "HTTP(S) origin for relative page URLs, normalized with a trailing slash. Userinfo, paths, queries, and fragments are forbidden. May be null for new-site projects with no existing site." },
 		"pages": {
 			"type": "array",
 			"items": {

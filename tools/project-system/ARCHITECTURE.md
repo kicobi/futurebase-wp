@@ -68,6 +68,21 @@ failure · `6` privacy/safety violation.
   `.project/auth/`, `.project/**/raw-private/`.
 - Authenticated captures are excluded from client-facing reports by default.
 
+### Threat model and accepted limits
+
+The project-system defends against accidental disclosure and a local checkout
+containing hostile symlinks or unsafe configuration. Capture URLs are public,
+unauthenticated HTTP(S) targets; credentials belong only in gitignored
+`.project/credentials/` or `.project/auth/` storage and are not accepted in
+capture configuration.
+
+PR #101 deliberately did not claim protection from two same-user local attack
+classes: hardlinks to regular files, and concurrent replacement between a path
+check and the later read or write (TOCTOU). Eliminating those requires
+descriptor-relative, platform-specific filesystem operations outside the
+current Node portability model. They remain accepted risks when another local
+process or user who can already mutate the working tree is treated as hostile.
+
 ## Roadmap
 
 - **M0 (done):** schemas + templates + presets + example + validator + rename

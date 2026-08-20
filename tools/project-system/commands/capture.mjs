@@ -31,6 +31,7 @@ import { run as axe } from '../modules/axe.mjs';
 import { run as wordpress } from '../modules/wordpress.mjs';
 import { run as manual } from '../modules/manual.mjs';
 import { requirePath } from '../lib/paths.mjs';
+import { normalizeCaptureConfig } from '../lib/targets.mjs';
 
 export const REGISTRY = { crawl, screenshots, lighthouse, axe, wordpress, manual };
 
@@ -57,10 +58,11 @@ export async function runCapture(kind, flags) {
 	const dir = kind === 'final' ? paths.finalDir : paths.baselineDir;
 
 	if (!existsSync(paths.configPath)) die(`no baseline config — run 'futurebase baseline init' first (${paths.configPath})`, EXIT.INVALID_CONFIG, { json });
-	const config = loadConfig(paths.configPath);
+	let config = loadConfig(paths.configPath);
 	if (flags.url) config.base_url = flags.url;
 	const { valid, errors } = validateBaselineConfig(config);
 	if (!valid) die(`baseline config invalid:\n  ${errors.join('\n  ')}`, EXIT.INVALID_CONFIG, { json });
+	config = normalizeCaptureConfig(config);
 
 	const requested = flags.module ? (Array.isArray(flags.module) ? flags.module : [flags.module]) : config.modules || Object.keys(REGISTRY);
 	const modules = requested.filter((m) => REGISTRY[m]);

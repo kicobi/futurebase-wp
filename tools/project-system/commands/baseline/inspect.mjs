@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { EXIT, die, ok, warn, info, emitJson, c } from '../../lib/output.mjs';
 import { findProjectRoot, projectPaths, loadConfig, latestRunId, readRunSummary } from '../../lib/baseline.mjs';
+import { sanitizeCaptureConfig, sanitizeRunSummary } from '../../lib/targets.mjs';
 
 export function baselineInspect(_positional, flags) {
 	const json = !!flags.json;
@@ -14,12 +15,13 @@ export function baselineInspect(_positional, flags) {
 	const paths = projectPaths(root);
 
 	const hasConfig = existsSync(paths.configPath);
-	const config = hasConfig ? loadConfig(paths.configPath) : null;
+	const config = hasConfig ? sanitizeCaptureConfig(loadConfig(paths.configPath)) : null;
 	const runId = existsSync(paths.baselineDir) ? latestRunId(paths.baselineDir) : null;
 	let summary = null;
 	if (runId) {
 		try {
 			({ summary } = readRunSummary(paths.baselineDir, runId));
+			summary = sanitizeRunSummary(summary);
 		} catch {
 			/* ignore */
 		}
