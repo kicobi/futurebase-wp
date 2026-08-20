@@ -415,6 +415,15 @@ function compareFixture(dir, baselineModules, baselineStatus) {
 	return spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--json'], { encoding: 'utf8' });
 }
 
+function caseStudyFixture(dir, baselineModules, baselineStatus, finalModules = [{ module: 'crawl', status: 'complete' }], finalStatus = 'completed') {
+	const root = join(dir, 'project');
+	mkdirSync(join(root, '.project'), { recursive: true });
+	writeFileSync(join(root, '.project', 'project.yml'), 'project:\n  name: Probe\n', 'utf8');
+	writeRunWithEvidence(join(root, '.project', 'baseline'), '2026-07-30T100000Z', 'baseline', baselineStatus, baselineModules);
+	writeRunWithEvidence(join(root, '.project', 'final'), '2026-08-01T100000Z', 'final', finalStatus, finalModules);
+	return { root, report: join(root, '.project', 'reports', 'case-study.md') };
+}
+
 test('a failed baseline cannot become a client report claiming improvement', () => {
 	const { dir, cleanup } = sandbox();
 	try {
@@ -437,6 +446,72 @@ test('the gate rejects the evidence, not the comparison itself', () => {
 		const out = r.stdout ? JSON.parse(r.stdout) : {};
 		const blocking = (out.blocking || []).join(' ');
 		assert.ok(!/did not capture usable evidence/.test(blocking), `evidence gate fired on a clean baseline: ${blocking}`);
+	} finally {
+		cleanup();
+	}
+});
+
+for (const invalidSide of ['baseline', 'final']) {
+	test(`case-study rejects invalid ${invalidSide} evidence and writes no report`, () => {
+		const { dir, cleanup } = sandbox();
+		try {
+			const failed = [{ module: 'crawl', status: 'failed' }];
+			const complete = [{ module: 'crawl', status: 'complete' }];
+			const fixture = invalidSide === 'baseline'
+				? caseStudyFixture(dir, failed, 'failed', complete, 'completed')
+				: caseStudyFixture(dir, complete, 'completed', failed, 'failed');
+			const result = spawnSync(process.execPath, [COMPARE_CLI, 'project', 'case-study', '--project-root', fixture.root, '--json'], { encoding: 'utf8' });
+			assert.equal(result.status, EXIT.INVALID_CONFIG);
+			assert.equal(existsSync(fixture.report), false);
+			const payload = JSON.parse(result.stdout);
+			assert.match(payload.message, new RegExp(`${invalidSide} run .* did not capture usable evidence`));
+		} finally {
+			cleanup();
+		}
+	});
+}
+
+test('allow-mismatch stays successful, records blocking JSON, and withholds client claims', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const complete = [{ module: 'crawl', status: 'complete' }];
+		const { root } = caseStudyFixture(dir, complete, 'completed');
+		const baselineDir = join(root, '.project', 'baseline', '2026-07-30T100000Z');
+		const finalDir = join(root, '.project', 'final', '2026-08-01T100000Z');
+		for (const [runDir, viewport, broken] of [
+			[baselineDir, { name: 'mobile', width: 390, height: 844 }, 9],
+			[finalDir, { name: 'desktop', width: 1440, height: 900 }, 0],
+		]) {
+			const summaryPath = join(runDir, 'summary.json');
+			const summary = JSON.parse(readFileSync(summaryPath, 'utf8'));
+			summary.target = {
+				base_url: 'https://example.test/',
+				pages: [{ name: 'home', url: 'https://example.test/' }],
+				viewports: [viewport],
+				modules: ['crawl'],
+			};
+			writeFileSync(summaryPath, JSON.stringify(summary, null, 2));
+			writeFileSync(join(runDir, 'crawl', 'crawl.json'), JSON.stringify({ summary: { fetched: 1, brokenLinkCount: broken, missingMetaDesc: 0 } }));
+		}
+
+		const jsonResult = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--allow-mismatch', '--json'], { encoding: 'utf8' });
+		assert.equal(jsonResult.status, 0, jsonResult.stderr || jsonResult.stdout);
+		const payload = JSON.parse(jsonResult.stdout);
+		assert.equal(payload.status, 'ok');
+		assert.equal(payload.mismatch_allowed, true);
+		assert.match(payload.blocking[0], /viewports differ/);
+
+		const reports = join(root, '.project', 'reports');
+		const internal = readFileSync(join(reports, 'comparison-2026-08-01T100000Z.md'), 'utf8');
+		const client = readFileSync(join(reports, 'comparison-2026-08-01T100000Z-client.md'), 'utf8');
+		const html = readFileSync(join(reports, 'comparison-2026-08-01T100000Z.html'), 'utf8');
+		for (const output of [internal, client, html]) assert.match(output, /viewports differ/);
+		assert.doesNotMatch(client, /9 → 0/);
+
+		const human = spawnSync(process.execPath, [COMPARE_CLI, 'compare', '--project-root', root, '--allow-mismatch'], { encoding: 'utf8' });
+		assert.equal(human.status, 0, human.stderr || human.stdout);
+		assert.match(human.stdout + human.stderr, /blocking mismatches were explicitly allowed/);
+		assert.match(human.stdout + human.stderr, /viewports differ/);
 	} finally {
 		cleanup();
 	}

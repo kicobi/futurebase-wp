@@ -9,7 +9,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { EXIT, die, ok, info, emitJson } from '../../lib/output.mjs';
-import { findProjectRoot, projectPaths, latestRunId, readRunSummary } from '../../lib/baseline.mjs';
+import { findProjectRoot, projectPaths, latestRunId, readRunSummary, evidenceVerdict } from '../../lib/baseline.mjs';
 import { readYaml } from '../../lib/yaml.mjs';
 import { loadMetrics } from '../../lib/metrics.mjs';
 import { buildComparison } from '../../lib/compare.mjs';
@@ -37,8 +37,15 @@ export function caseStudy(_positional, flags) {
 	let comparison = null;
 	if (baseId && finalId) {
 		try {
-			const { runDir: baseDir } = readRunSummary(paths.baselineDir, baseId);
-			const { runDir: finalDir } = readRunSummary(paths.finalDir, finalId);
+			const { runDir: baseDir, summary: baseSummary } = readRunSummary(paths.baselineDir, baseId);
+			const { runDir: finalDir, summary: finalSummary } = readRunSummary(paths.finalDir, finalId);
+			for (const [label, summary, runDir, id] of [
+				['baseline', baseSummary, baseDir, baseId],
+				['final', finalSummary, finalDir, finalId],
+			]) {
+				const verdict = evidenceVerdict(summary, runDir);
+				if (!verdict.captured) throw new Error(`${label} run ${id} did not capture usable evidence: ${verdict.reason}`);
+			}
 			comparison = buildComparison(baseDir, finalDir);
 		} catch (err) {
 			die(`cannot build a case study from the selected runs: ${err.message}`, EXIT.INVALID_CONFIG, { json });

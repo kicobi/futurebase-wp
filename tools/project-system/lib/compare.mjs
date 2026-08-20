@@ -246,7 +246,8 @@ export function renderComparison({ projectName, baselineRun, finalRun, compariso
 	else cm.push('- _(success metrics not yet recorded)_');
 	cm.push('');
 	cm.push('## What improved');
-	if (improved.length) for (const r of improved) cm.push(`- ${r.label}: ${fmt(r.before, r.unit)} → ${fmt(r.after, r.unit)}`);
+	if (blocking.length) cm.push('- Before/after figures are withheld because the selected runs are not comparable.');
+	else if (improved.length) for (const r of improved) cm.push(`- ${r.label}: ${fmt(r.before, r.unit)} → ${fmt(r.after, r.unit)}`);
 	else cm.push('- _(no automated improvements to report yet)_');
 	cm.push('');
 	cm.push('## What will be reviewed after launch');
@@ -257,6 +258,11 @@ export function renderComparison({ projectName, baselineRun, finalRun, compariso
 	if (limitations.length) {
 		cm.push('## What could not be compared');
 		for (const l of limitations) cm.push(`- ${l}`);
+		cm.push('');
+	}
+	if (blocking.length) {
+		cm.push('## Why before/after figures are withheld');
+		for (const b of blocking) cm.push(`- ${b}`);
 		cm.push('');
 	}
 	const clientMd = cm.join('\n');
@@ -276,6 +282,7 @@ th,td{text-align:left;padding:.4rem .6rem;border-bottom:1px solid #e2e2e2}
 </style>
 <h1>Before / after — ${esc(projectName)}</h1>
 <p class="meta">Baseline <code>${esc(baselineRun)}</code> → Final <code>${esc(finalRun)}</code></p>
+${blocking.length ? `<section class="blocking"><h2>These runs are not comparable</h2><ul>${blocking.map((b) => `<li>${esc(b)}</li>`).join('')}</ul><p>The table is shown for inspection only. Do not quote it.</p></section>` : ''}
 <table><thead><tr><th>Measure</th><th>Before</th><th>After</th><th>Change</th></tr></thead><tbody>${rowsHtml}</tbody></table>
 ${limitations.length ? `<h2>Limitations</h2><ul>${limitations.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}
 <p class="meta">Automated results are not an accessibility or SEO certification — they capture a machine-detectable subset.</p>
