@@ -38,5 +38,18 @@ export function projectInspect(_positional, flags) {
 	console.log(`  final runs        ${runLine(s.final)}${s.final.latest ? ` · latest ${s.final.latest.id} (${s.final.latest.status})` : ''}`);
 	console.log(`  comparison        ${s.comparison ? 'yes' : 'no'}`);
 	console.log(`  follow-up surveys ${s.followUp.length ? s.followUp.join(', ') : 'none'}`);
+	console.log('');
+	console.log(c.bold('Closeout'));
+	if (!s.closeout.initialized) console.log('  not initialized');
+	else {
+		console.log(`  readiness         ${s.closeout.ready ? 'ready' : 'not ready'}`);
+		console.log(`  tasks             ${s.closeout.tasks.length - s.closeout.pending}/${s.closeout.tasks.length} resolved · ${s.closeout.overdue} overdue`);
+		console.log(`  reminder          ${s.closeout.reminder_date || 'not calculated'}`);
+		console.log(`  retirement        ${s.closeout.retirement_date || 'not calculated'}`);
+		console.log(`  lessons reviewed  ${s.closeout.lessons_reviewed_at || 'no'}`);
+		for (const task of s.closeout.tasks.filter((item) => item.overdue)) console.log(`  OVERDUE           ${task.id} · due ${task.due_date}`);
+		const nextDue = s.closeout.tasks.filter((item) => item.status === 'pending' && item.due_date && !item.overdue).sort((a, b) => a.due_date.localeCompare(b.due_date))[0];
+		if (nextDue) console.log(`  next due          ${nextDue.id} · ${nextDue.due_date}`);
+	}
 	process.exit(EXIT.OK);
 }

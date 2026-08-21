@@ -26,8 +26,9 @@ Prospective lead
   → Capture kickoff baseline
   → Implementation
   → Launch measurements and comparison
+  → Evidence-backed closeout and retention window
   → 30-day and optional 90-day follow-up
-  → Project evidence, lessons, case-study material
+  → Project evidence, upstream lessons, case-study material
 ```
 
 ## Where work happens (important)
@@ -243,3 +244,48 @@ node tools/project-system/bin/wp-starter.mjs sync \
 The old entrypoint and path flag warn but remain compatible throughout 2.x.
 New work should use `futurebase.mjs` and `--futurebase-path`. Source-path repair
 runs before Git ref resolution, so a missing `origin/main` cannot block it.
+
+## 6. Closeout and lessons upstream
+
+New and promoted projects include `.project/closeout/closeout.yml`; existing
+projects can add it with `futurebase project closeout init`. The closeout record
+links one qualified `.project/final/<run-id>` rather than creating another
+measurement store, records written acceptance, and tracks operational work by
+evidence reference. Operational backup snapshots stay separate from final
+measurement evidence.
+
+```bash
+futurebase project closeout set-final --run-id <id>
+futurebase project closeout accept --date YYYY-MM-DD --evidence <ref>
+futurebase project closeout set --id <task> --status complete --evidence <ref>
+futurebase project closeout review-lessons
+futurebase project closeout status
+futurebase project closeout report
+futurebase project closeout complete --confirm
+```
+
+Acceptance starts a 30-day retention period by default. The warning date is
+derived from retirement minus the seven-day reminder lead, so changing the
+retention window cannot desynchronize the dates. If a project needs different
+values, edit `retention.days` and `retention.reminder_days_before` before
+recording acceptance; the reminder lead must remain shorter than the retention
+period. Any repeat acceptance — including the same date — requires
+`--force --confirm`. Repeating the command with the existing date and evidence
+is the explicit way to recalculate dates after a retention edit. Corrections
+move derived due dates without rewriting task-completion evidence. Reopening a
+task as `pending` also preserves its previous evidence, date, and notes as an
+audit trail.
+
+Lessons are classified as `project-specific`, `starter-improvement`,
+`plugin-capability`, or `process-documentation`. Reusable lessons require a
+recommended target and action. `review-lessons` is explicit even when the list
+is empty; `lessons-upstream.md` excludes project-specific entries, while the
+case-study draft receives all lessons in a clearly marked internal,
+non-published editing section.
+
+Closure refuses to proceed until acceptance and the final run qualify, every
+required task is complete or has a not-applicable rationale, lessons were
+reviewed, and schema validation plus secret scanning pass. It then sets the
+project status to `closed` and stamps `closed_at`. The CLI never performs the
+backups, credential operations, reminders, deletions, staging retirement, or
+upstream code copying that the checklist records.

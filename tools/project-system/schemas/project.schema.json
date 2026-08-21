@@ -30,7 +30,8 @@
 				},
 				"type": { "type": "string", "enum": ["new", "redesign"] },
 				"platform": { "type": "string", "enum": ["codeable", "direct", "other"] },
-				"created_at": { "type": "string", "format": "date" }
+				"created_at": { "type": "string", "format": "date" },
+				"closed_at": { "type": "string", "format": "date-time" }
 			}
 		},
 		"starter": {

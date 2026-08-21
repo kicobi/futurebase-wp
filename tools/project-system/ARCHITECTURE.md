@@ -115,6 +115,8 @@ process or user who can already mutate the working tree is treated as hostile.
   the safety model; staleness is decided by content, not by the recorded
   `template_commit`, which promotion could stamp wrongly.
 - **Phase 8 (in progress):** `project tasks` generates the lifecycle task tree
-  (`lib/tasks`) as Markdown / JSON sync payload / `gh issue create` commands.
+  (`lib/tasks`) as Markdown / JSON sync payload / `gh issue create` commands;
+  `project closeout` records acceptance, operational evidence, retention, and
+  classified upstream lessons while gating project closure.
   Remaining: analytics-API connectors, automated survey delivery, scheduled
   reminders, anonymized benchmarking.

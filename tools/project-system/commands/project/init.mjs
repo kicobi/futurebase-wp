@@ -15,8 +15,9 @@ import { projectPaths } from '../../lib/baseline.mjs';
 import { templatesDir, requirePath } from '../../lib/paths.mjs';
 import { writeYaml } from '../../lib/yaml.mjs';
 import { validateProject } from '../../lib/validate.mjs';
+import { newCloseoutRecord } from '../../lib/closeout.mjs';
 
-const PROJECT_DIRS = ['brief', 'analysis', 'proposal', 'decisions', 'metrics', 'baseline', 'final', 'reports', 'follow-up', 'private'];
+const PROJECT_DIRS = ['brief', 'analysis', 'proposal', 'decisions', 'metrics', 'baseline', 'final', 'closeout', 'reports', 'follow-up', 'private'];
 const GITIGNORE_LINES = ['.project/private/', '.project/credentials/', '.project/auth/', '.project/**/raw-private/'];
 
 const titleize = (slug) => slug.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
@@ -110,6 +111,7 @@ export function projectInit(_positional, flags) {
 	seed('metrics/metrics.yml', { schema_version: 1, kind: 'metrics', items: [] });
 	seed('metrics/journeys.yml', { schema_version: 1, kind: 'journeys', items: [] });
 	seed('observations.yml', { schema_version: 1, kind: 'observations', items: [] });
+	seed('closeout/closeout.yml', newCloseoutRecord());
 	const copyIfAbsent = (src, dest) => {
 		if (!existsSync(dest)) cpSync(src, dest);
 	};

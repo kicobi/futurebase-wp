@@ -33,10 +33,10 @@ export function projectTasks(_positional, flags) {
 	const tasks = buildTaskTree(summary, { launchDate });
 
 	if (format === 'json') {
-		emitJson(renderJson(tasks, summary.project));
+		emitJson(renderJson(tasks, summary.project, summary.closeout));
 	}
 
-	const out = format === 'github' ? renderGithub(tasks) : renderMarkdown(tasks, summary.project?.name || root.split('/').pop());
+	const out = format === 'github' ? renderGithub(tasks, summary.closeout) : renderMarkdown(tasks, summary.project?.name || root.split('/').pop(), summary.closeout);
 
 	if (flags.write) {
 		const file = paths.at(format === 'github' ? 'tasks.github.sh' : 'tasks.md');

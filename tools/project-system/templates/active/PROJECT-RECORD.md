@@ -19,6 +19,8 @@ agent workflows all read from and write to it.
 ├── observations.yml      # interpretations — separate from measured values
 ├── baseline/<run-id>/    # dated, immutable baseline runs (summary.json + evidence)
 ├── final/<run-id>/       # dated, immutable final runs
+├── closeout/
+│   └── closeout.yml      # acceptance, operational evidence, retention, lessons
 ├── reports/              # DERIVED reports (never hand-edited)
 ├── follow-up/            # 30/90-day survey + review results
 ├── private/              # gitignored: private material
@@ -38,10 +40,13 @@ agent workflows all read from and write to it.
 | Observations | `.project/observations.yml` |
 | Generated reports | `.project/reports/` (derived; never hand-edited) |
 | Raw evidence (dated, immutable) | `.project/baseline/<run-id>/`, `.project/final/<run-id>/` |
+| Acceptance, handoff, retention, and lessons | `.project/closeout/closeout.yml` |
 
 Reports and comparisons are **derived** from the ledger above; the ledger is
 authoritative. Never hand-edit a generated report or an evidence run — re-run
-the module instead.
+the module instead. Operational backup/restore evidence is referenced from the
+closeout record; it is not mixed into the final measurement run and does not
+create a second evidence directory.
 
 ## Privacy
 

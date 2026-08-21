@@ -1,6 +1,6 @@
 {
 	"name": "futurebase-project-system",
-	"version": "2.0.0",
+	"version": "2.1.0",
 	"description": "Project lifecycle system for futurebase: isolated lead workspaces, promotion, baselines, and success metrics. Phase 1 ships `lead init` / `lead inspect`; later phases add promotion, baselines, and metrics.",
 	"author": "Colin Lewis",
 	"license": "GPL-2.0-or-later",
