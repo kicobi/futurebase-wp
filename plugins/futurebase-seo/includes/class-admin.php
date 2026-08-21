@@ -92,7 +92,7 @@ final class Admin {
 	}
 
 	/**
-	 * Render the complete V1 settings screen.
+	 * Render the complete schema-V2 settings screen.
 	 */
 	public static function render(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
@@ -103,6 +103,7 @@ final class Admin {
 		$entity     = $settings['entity'];
 		$social     = $settings['social'];
 		$verify     = $settings['verification'];
+		$indexing   = $settings['indexing'];
 		$suppressed = Suppression::is_suppressed();
 		?>
 		<div class="wrap compseo-settings">
@@ -116,6 +117,11 @@ final class Admin {
 			<?php elseif ( null === Settings::entity() ) : ?>
 				<div class="notice notice-info inline">
 					<p><?php esc_html_e( 'Choose a site entity type and name to complete the Person or Organization schema used on the homepage.', 'futurebase-seo' ); ?></p>
+				</div>
+			<?php endif; ?>
+			<?php if ( ! get_option( 'blog_public' ) ) : ?>
+				<div class="notice notice-warning inline">
+					<p><?php esc_html_e( 'WordPress search-engine visibility is disabled. That site-wide noindex, nofollow decision overrides every archive policy shown below.', 'futurebase-seo' ); ?></p>
 				</div>
 			<?php endif; ?>
 
@@ -161,12 +167,56 @@ final class Admin {
 						<?php self::text_field( 'google-verification', 'verification[google]', __( 'Google Search Console', 'futurebase-seo' ), (string) $verify['google'], $suppressed, 'text', __( 'Supports URL-prefix properties. Use DNS verification for domain properties.', 'futurebase-seo' ) ); ?>
 						<?php self::text_field( 'bing-verification', 'verification[bing]', __( 'Bing Webmaster Tools', 'futurebase-seo' ), (string) $verify['bing'], $suppressed ); ?>
 					</fieldset>
+
+					<fieldset <?php disabled( $suppressed ); ?>>
+						<legend class="compseo-settings__heading"><?php esc_html_e( 'Archive indexing policies', 'futurebase-seo' ); ?></legend>
+						<p class="description"><?php esc_html_e( 'Choose whether each archive surface should appear in search results. Noindex does not make content private.', 'futurebase-seo' ); ?></p>
+						<?php self::policy_field( 'blog', 'indexing[blog]', __( 'Blog index', 'futurebase-seo' ), (string) $indexing['blog'], $suppressed ); ?>
+
+						<?php foreach ( Policy::post_types() as $slug => $post_type ) : ?>
+							<?php
+							self::policy_field(
+								'post-type-' . $slug,
+								'indexing[post_types][' . $slug . ']',
+								sprintf(
+									/* translators: %s: post-type plural label. */
+									__( '%s archive', 'futurebase-seo' ),
+									$post_type->labels->name
+								),
+								isset( $indexing['post_types'][ $slug ] ) ? (string) $indexing['post_types'][ $slug ] : Policy::INDEX,
+								$suppressed
+							);
+							?>
+						<?php endforeach; ?>
+
+						<?php foreach ( Policy::taxonomies() as $slug => $taxonomy ) : ?>
+							<?php
+							self::policy_field(
+								'taxonomy-' . $slug,
+								'indexing[taxonomies][' . $slug . ']',
+								sprintf(
+									/* translators: %s: taxonomy plural label. */
+									__( '%s archives', 'futurebase-seo' ),
+									$taxonomy->labels->name
+								),
+								isset( $indexing['taxonomies'][ $slug ] ) ? (string) $indexing['taxonomies'][ $slug ] : Policy::INDEX,
+								$suppressed
+							);
+							?>
+						<?php endforeach; ?>
+
+						<?php self::policy_field( 'author', 'indexing[author]', __( 'Author archives', 'futurebase-seo' ), (string) $indexing['author'], $suppressed ); ?>
+						<?php self::policy_field( 'date', 'indexing[date]', __( 'Date archives', 'futurebase-seo' ), (string) $indexing['date'], $suppressed ); ?>
+						<?php self::policy_field( 'filtered', 'indexing[filtered]', __( 'Filtered archive URLs', 'futurebase-seo' ), (string) $indexing['filtered'], $suppressed, __( 'Tracking-only parameters inherit their base archive. Project adapters can allow named public query variables.', 'futurebase-seo' ) ); ?>
+					</fieldset>
 				</div>
 
 				<?php if ( ! $suppressed ) : ?>
 					<?php submit_button(); ?>
 				<?php endif; ?>
 			</form>
+
+			<?php self::render_policy_table( $indexing ); ?>
 		</div>
 		<?php
 	}
@@ -204,16 +254,113 @@ final class Admin {
 	 * @param string                $value    Current value.
 	 * @param array<string, string> $options Options keyed by stored value.
 	 * @param bool                  $disabled Whether the control is read-only.
+	 * @param string                $description Optional help text.
 	 */
-	private static function select_field( string $id, string $path, string $label, string $value, array $options, bool $disabled ): void {
+	private static function select_field( string $id, string $path, string $label, string $value, array $options, bool $disabled, string $description = '' ): void {
+		$description_id = 'compseo-' . $id . '-description';
 		?>
 		<div class="compseo-settings__field">
 			<label for="compseo-<?php echo esc_attr( $id ); ?>"><?php echo esc_html( $label ); ?></label>
-			<select id="compseo-<?php echo esc_attr( $id ); ?>" name="<?php echo esc_attr( self::field_name( $path ) ); ?>" <?php disabled( $disabled ); ?>>
+			<select id="compseo-<?php echo esc_attr( $id ); ?>" name="<?php echo esc_attr( self::field_name( $path ) ); ?>" <?php echo '' !== $description ? 'aria-describedby="' . esc_attr( $description_id ) . '"' : ''; ?> <?php disabled( $disabled ); ?>>
 				<?php foreach ( $options as $option_value => $option_label ) : ?>
 					<option value="<?php echo esc_attr( $option_value ); ?>" <?php selected( $value, $option_value ); ?>><?php echo esc_html( $option_label ); ?></option>
 				<?php endforeach; ?>
 			</select>
+			<?php if ( '' !== $description ) : ?>
+				<p id="<?php echo esc_attr( $description_id ); ?>" class="description"><?php echo esc_html( $description ); ?></p>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Render one two-state archive-policy select.
+	 *
+	 * @param string $id          Element ID suffix.
+	 * @param string $path        Nested option path.
+	 * @param string $label       Visible field label.
+	 * @param string $value       Current policy.
+	 * @param bool   $disabled    Whether the control is read-only.
+	 * @param string $description Optional help text.
+	 */
+	private static function policy_field( string $id, string $path, string $label, string $value, bool $disabled, string $description = '' ): void {
+		self::select_field(
+			'indexing-' . $id,
+			$path,
+			$label,
+			$value,
+			array(
+				Policy::INDEX   => __( 'Index', 'futurebase-seo' ),
+				Policy::NOINDEX => __( 'Noindex', 'futurebase-seo' ),
+			),
+			$disabled,
+			$description
+		);
+	}
+
+	/**
+	 * Render the saved effective-policy table, including inert stale entries.
+	 *
+	 * @param array<string, mixed> $indexing Normalized indexing settings.
+	 */
+	private static function render_policy_table( array $indexing ): void {
+		$rows       = array();
+		$post_types = Policy::post_types();
+		$taxonomies = Policy::taxonomies();
+
+		$rows[] = array( __( 'Blog index', 'futurebase-seo' ), 'blog', (string) $indexing['blog'], __( 'Available', 'futurebase-seo' ) );
+		foreach ( $post_types as $slug => $post_type ) {
+			$policy = isset( $indexing['post_types'][ $slug ] ) ? (string) $indexing['post_types'][ $slug ] : Policy::INDEX;
+			$rows[] = array( $post_type->labels->name, $slug, $policy, __( 'Available', 'futurebase-seo' ) );
+		}
+		foreach ( $taxonomies as $slug => $taxonomy ) {
+			$policy = isset( $indexing['taxonomies'][ $slug ] ) ? (string) $indexing['taxonomies'][ $slug ] : Policy::INDEX;
+			$rows[] = array( $taxonomy->labels->name, $slug, $policy, __( 'Available', 'futurebase-seo' ) );
+		}
+
+		$stored_post_types = is_array( $indexing['post_types'] ) ? $indexing['post_types'] : array();
+		foreach ( array_diff_key( $stored_post_types, $post_types ) as $slug => $policy ) {
+			$rows[] = array( __( 'Post-type archive', 'futurebase-seo' ), (string) $slug, (string) $policy, __( 'Not currently registered', 'futurebase-seo' ) );
+		}
+		$stored_taxonomies = is_array( $indexing['taxonomies'] ) ? $indexing['taxonomies'] : array();
+		foreach ( array_diff_key( $stored_taxonomies, $taxonomies ) as $slug => $policy ) {
+			$rows[] = array( __( 'Taxonomy archive', 'futurebase-seo' ), (string) $slug, (string) $policy, __( 'Not currently registered', 'futurebase-seo' ) );
+		}
+
+		$rows[] = array( __( 'Author archives', 'futurebase-seo' ), 'author', (string) $indexing['author'], __( 'Available', 'futurebase-seo' ) );
+		$rows[] = array( __( 'Date archives', 'futurebase-seo' ), 'date', (string) $indexing['date'], __( 'Available', 'futurebase-seo' ) );
+		$rows[] = array( __( 'Filtered archive URLs', 'futurebase-seo' ), 'filtered', (string) $indexing['filtered'], __( 'Available', 'futurebase-seo' ) );
+		$rows[] = array( __( 'Search results', 'futurebase-seo' ), 'search', Policy::NOINDEX, __( 'Fixed', 'futurebase-seo' ) );
+		$rows[] = array( __( 'Not-found pages', 'futurebase-seo' ), 'not_found', Policy::NOINDEX, __( 'Fixed', 'futurebase-seo' ) );
+		if ( get_option( 'wp_attachment_pages_enabled', true ) ) {
+			$rows[] = array( __( 'Live attachment pages', 'futurebase-seo' ), 'attachment', Policy::NOINDEX, __( 'Fixed', 'futurebase-seo' ) );
+		} else {
+			$rows[] = array( __( 'Attachment pages', 'futurebase-seo' ), 'attachment', 'inherit', __( 'Redirected by WordPress', 'futurebase-seo' ) );
+		}
+		$rows[] = array( __( 'Unrecognized routes', 'futurebase-seo' ), 'unknown', Policy::NOINDEX, __( 'Fixed', 'futurebase-seo' ) );
+		?>
+		<div class="compseo-settings__policy-table">
+			<table class="widefat striped">
+				<caption><?php esc_html_e( 'Effective indexing policy', 'futurebase-seo' ); ?></caption>
+				<thead>
+					<tr>
+						<th scope="col"><?php esc_html_e( 'Surface', 'futurebase-seo' ); ?></th>
+						<th scope="col"><?php esc_html_e( 'Identifier', 'futurebase-seo' ); ?></th>
+						<th scope="col"><?php esc_html_e( 'Policy', 'futurebase-seo' ); ?></th>
+						<th scope="col"><?php esc_html_e( 'Status', 'futurebase-seo' ); ?></th>
+					</tr>
+				</thead>
+				<tbody>
+					<?php foreach ( $rows as $row ) : ?>
+						<tr>
+							<th scope="row"><?php echo esc_html( $row[0] ); ?></th>
+							<td><code><?php echo esc_html( $row[1] ); ?></code></td>
+							<td><?php echo esc_html( $row[2] ); ?></td>
+							<td><?php echo esc_html( $row[3] ); ?></td>
+						</tr>
+					<?php endforeach; ?>
+				</tbody>
+			</table>
 		</div>
 		<?php
 	}

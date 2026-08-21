@@ -40,10 +40,18 @@ final class Canonical {
 	 * @param array<string, mixed> $context Request context.
 	 */
 	public static function resolve( array $context ): ?string {
+		$decision = Decision::resolve( $context );
+		return $decision['canonical'];
+	}
+
+	/**
+	 * Resolve the unfiltered canonical for singular and self-owned contexts.
+	 *
+	 * @param array<string, mixed> $context Request context.
+	 */
+	public static function base( array $context ): ?string {
 		$kind      = isset( $context['kind'] ) && is_string( $context['kind'] ) ? $context['kind'] : 'unknown';
 		$object_id = isset( $context['object_id'] ) ? absint( $context['object_id'] ) : 0;
-		$paged     = isset( $context['paged'] ) ? max( 1, absint( $context['paged'] ) ) : 1;
-		$query     = isset( $context['query_args'] ) && is_array( $context['query_args'] ) ? $context['query_args'] : array();
 
 		if ( 'singular' === $kind && $object_id > 0 ) {
 			$override = Url::canonical( get_post_meta( $object_id, Identifiers::META_CANONICAL, true ) );
@@ -64,12 +72,39 @@ final class Canonical {
 			$core = wp_get_canonical_url( $object_id );
 			return is_string( $core ) && '' !== Url::canonical( $core ) ? Url::canonical( $core ) : null;
 		}
+		if ( 'attachment' === $kind && $object_id > 0 ) {
+			$url = get_attachment_link( $object_id );
+			return '' !== Url::canonical( $url ) ? Url::canonical( $url ) : null;
+		}
 
-		if ( ! in_array( $kind, array( 'home', 'archive' ), true ) || ! empty( $query ) ) {
+		if ( ! in_array( $kind, array( 'home', 'archive', 'unknown' ), true ) ) {
 			return null;
 		}
 
-		$url = Url::canonical( get_pagenum_link( $paged ) );
+		return self::self_url( $context );
+	}
+
+	/**
+	 * Build a normalized same-page canonical with selected query arguments.
+	 *
+	 * @param array<string, mixed> $context    Request context.
+	 * @param array<string, mixed> $query_args Query arguments to retain.
+	 */
+	public static function self_url( array $context, array $query_args = array() ): ?string {
+		$kind      = isset( $context['kind'] ) && is_string( $context['kind'] ) ? $context['kind'] : 'unknown';
+		$paged     = isset( $context['paged'] ) ? max( 1, absint( $context['paged'] ) ) : 1;
+		$all_query = isset( $context['query_args'] ) && is_array( $context['query_args'] ) ? $context['query_args'] : array();
+
+		$url = in_array( $kind, array( 'home', 'archive' ), true ) ? get_pagenum_link( $paged, false ) : (string) ( $context['url'] ?? '' );
+		if ( ! empty( $all_query ) ) {
+			$url = remove_query_arg( array_keys( $all_query ), $url );
+		}
+		if ( ! empty( $query_args ) ) {
+			ksort( $query_args );
+			$url = add_query_arg( $query_args, $url );
+		}
+
+		$url = Url::canonical( $url );
 		return '' !== $url ? $url : null;
 	}
 

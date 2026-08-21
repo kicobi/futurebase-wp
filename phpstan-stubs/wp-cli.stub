@@ -1,0 +1,35 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {
+	/**
+	 * Static-analysis surface for the runtime-provided WP-CLI API.
+	 */
+	final class WP_CLI {
+		/**
+		 * @param callable|string|object $callable
+		 * @param array<string, mixed>    $args
+		 */
+		public static function add_command( string $name, callable|string|object $callable, array $args = array() ): bool {
+			return true;
+		}
+
+		/** @return never */
+		public static function error( string $message ): void {
+			throw new RuntimeException( $message );
+		}
+
+		public static function line( string $message ): void {
+		}
+	}
+}
+
+namespace WP_CLI\Utils {
+	/**
+	 * @param list<array<string, mixed>|object> $items
+	 * @param list<string>                      $fields
+	 */
+	function format_items( string $format, array $items, array $fields ): void {
+	}
+}

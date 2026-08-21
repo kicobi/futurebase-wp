@@ -28,14 +28,17 @@ for required in \
 	"$slug/$slug.php" \
 	"$slug/includes/class-admin.php" \
 	"$slug/includes/class-canonical.php" \
+	"$slug/includes/class-cli.php" \
 	"$slug/includes/class-context.php" \
 	"$slug/includes/class-contracts.php" \
+	"$slug/includes/class-decision.php" \
 	"$slug/includes/class-document.php" \
 	"$slug/includes/class-editor.php" \
 	"$slug/includes/class-identifiers.php" \
 	"$slug/includes/class-metadata.php" \
 	"$slug/includes/class-output.php" \
 	"$slug/includes/class-plugin.php" \
+	"$slug/includes/class-policy.php" \
 	"$slug/includes/class-robots.php" \
 	"$slug/includes/class-schema.php" \
 	"$slug/includes/class-settings.php" \
