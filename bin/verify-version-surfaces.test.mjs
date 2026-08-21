@@ -18,17 +18,20 @@ function write(root, relative, body) {
 	writeFileSync(target, body, 'utf8');
 }
 
-function fixture({ floor = '7.4', tested = '7.6' } = {}) {
+function fixture({ floor = '7.4', tested = '7.6', lighthouse = '12.6.1' } = {}) {
 	const root = mkdtempSync(join(tmpdir(), 'version-audit-'));
 	const manifest = {
 		name: 'acme-theme',
 		version: '3.2.1',
+		devDependencies: { '@lhci/cli': '0.15.1', lighthouse },
 	};
 	const lock = {
 		name: 'acme-theme',
 		version: '3.2.1',
 		packages: {
 			'': { name: 'acme-theme', version: '3.2.1' },
+			'node_modules/@lhci/cli': { dependencies: { lighthouse: '12.6.1' } },
+			'node_modules/lighthouse': { version: '12.6.1' },
 		},
 	};
 	write(root, 'package.json', JSON.stringify(manifest));
@@ -100,6 +103,15 @@ test('minimum and tested-up-to drift are reported', () => {
 		const failures = auditVersionSurfaces(root).failures.join('\n');
 		assert.match(failures, /WordPress minimum/);
 		assert.match(failures, /WordPress tested up to/);
+	} finally {
+		cleanup();
+	}
+});
+
+test('Lighthouse dependency drift is reported', () => {
+	const { root, cleanup } = fixture({ lighthouse: '13.0.0' });
+	try {
+		assert.match(auditVersionSurfaces(root).failures.join('\n'), /Lighthouse toolchain/);
 	} finally {
 		cleanup();
 	}

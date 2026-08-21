@@ -146,6 +146,7 @@ npm run format         # format source/docs (honours .prettierignore)
 npm run verify         # block theme standards + lint + phpcs + phpstan + pa11y
 npm run a11y           # pa11y-ci against the local wp-env (expects :8888 — verify probes the real port)
 npm run test:navigation # destructive navigation-migration scenarios against disposable wp-env
+npm run lighthouse:sample -- --url=https://example.com/ # sample arbitrary public production content
 npm run rename -- <slug> --theme-name "<name>" --theme-version <semver> \
   --theme-uri <url> --repository <owner/repository> [--contributors "foo, bar"]
                        # rename client identity and reconcile root npm-lock metadata offline

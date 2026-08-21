@@ -618,6 +618,15 @@ test('portable scripts travel with the configuration they invoke', () => {
 	for (const rel of PORTABLE_CONFIG) assert.equal(classifyPath(rel), CLASS.SAFE, `${rel} must travel with the script that reads it`);
 });
 
+test('the production sampler travels without claiming a shared project config', () => {
+	for (const rel of ['bin/lighthouse-sample.mjs', 'bin/lighthouse-sample.test.mjs']) {
+		assert.ok(PORTABLE_BIN.includes(rel));
+		assert.equal(classifyPath(rel), CLASS.SAFE);
+	}
+	assert.ok(!VERIFIER_CLOSURE.includes('bin/lighthouse-sample.mjs'));
+	assert.equal(classifyPath('lighthouse-sample.config.json'), CLASS.REVIEW);
+});
+
 test('the sync-safe workflow receives the complete companion SEO runtime closure', () => {
 	const root = resolve(TOOL_ROOT, '..', '..');
 	const workflow = readFileSync(join(root, '.github', 'workflows', 'ci.yml'), 'utf8');

@@ -45,6 +45,9 @@ jobs:
             - run: npm run lint:css
             - run: npm run lint:pkg
             - run: npm run build
+            - name: Production Lighthouse sampler parser tests
+              if: hashFiles('bin/lighthouse-sample.test.mjs') != ''
+              run: node --test bin/lighthouse-sample.test.mjs
             - name: Build companion SEO plugin
               if: hashFiles('plugins/*-seo/src/index.js') != ''
               run: bin/build-seo-plugin.sh build

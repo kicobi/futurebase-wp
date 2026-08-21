@@ -81,3 +81,62 @@ imported on the host (`wp site empty --uploads --yes && wp eval-file
 non-localhost targets by design). The script verifies `/about/` exists before
 spending ~50 Lighthouse runs. Artifacts land in
 `.artifacts/scorecard/<date>-<host>/`.
+
+## Sampling a production site
+
+Scorecard measures the Futurebase demo fixture: locally as a regression gate,
+or on the public demo for publishable fixture numbers. The production sampler
+has a different job. It measures arbitrary public client content without
+requiring or importing that fixture:
+
+```sh
+npm run lighthouse:sample -- --url=https://example.com/
+# The portable form works after project-system sync, where package scripts do not merge:
+node bin/lighthouse-sample.mjs --url=https://example.com/
+```
+
+The sampler runs five mobile slots and three desktop slots. It requires a
+mobile median performance score of 95, every mobile score to be at least 90,
+and every desktop score to be at least 98. Each evaluated slot must also have
+LCP below 2500 ms, CLS below 0.02, TBT below 200 ms, and transfer below
+921600 bytes (900 KiB), with no lazy-loaded LCP candidate and no WordPress
+attachment downloaded at multiple responsive widths. A failed slot or a
+Lighthouse runtime error gets one fresh-profile retry; an aggregate median
+failure never retries. Every attempt remains in
+`.artifacts/lighthouse/<timestamp>/` alongside `summary.json` and
+`summary.md`.
+
+Projects can create an optional, client-owned
+`lighthouse-sample.config.json` at the repository root. The starter does not
+ship this file, so project-system sync neither manages nor reports it. An
+explicit `--config=<path>` selects another file. CLI options take precedence
+over the selected JSON file, which takes precedence over built-in defaults.
+Unknown or misspelled keys fail instead of silently weakening a gate.
+
+The complete configuration shape is:
+
+```json
+{
+  "mobileRuns": 5,
+  "desktopRuns": 3,
+  "retries": 1,
+  "thresholds": {
+    "mobileMedianPerformance": 95,
+    "mobileMinimumPerformance": 90,
+    "desktopMinimumPerformance": 98,
+    "lcpMs": 2500,
+    "cls": 0.02,
+    "tbtMs": 200,
+    "totalBytes": 921600
+  }
+}
+```
+
+Every key is optional. Run counts must be integers from 1–20; `retries` is
+either `0` (strict, no retry) or `1`; performance thresholds are 0–100; and
+metric/transfer limits must be positive. CLI overrides are
+`--mobile-runs=<n>`, `--desktop-runs=<n>`, and `--retries=0|1`.
+
+Only syntactically public HTTP(S) URLs are accepted. Credentials, loopback,
+RFC1918 and link-local IP literals, and `.local`, `.test`, or `.internal`
+hostnames are rejected without DNS resolution or an override flag.

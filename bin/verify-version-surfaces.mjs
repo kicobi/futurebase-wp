@@ -156,6 +156,14 @@ export function auditVersionSurfaces(root = DEFAULT_ROOT) {
 	const testedUpTo = tested[0][1] || null;
 	summaries.push(`tested through ${testedUpTo ?? '?'}`);
 
+	const lighthouse = [
+		['package.json devDependencies.lighthouse', rootPackage.devDependencies?.lighthouse],
+		['package-lock.json Lighthouse version', rootLock.packages?.['node_modules/lighthouse']?.version],
+		['@lhci/cli Lighthouse dependency', rootLock.packages?.['node_modules/@lhci/cli']?.dependencies?.lighthouse],
+	];
+	exactGroup(failures, 'Lighthouse toolchain', lighthouse, { versionPattern: /^\d+\.\d+\.\d+$/ });
+	summaries.push(`Lighthouse ${lighthouse[0][1] ?? '?'}`);
+
 	return { failures, summaries, floor, testedUpTo };
 }
 
