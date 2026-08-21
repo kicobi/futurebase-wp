@@ -27,8 +27,8 @@ fixture, then audits one URL per shipped template family with Lighthouse
   category archive, one author archive, `/?s=demo` (search), and a 404 URL
   (pa11y only — Lighthouse is unreliable on non-200 responses).
 - **Lighthouse:** `@lhci/cli`, 3 runs per URL per form factor, median
-  aggregation. Search results are exempt from the SEO category — WordPress
-  correctly marks them `noindex`.
+  aggregation. Search results and author archives are exempt from the SEO
+  category because the companion correctly marks both `noindex` by default.
 - **pa11y:** WCAG2AA, zero errors tolerated, desktop (default) and 375px
   viewports.
 - **Raw reports:** every run writes `.artifacts/scorecard/<date>/`
@@ -37,19 +37,26 @@ fixture, then audits one URL per shipped template family with Lighthouse
 
 ## Budgets (CI regression gate, wp-env)
 
-| Category       | Mobile | Desktop |
-| -------------- | ------ | ------- |
-| Performance    | ≥ 93   | ≥ 98    |
-| Accessibility  | ≥ 95   | ≥ 95    |
-| Best practices | ≥ 90   | ≥ 90    |
-| SEO            | ≥ 90   | ≥ 90    |
-| pa11y WCAG2AA  | 0 errors | 0 errors |
+| Category       | Mobile                | Desktop               |
+| -------------- | --------------------- | --------------------- |
+| Performance    | ≥ 93                  | ≥ 98                  |
+| Accessibility  | ≥ 95                  | ≥ 95                  |
+| Best practices | ≥ 90                  | ≥ 90                  |
+| SEO            | 100 on indexable URLs | 100 on indexable URLs |
+| pa11y WCAG2AA  | 0 errors              | 0 errors              |
 
 First honest run (2026-07-09, wp-env, regression-gate environment — **not a
 published claim**): performance 100 and accessibility 100 on every URL, both
 form factors; best practices 100; SEO 91–92 (no meta descriptions — a
 deliberate theme-level gap; see [seo.md](seo.md) for the decided three-layer
 stance); pa11y 0 errors across all 9 URLs at both viewports.
+
+Futurebase SEO 0.6.0 release-candidate smoke (2026-08-21, wp-env, one
+Lighthouse run per URL rather than the CI median — **not a published claim**):
+performance, accessibility, and best practices 100 on every measured URL;
+SEO 100 on every indexable URL; pa11y 0 errors across all 9 URLs at both
+viewports. Search and author archive scores are intentionally outside the SEO
+budget because their default policy is `noindex`.
 
 ## Running it
 

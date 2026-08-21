@@ -74,6 +74,10 @@ else
 		exit 1
 	fi
 
+	# The deterministic product fixture includes the separately packaged SEO
+	# companion. Its install probe also proves activation cycles and theme-switch
+	# survival before Lighthouse treats the metadata baseline as evidence.
+	./bin/test-seo-install.sh
 	./bin/demo-content.sh ${FORCE_ARGS[@]+"${FORCE_ARGS[@]}"}
 	RUN_LABEL="$(date +%Y-%m-%d)"
 fi

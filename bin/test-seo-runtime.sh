@@ -403,8 +403,54 @@ for provider in compseo-fixture-yoast compseo-fixture-rank-math; do
 	contains "$SEO_TEST_SUPPRESSED_STATUS" '"suppressed":true' || fail "$provider hid or bypassed suppressed diagnostics"
 	SEO_TEST_SUPPRESSED_DECISION=$(wp compseo decision "$SEO_TEST_ARCHIVE_URL" --format=json)
 	contains "$SEO_TEST_SUPPRESSED_DECISION" '"suppressed":true' || fail "$provider hid or bypassed URL diagnostics"
+	SEO_TEST_SUPPRESSED_PURGE=$(wp compseo purge --format=json)
+	contains "$SEO_TEST_SUPPRESSED_PURGE" '"action":"dry-run"' || fail "$provider hid or bypassed cleanup diagnostics"
 	wp plugin deactivate "$provider" > /dev/null
-	pass "$provider suppresses runtime output while preserving non-secret diagnostics"
+	pass "$provider suppresses runtime output while preserving non-secret diagnostics and cleanup"
 done
+
+wp post meta update "$SEO_TEST_PUBLIC_ID" _compseo_project_extension 'must-survive' > /dev/null
+SEO_TEST_PURGE_DRY=$(wp compseo purge --format=json)
+contains "$SEO_TEST_PURGE_DRY" '"action":"dry-run"' || fail "cleanup did not default to a dry run"
+contains "$SEO_TEST_PURGE_DRY" '"settings_options":1' || fail "cleanup dry run did not count the settings option"
+not_contains "$SEO_TEST_PURGE_DRY" '"metadata_rows":0' || fail "cleanup dry run did not count owned metadata"
+contains "$SEO_TEST_PURGE_DRY" 'Back up the current site database' || fail "cleanup omitted database-backup advice"
+not_contains "$SEO_TEST_PURGE_DRY" 'runtime-google-token' || fail "cleanup dry run exposed a verification value"
+SEO_TEST_TITLE_AFTER_DRY_RUN=$(wp post meta get "$SEO_TEST_AUTHORED_ID" _compseo_title)
+[ "$SEO_TEST_TITLE_AFTER_DRY_RUN" = 'Authored Full Title' ] || fail "cleanup dry run changed owned metadata"
+
+set +e
+SEO_TEST_NETWORK_PURGE=$(wp compseo purge --network --yes --format=json 2>&1)
+SEO_TEST_NETWORK_STATUS=$?
+set -e
+if [ "$SEO_TEST_NETWORK_STATUS" -eq 0 ]; then
+	fail "cleanup accepted a network-wide request"
+fi
+contains "$SEO_TEST_NETWORK_PURGE" 'Network-wide cleanup is unsupported' || fail "network cleanup refusal was not explicit"
+SEO_TEST_TITLE_AFTER_NETWORK=$(wp post meta get "$SEO_TEST_AUTHORED_ID" _compseo_title)
+[ "$SEO_TEST_TITLE_AFTER_NETWORK" = 'Authored Full Title' ] || fail "refused network cleanup changed owned metadata"
+
+SEO_TEST_PURGED=$(wp compseo purge --yes --format=json)
+contains "$SEO_TEST_PURGED" '"action":"purged"' || fail "confirmed cleanup did not report completion"
+contains "$SEO_TEST_PURGED" '"remaining_settings_options":0' || fail "confirmed cleanup left the settings option behind"
+contains "$SEO_TEST_PURGED" '"remaining_metadata_rows":0' || fail "confirmed cleanup left owned metadata behind"
+contains "$SEO_TEST_PURGED" '"posts_deleted":0' || fail "cleanup did not guarantee that posts remain"
+contains "$SEO_TEST_PURGED" '"attachments_deleted":0' || fail "cleanup did not guarantee that attachments remain"
+if wp option get compseo_settings > /dev/null 2>&1; then
+	fail "confirmed cleanup left companion settings readable"
+fi
+if wp post meta get "$SEO_TEST_AUTHORED_ID" _compseo_title > /dev/null 2>&1; then
+	fail "confirmed cleanup left companion post metadata readable"
+fi
+wp post get "$SEO_TEST_PUBLIC_ID" --field=ID > /dev/null || fail "cleanup deleted a content post"
+wp post get "$SEO_TEST_ATTACHMENT_ID" --field=ID > /dev/null || fail "cleanup deleted a referenced attachment"
+SEO_TEST_THUMBNAIL_AFTER_PURGE=$(wp post meta get "$SEO_TEST_PUBLIC_ID" _thumbnail_id)
+[ "$SEO_TEST_THUMBNAIL_AFTER_PURGE" = "$SEO_TEST_ATTACHMENT_ID" ] || fail "cleanup removed a theme-owned attachment reference"
+SEO_TEST_EXTENSION_AFTER_PURGE=$(wp post meta get "$SEO_TEST_PUBLIC_ID" _compseo_project_extension)
+[ "$SEO_TEST_EXTENSION_AFTER_PURGE" = 'must-survive' ] || fail "cleanup removed a similarly prefixed project metadata key"
+SEO_TEST_PURGE_EMPTY=$(wp compseo purge --format=json)
+contains "$SEO_TEST_PURGE_EMPTY" '"settings_options":0' || fail "post-cleanup report found companion settings"
+contains "$SEO_TEST_PURGE_EMPTY" '"metadata_rows":0' || fail "post-cleanup report found companion metadata"
+pass "dry-run-first cleanup is site-scoped, secret-free, exact, and content-safe"
 
 echo "companion SEO runtime: OK"

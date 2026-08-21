@@ -24,7 +24,7 @@ providers and queries, but the theme does not replace or configure it.
 ## 2. First-party fallback: Futurebase SEO
 
 The separately packaged companion plugin is implemented through version
-0.5.0. It provides a dependable baseline when no dedicated SEO provider is
+0.6.0. It provides a dependable baseline when no dedicated SEO provider is
 active:
 
 - document titles, descriptions, canonical overrides, noindex requests, and
@@ -36,7 +36,9 @@ active:
 - native WordPress sitemap augmentation for noindex, external-canonical,
   password-protected, taxonomy-policy, and author-policy exclusions; and
 - scriptable `wp compseo status` and `wp compseo decision` diagnostics with
-  stable reason codes.
+  stable reason codes; and
+- dry-run-first, site-scoped `wp compseo purge` cleanup that requires an
+  explicit confirmation and never deletes content or media.
 
 The plugin is a fallback, not a competitor. Yoast or Rank Math suppresses its
 entire runtime registrar: no companion frontend output, REST metadata, editor
@@ -79,12 +81,13 @@ settings, archive policy and diagnostics, and native sitemap integration.
 
 The 91–92 Lighthouse SEO result recorded in [scorecard.md](scorecard.md) is a
 historical local regression-gate baseline from 2026-07-09, not a current
-product score or public guarantee. The final release round still needs the
-explicit data-purge command, remaining lifecycle acceptance fixtures, final
-documentation, and evidence capture on the promoted public demo. A Lighthouse
-SEO 100 result may be published only after that deterministic and public
-before/after evidence is recorded with its targets, versions, dates, and
-methodology.
+product score or public guarantee. Version 0.6.0 completes the starter release
+round: explicit data cleanup, lifecycle acceptance fixtures, deterministic
+local SEO-100 enforcement for indexable routes, and permanent documentation.
+The remaining evidence action belongs downstream: capture the promoted public
+demo before and after activation. A Lighthouse SEO 100 result may be published
+only after that public evidence is recorded with its targets, versions, dates,
+and methodology.
 
 See [plugin-strategy.md](plugin-strategy.md) for ownership, promotion,
 packaging, sync, and maintenance policy.

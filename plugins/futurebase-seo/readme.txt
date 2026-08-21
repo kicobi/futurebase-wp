@@ -2,7 +2,7 @@
 Contributors: kicobi
 Requires at least: 6.9
 Requires PHP: 8.3
-Stable tag: 0.5.0
+Stable tag: 0.6.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -15,9 +15,14 @@ native sitemap policy, and factual schema when Yoast or Rank Math is not active.
 Settings → SEO owns site entity, social-default, search-verification, and
 per-object archive-policy settings, while the block editor document sidebar
 exposes revisioned per-page controls. Non-secret WP-CLI diagnostics explain each
-URL's indexing decision.
+URL's indexing decision. Dry-run-first `wp compseo purge` removes only the
+current site's owned option and metadata after explicit confirmation.
 
 == Changelog ==
+
+= 0.6.0 =
+* Add dry-run-first, site-scoped `wp compseo purge` cleanup with explicit backup guidance.
+* Prove activation cycles, theme switching, promotion, packaging, suppression, and deterministic SEO evidence.
 
 = 0.5.0 =
 * Exclude noindex, externally canonicalized, and password-protected content from native sitemaps.

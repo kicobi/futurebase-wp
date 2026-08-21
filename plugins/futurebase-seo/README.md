@@ -105,6 +105,28 @@ taxonomy/author/date archives, pagination, attachments, search, filtered
 queries, and 404s. Status reports only whether verification is configured; it
 never exposes saved verification values. V1 is single-site only.
 
+## Cleanup and offboarding
+
+Deactivation, theme switching, and plugin-file removal retain all settings and
+authored metadata. Data removal is an explicit maintenance operation rather
+than an uninstall side effect:
+
+```sh
+wp compseo purge --format=json
+wp db export before-compseo-purge.sql
+wp compseo purge --yes --format=json
+```
+
+The first command is always a dry run. It reports the current site ID and URL,
+the settings-option count, total metadata rows, affected-post count, and a
+per-key breakdown without printing any stored values. `--yes` deletes only
+`compseo_settings` and the five `_compseo_*` post-meta keys. It never deletes
+posts, media, referenced attachments, or unrelated attachment metadata.
+
+The command advises a database backup and verifies that no owned records remain
+after deletion. It refuses `--network`; on multisite, target one site explicitly
+with WP-CLI's global `--url` parameter. Network-wide cleanup is unsupported.
+
 ## Permanent identity
 
 `compseo` means “companion SEO.” It is a neutral, permanent owner prefix for
@@ -128,6 +150,8 @@ constants, and asset handles—but never changes:
 Those identifiers are a compatibility contract. Keeping them independent of a
 client slug prevents migrations during promotion and makes carefully reviewed
 project adapters portable between the starter and a promoted project.
+The WP-CLI subcommand names `status`, `decision`, and `purge` are operational
+compatibility contracts as well.
 
 ### Filter signatures
 
@@ -180,6 +204,23 @@ and development environments receive `_doing_it_wrong()` without the rejected
 value appearing in the message. Changing a filter name, argument order,
 required payload key, or payload meaning is a breaking change.
 
+## Project extensions and deliberate exclusions
+
+Project-specific schema, document fallbacks, and query-state policy belong in a
+small project adapter using the permanent filters above. A post type whose
+singular URLs should never exist should be registered accordingly by the
+content-model layer; a global per-post-type noindex switch is not a substitute
+for correct registration.
+
+V1 deliberately excludes redirects, breadcrumbs, snippet previews, content
+analysis, hreflang and multilingual workflows, token templates, per-term and
+per-user metadata, feed `X-Robots-Tag` handling, multisite-wide operations,
+telemetry, and automatic updates. Redirects and richer editorial SEO workflows
+belong to Yoast or Rank Math. Per-term metadata is the only identified
+structural V2 candidate and remains deferred until repeated client evidence
+creates a real requirement. External or dynamically generated social-image
+URLs are also outside the attachment-ID-only document contract.
+
 ## Distribution
 
 From the repository root:
@@ -192,3 +233,28 @@ npm run package:seo:check
 The resulting ZIP is written to `.dist/<plugin-slug>.zip`. The theme ZIP never
 contains `plugins/`, and the plugin ZIP contains no theme runtime or development
 tooling.
+
+Promotion renames the package before content exists. Install and deploy the
+renamed ZIP separately from the theme, activate it, and confirm ownership with
+`wp compseo status`. Activation and deactivation perform no content migrations;
+theme switching leaves the active plugin and its data intact. Updates are
+manual, reviewed deployments through the project repository—there is no update
+server or phone-home endpoint.
+
+When replacing the companion with Yoast or Rank Math, configure and verify the
+new provider first. Suppression then makes companion settings read-only and
+removes all runtime ownership. Retain the saved data for rollback until the
+migration is accepted; use the explicit purge command only after a backup.
+
+## Evidence standard
+
+The deterministic demo scorecard activates the companion and requires a
+Lighthouse SEO score of 100 on every indexable template-family URL. Search and
+author archives are excluded from the SEO category because their correct
+default result is `noindex`. Local wp-env and CI results are regression
+evidence, not public marketing claims.
+
+Publishable before/after claims must be captured separately on the promoted
+public demo with the same page set and tooling. Record the target, date,
+starter and project commits, plugin version, tool versions, and methodology;
+retain raw artifacts outside git and publish only a sanitized summary.
