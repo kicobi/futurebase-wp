@@ -153,8 +153,10 @@ echo "  plugin:   $FUTUREBASE_SEO_BASE_SLUG → $SEO_SLUG"
 echo
 
 # Keep the surface narrow. readme.txt is the only .txt file intentionally
-# included; package-manager locks, fixtures, tools, vendor, and build output are
-# never passed through text substitution.
+# included; package-manager locks, fixtures, tools, vendor, and the theme build
+# stay outside text substitution. Companion plugin source and committed JS
+# bundles are included because promotion must leave an installable renamed
+# plugin before a client dependency install is available.
 TARGETS=()
 while IFS= read -r file; do TARGETS+=("$file"); done < <(
 	scan_roots=(functions.php style.css composer.json package.json phpcs.xml.dist phpstan.neon.dist readme.txt .wp-env.json)
@@ -164,7 +166,7 @@ while IFS= read -r file; do TARGETS+=("$file"); done < <(
 		[ -d "$dir" ] && scan_roots+=("$dir")
 	done
 	find "${scan_roots[@]}" -type f \
-		\( -name '*.php' -o -name '*.html' -o -name '*.json' -o -name '*.css' -o -name '*.dist' -o -name '*.xml' -o -name '*.md' -o -name '*.sh' -o -name 'readme.txt' \) \
+		\( -name '*.php' -o -name '*.html' -o -name '*.json' -o -name '*.css' -o -name '*.scss' -o -name '*.js' -o -name '*.jsx' -o -name '*.dist' -o -name '*.xml' -o -name '*.md' -o -name '*.sh' -o -name 'readme.txt' \) \
 		-not -name 'rename-theme.sh' \
 		-not -name 'test-rename.sh' \
 		-not -name 'audit-identity.sh' \

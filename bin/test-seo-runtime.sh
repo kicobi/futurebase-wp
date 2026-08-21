@@ -78,6 +78,10 @@ wp eval-file "$SEO_TEST_THEME_DIR/bin/test-seo-runtime.php" setup > /dev/null
 wp rewrite flush > /dev/null
 wp eval-file "$SEO_TEST_THEME_DIR/bin/test-seo-runtime.php" assert-contracts > /dev/null
 pass "registered metadata, permissions, sanitization, revisions, and public CPT support"
+wp eval-file "$SEO_TEST_THEME_DIR/bin/test-seo-runtime.php" assert-settings > /dev/null
+pass "schema-versioned settings sanitize verification tags without echoing rejected values"
+wp eval-file "$SEO_TEST_THEME_DIR/bin/test-seo-runtime.php" assert-editor > /dev/null
+pass "supported block-editor screens receive the compiled SEO sidebar asset"
 
 SEO_TEST_PUBLIC_ID=$(wp post list --post_type=post --name=compseo-runtime-public --field=ID --format=ids | tail -1 | tr -d '\r')
 SEO_TEST_NO_IMAGE_ID=$(wp post list --post_type=post --name=compseo-runtime-no-image --field=ID --format=ids | tail -1 | tr -d '\r')
@@ -177,7 +181,15 @@ SEO_TEST_HEAD=$(printf '%s' "$SEO_TEST_HTML" | head_only)
 contains "$SEO_TEST_HEAD" 'name="description" content="Public site tagline"' || fail "latest-posts home did not use the site tagline"
 contains "$SEO_TEST_HEAD" '"@type":"WebSite"' || fail "home is missing WebSite schema"
 contains "$SEO_TEST_HEAD" '"@type":"Organization"' || fail "home is missing configured Organization schema"
-pass "latest-posts home description and factual schema graph"
+contains "$SEO_TEST_HEAD" 'name="google-site-verification" content="runtime-google-token"' || fail "canonical homepage is missing Google verification"
+contains "$SEO_TEST_HEAD" 'name="msvalidate.01" content="runtime-bing-token"' || fail "canonical homepage is missing Bing verification"
+SEO_TEST_QUERY_HEAD=$(curl -fsS "$SEO_TEST_URL/?utm_source=runtime" | head_only)
+not_contains "$SEO_TEST_QUERY_HEAD" 'google-site-verification' || fail "homepage query variant emitted Google verification"
+not_contains "$SEO_TEST_QUERY_HEAD" 'msvalidate.01' || fail "homepage query variant emitted Bing verification"
+SEO_TEST_PAGED_HEAD=$(curl -fsS "$SEO_TEST_URL/?paged=2" | head_only)
+not_contains "$SEO_TEST_PAGED_HEAD" 'google-site-verification' || fail "paged homepage emitted Google verification"
+not_contains "$SEO_TEST_PAGED_HEAD" 'msvalidate.01' || fail "paged homepage emitted Bing verification"
+pass "latest-posts home schema and canonical-only verification output"
 
 wp option update show_on_front page > /dev/null
 wp option update page_on_front "$SEO_TEST_FRONT_ID" > /dev/null
@@ -223,8 +235,11 @@ for provider in compseo-fixture-yoast compseo-fixture-rank-math; do
 	not_contains "$SEO_TEST_HEAD" 'property="og:' || fail "$provider did not suppress Open Graph output"
 	not_contains "$SEO_TEST_HEAD" 'name="description"' || fail "$provider did not suppress the meta description"
 	not_contains "$SEO_TEST_HEAD" 'https://example.net/reference?lang=sv' || fail "$provider did not suppress the canonical override"
+	SEO_TEST_HOME_HEAD=$(curl -fsS "$SEO_TEST_URL/" | head_only)
+	not_contains "$SEO_TEST_HOME_HEAD" 'google-site-verification' || fail "$provider did not suppress Google verification"
+	not_contains "$SEO_TEST_HOME_HEAD" 'msvalidate.01' || fail "$provider did not suppress Bing verification"
 	wp plugin deactivate "$provider" > /dev/null
-	pass "$provider suppresses output and REST metadata independently"
+	pass "$provider suppresses output, verification, REST metadata, and editor assets independently"
 done
 
 echo "companion SEO runtime: OK"

@@ -4,9 +4,28 @@ This directory is the source for the private SEO companion plugin. It lives in
 the same repository as the theme so both products share promotion tooling and
 quality gates, but it is built, packaged, installed, and deployed separately.
 
-The plugin now supplies its privacy-safe metadata and output baseline when no
-blessed premium SEO provider is active. Editor controls, site settings,
-archive policy, sitemaps, and diagnostics arrive in later focused changes.
+The plugin supplies its privacy-safe metadata and output baseline when no
+blessed premium SEO provider is active. It includes a block-editor document
+sidebar and schema-versioned site settings. Archive policy, sitemaps, and
+diagnostics arrive in later focused changes.
+
+## Editor and site settings
+
+The editor sidebar exposes the complete document title, meta description,
+noindex request, canonical override, and an attachment-based social image.
+Title and description counters are advisory; authored values are never
+truncated. The noindex control does not make content private.
+
+Settings → SEO stores a site Person or Organization, a default social image,
+public profiles, an X handle, and Google/Bing verification tokens in
+`compseo_settings` schema version 1. Full recognized verification meta tags
+may be pasted for convenience, but only their content token is stored. Google
+output supports URL-prefix properties; domain properties should use DNS
+verification. Verification tags appear only on the canonical, unpaged
+homepage with no query string.
+
+Images below 1200 × 630 pixels or without alternative text receive advisory
+warnings in the editor and settings screen. Images are not resized or rejected.
 
 ## Output baseline
 
@@ -23,6 +42,10 @@ because metadata in the document head is public by definition.
 Yoast (`WPSEO_VERSION`) and Rank Math (`RANK_MATH_VERSION`) suppress the entire
 runtime registrar. While suppressed, the companion registers no REST metadata,
 frontend output, robots behavior, schema, or editor assets.
+
+The settings screen remains visible but read-only during suppression so saved
+values can be migrated deliberately. Saved verification values are not emitted
+while another provider owns SEO output.
 
 Authored SEO titles are complete document titles. They are emitted verbatim
 without a separator or automatic site-name suffix. The 70-character title and

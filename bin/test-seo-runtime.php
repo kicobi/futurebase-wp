@@ -24,6 +24,24 @@ call_user_func(
 			}
 		};
 
+		$find_class_callback = static function ( string $hook_name, string $class_suffix, string $method ): ?callable {
+			$hook = $GLOBALS['wp_filter'][ $hook_name ] ?? null;
+			if ( ! $hook instanceof WP_Hook ) {
+				return null;
+			}
+
+			foreach ( $hook->callbacks as $callbacks ) {
+				foreach ( $callbacks as $registration ) {
+					$callback = $registration['function'] ?? null;
+					if ( is_array( $callback ) && isset( $callback[0], $callback[1] ) && is_string( $callback[0] ) && str_ends_with( $callback[0], $class_suffix ) && $method === $callback[1] ) {
+						return $callback;
+					}
+				}
+			}
+
+			return null;
+		};
+
 		$plugin_source = static function ( string $provider = '' ): string {
 			if ( 'yoast' === $provider ) {
 				return "<?php\n/**\n * Plugin Name: Companion SEO Yoast Fixture\n */\nif ( ! defined( 'WPSEO_VERSION' ) ) { define( 'WPSEO_VERSION', '99.0-test' ); }\n";
@@ -260,11 +278,20 @@ PHP;
 			update_option(
 				'compseo_settings',
 				array(
-					'social' => array( 'default_image_id' => $default_id ),
-					'entity' => array(
+					'schema_version' => 1,
+					'social'         => array(
+						'default_image_id' => $default_id,
+						'profiles'         => array(),
+						'x_handle'         => '',
+					),
+					'entity'         => array(
 						'type' => 'organization',
 						'name' => 'Runtime Studio',
 						'url'  => home_url( '/' ),
+					),
+					'verification'   => array(
+						'google' => 'runtime-google-token',
+						'bing'   => 'runtime-bing-token',
 					),
 				)
 			);
@@ -352,10 +379,128 @@ PHP;
 			return;
 		}
 
+		if ( 'assert-settings' === $command ) {
+			$state          = $load_state();
+			$before         = get_option( 'compseo_settings', array() );
+			$admin_register = $find_class_callback( 'admin_init', '\\SEO\\Admin', 'register_setting' );
+			$expect( is_callable( $admin_register ), 'SEO settings registration callback is missing.' );
+			call_user_func( $admin_register );
+			$registered = get_registered_settings();
+			$expect( isset( $registered['compseo_settings']['sanitize_callback'] ), 'Schema-versioned SEO settings were not registered.' );
+			$sanitize = $registered['compseo_settings']['sanitize_callback'];
+			$expect( is_callable( $sanitize ), 'SEO settings sanitizer is not callable.' );
+
+			$valid = call_user_func(
+				$sanitize,
+				array(
+					'schema_version' => 999,
+					'entity'         => array(
+						'type'    => 'organization',
+						'name'    => 'Runtime Studio',
+						'url'     => home_url( '/' ),
+						'logo_id' => $state['ids']['default'],
+					),
+					'social'         => array(
+						'default_image_id' => $state['ids']['default'],
+						'profiles'         => "https://example.com/studio\nhttps://social.example/runtime",
+						'x_handle'         => '@runtime_studio',
+					),
+					'verification'   => array(
+						'google' => '<meta name="google-site-verification" content="google-token_123">',
+						'bing'   => '<meta content="bing-token_456" name="msvalidate.01">',
+					),
+				)
+			);
+			$expect( is_array( $valid ) && 1 === $valid['schema_version'], 'Settings schema version must be server-owned.' );
+			$expect( 'google-token_123' === $valid['verification']['google'], 'Google verification tag was not reduced to its token.' );
+			$expect( 'bing-token_456' === $valid['verification']['bing'], 'Bing verification tag was not reduced to its token.' );
+			$expect( 'runtime_studio' === $valid['social']['x_handle'], 'X handle was not normalized.' );
+			$expect( 2 === count( $valid['social']['profiles'] ), 'Social profile list was not normalized.' );
+			update_option( 'compseo_settings', $valid );
+
+			$bare                           = $valid;
+			$bare['verification']['google'] = 'bare-google_token';
+			$bare['verification']['bing']   = 'bare-bing_token';
+			$bare                           = call_user_func( $sanitize, $bare );
+			$expect( 'bare-google_token' === $bare['verification']['google'], 'Bare Google verification token was not retained.' );
+			$expect( 'bare-bing_token' === $bare['verification']['bing'], 'Bare Bing verification token was not retained.' );
+
+			$secret_google                     = 'REJECTED_GOOGLE_SECRET';
+			$secret_bing                       = 'REJECTED_BING_SECRET';
+			$invalid                           = $valid;
+			$invalid['verification']['google'] = '<meta name="unrelated" content="' . $secret_google . '">';
+			$invalid['verification']['bing']   = '<meta name="msvalidate.01" content="safe"><meta name="extra" content="' . $secret_bing . '">';
+			$after_invalid                     = call_user_func( $sanitize, $invalid );
+			$expect( 'google-token_123' === $after_invalid['verification']['google'], 'Invalid Google verification input did not retain the previous token.' );
+			$expect( 'bing-token_456' === $after_invalid['verification']['bing'], 'Invalid Bing verification input did not retain the previous token.' );
+
+			$errors = wp_json_encode( get_settings_errors( 'compseo_settings' ) );
+			$expect( is_string( $errors ) && false === strpos( $errors, $secret_google ) && false === strpos( $errors, $secret_bing ), 'Settings errors exposed rejected verification values.' );
+
+			$administrator = get_users(
+				array(
+					'role'   => 'administrator',
+					'number' => 1,
+				)
+			);
+			wp_set_current_user( (int) $administrator[0]->ID );
+			$admin_menu = $find_class_callback( 'admin_menu', '\\SEO\\Admin', 'register_page' );
+			$expect( is_array( $admin_menu ) && isset( $admin_menu[0] ) && is_string( $admin_menu[0] ), 'SEO settings page callback is missing.' );
+			$render = array( $admin_menu[0], 'render' );
+			$expect( is_callable( $render ), 'SEO settings page renderer is not callable.' );
+			ob_start();
+			call_user_func( $render );
+			$page = (string) ob_get_clean();
+			$expect( false !== strpos( $page, 'name="compseo_settings[entity][type]"' ), 'Entity controls do not use the nested settings schema.' );
+			$expect( false !== strpos( $page, 'name="compseo_settings[social][default_image_id]"' ), 'Social-image control does not use the nested settings schema.' );
+			$expect( false !== strpos( $page, 'name="compseo_settings[verification][google]"' ), 'Verification controls do not use the nested settings schema.' );
+			$expect( false === strpos( strtolower( $page ), 'archive policy' ), 'PR 3 settings must not expose deferred archive policy controls.' );
+			update_option( 'compseo_settings', $before );
+
+			WP_CLI::success( 'Companion SEO settings schema and sanitization pass.' );
+			return;
+		}
+
+		if ( 'assert-editor' === $command ) {
+			if ( ! function_exists( 'set_current_screen' ) ) {
+				require_once ABSPATH . 'wp-admin/includes/screen.php';
+			}
+			set_current_screen( 'post' );
+			// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Intentionally exercising core's editor asset lifecycle.
+			do_action( 'enqueue_block_editor_assets' );
+
+			$editor_script = null;
+			foreach ( wp_scripts()->registered as $script ) {
+				if ( isset( $script->src ) && is_string( $script->src ) && str_ends_with( $script->src, '/build/index.js' ) ) {
+					$editor_script = $script;
+					break;
+				}
+			}
+
+			$expect( null !== $editor_script, 'The SEO editor script was not enqueued for posts.' );
+			foreach ( array( 'wp-block-editor', 'wp-components', 'wp-data', 'wp-editor', 'wp-plugins' ) as $dependency ) {
+				$expect( in_array( $dependency, $editor_script->deps, true ), 'Editor asset dependency is missing: ' . $dependency );
+			}
+
+			WP_CLI::success( 'Companion SEO editor asset registration passes.' );
+			return;
+		}
+
 		if ( 'assert-suppressed' === $command ) {
 			$registered = get_registered_meta_keys( 'post', 'post' );
 			$expect( ! isset( $registered['_compseo_title'] ), 'Suppressed runtime must not register REST metadata.' );
-			WP_CLI::success( 'Companion SEO registrar is suppressed.' );
+			$expect( null === $find_class_callback( 'enqueue_block_editor_assets', '\\SEO\\Editor', 'enqueue_assets' ), 'Suppressed runtime must not register editor assets.' );
+			$expect( null !== $find_class_callback( 'admin_menu', '\\SEO\\Admin', 'register_page' ), 'Suppression must not hide management registration.' );
+			$admin_register = $find_class_callback( 'admin_init', '\\SEO\\Admin', 'register_setting' );
+			$expect( is_callable( $admin_register ), 'Suppressed settings registration callback is missing.' );
+			call_user_func( $admin_register );
+			$registered_settings = get_registered_settings();
+			$expect( isset( $registered_settings['compseo_settings'] ), 'Suppression must retain schema-backed settings registration.' );
+			$before   = get_option( 'compseo_settings', array() );
+			$sanitize = $registered_settings['compseo_settings']['sanitize_callback'];
+			$after    = call_user_func( $sanitize, array( 'verification' => array( 'google' => 'changed' ) ) );
+			$expect( $before === $after, 'Suppressed settings must remain read-only.' );
+			WP_CLI::success( 'Companion SEO registrar is suppressed while management remains available.' );
 			return;
 		}
 
