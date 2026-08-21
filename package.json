@@ -69,6 +69,7 @@
 		"env:clean": "wp-env clean all",
 		"env:cli": "wp-env run cli wp",
 		"test:navigation": "./bin/test-navigation-migration.sh",
+		"test:seo": "./bin/test-seo-runtime.sh",
 		"test:contract": "node --test bin/verify-contract.test.mjs",
 		"identity:audit": "./bin/audit-identity.sh",
 		"version:audit": "node bin/verify-version-surfaces.mjs"
