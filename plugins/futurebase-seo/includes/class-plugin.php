@@ -30,6 +30,7 @@ final class Plugin {
 	 */
 	public static function register(): void {
 		Admin::register();
+		Cli::register();
 		add_action( 'plugins_loaded', array( self::class, 'register_runtime' ), 100 );
 	}
 

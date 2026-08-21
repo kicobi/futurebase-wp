@@ -62,9 +62,21 @@ add_action(
 			'compseo_book',
 			array(
 				'public'       => true,
+				'has_archive'  => true,
+				'rewrite'      => array( 'slug' => 'runtime-books' ),
 				'show_in_rest' => true,
 				'label'        => 'Runtime books',
 				'supports'     => array( 'title', 'editor' ),
+			)
+		);
+		register_taxonomy(
+			'compseo_genre',
+			array( 'compseo_book' ),
+			array(
+				'public'       => true,
+				'rewrite'      => array( 'slug' => 'runtime-genre' ),
+				'show_in_rest' => true,
+				'label'        => 'Runtime genres',
 			)
 		);
 	},
@@ -88,6 +100,51 @@ if ( get_option( 'compseo_runtime_valid_contract' ) ) {
 			$document['description'] = 'Adapter-owned public description.';
 			$document['canonical']   = 'https://adapter.example/canonical?lang=sv';
 			return $document;
+		}
+	);
+}
+
+if ( get_option( 'compseo_runtime_indexable_lang' ) ) {
+	add_filter(
+		'compseo_indexable_query_vars',
+		static function ( array $names ): array {
+			$names[] = 'lang';
+			return array_values( array_unique( $names ) );
+		}
+	);
+}
+
+if ( get_option( 'compseo_runtime_invalid_indexing_contract' ) ) {
+	add_filter(
+		'compseo_indexing_decision',
+		static function (): array {
+			return array(
+				'index'     => 'COMPSEO_REJECTED_INDEX_SECRET',
+				'follow'    => 'follow',
+				'canonical' => null,
+				'reason'    => 'fixture',
+			);
+		}
+	);
+}
+
+if ( get_option( 'compseo_runtime_invalid_query_contract' ) ) {
+	add_filter(
+		'compseo_indexable_query_vars',
+		static function (): array {
+			return array( 'lang', 'COMPSEO_REJECTED_QUERY_SECRET' );
+		}
+	);
+}
+
+if ( get_option( 'compseo_runtime_force_index' ) ) {
+	add_filter(
+		'compseo_indexing_decision',
+		static function ( array $decision ): array {
+			$decision['index']  = 'index';
+			$decision['follow'] = 'follow';
+			$decision['reason'] = 'fixture_override';
+			return $decision;
 		}
 	);
 }
@@ -130,9 +187,10 @@ PHP;
 			wp_set_current_user( $author_id );
 
 			$original = array();
-			foreach ( array( 'show_on_front', 'page_on_front', 'page_for_posts', 'blogdescription', 'permalink_structure', 'posts_per_page', 'compseo_settings' ) as $option ) {
+			foreach ( array( 'show_on_front', 'page_on_front', 'page_for_posts', 'blogdescription', 'permalink_structure', 'posts_per_page', 'blog_public', 'wp_attachment_pages_enabled', 'compseo_settings' ) as $option ) {
 				$original[ $option ] = get_option( $option );
 			}
+			$original_author_description = get_user_meta( $author_id, 'description', true );
 
 			$insert_post = static function ( array $data ) use ( $expect, $author_id ): int {
 				$data['post_author'] = $author_id;
@@ -174,6 +232,16 @@ PHP;
 			$term = wp_insert_term( 'Companion runtime', 'category', array( 'slug' => 'compseo-runtime' ) );
 			$expect( ! is_wp_error( $term ) && isset( $term['term_id'] ), 'Could not create runtime category.' );
 			$term_id = (int) $term['term_id'];
+			wp_update_term( $term_id, 'category', array( 'description' => 'Native category archive description.' ) );
+
+			$tag = wp_insert_term( 'Companion tag', 'post_tag', array( 'slug' => 'compseo-runtime-tag' ) );
+			$expect( ! is_wp_error( $tag ) && isset( $tag['term_id'] ), 'Could not create runtime tag.' );
+			$tag_id = (int) $tag['term_id'];
+
+			$genre = wp_insert_term( 'Companion genre', 'compseo_genre', array( 'slug' => 'compseo-runtime-genre' ) );
+			$expect( ! is_wp_error( $genre ) && isset( $genre['term_id'] ), 'Could not create runtime genre.' );
+			$genre_id = (int) $genre['term_id'];
+			update_user_meta( $author_id, 'description', 'Native author archive biography.' );
 
 			$public_id = $insert_post(
 				array(
@@ -186,6 +254,7 @@ PHP;
 				)
 			);
 			set_post_thumbnail( $public_id, $featured_id );
+			wp_set_post_terms( $public_id, array( $tag_id ), 'post_tag' );
 
 			$no_image_id = $insert_post(
 				array(
@@ -270,15 +339,18 @@ PHP;
 					'post_content' => '<!-- wp:paragraph --><p>Book sentence one. Book sentence two.</p><!-- /wp:paragraph -->',
 				)
 			);
+			wp_set_post_terms( $book_id, array( $genre_id ), 'compseo_genre' );
 
 			update_option( 'permalink_structure', '/%postname%/' );
 			update_option( 'posts_per_page', 1 );
 			update_option( 'blogdescription', 'Public site tagline' );
 			update_option( 'show_on_front', 'posts' );
+			update_option( 'blog_public', 1 );
+			update_option( 'wp_attachment_pages_enabled', 1 );
 			update_option(
 				'compseo_settings',
 				array(
-					'schema_version' => 1,
+					'schema_version' => 2,
 					'social'         => array(
 						'default_image_id' => $default_id,
 						'profiles'         => array(),
@@ -293,6 +365,18 @@ PHP;
 						'google' => 'runtime-google-token',
 						'bing'   => 'runtime-bing-token',
 					),
+					'indexing'       => array(
+						'blog'       => 'index',
+						'post_types' => array( 'compseo_book' => 'noindex' ),
+						'taxonomies' => array(
+							'category'      => 'noindex',
+							'post_tag'      => 'index',
+							'compseo_genre' => 'noindex',
+						),
+						'author'     => 'noindex',
+						'date'       => 'noindex',
+						'filtered'   => 'noindex',
+					),
 				)
 			);
 			flush_rewrite_rules();
@@ -300,9 +384,15 @@ PHP;
 			update_option(
 				$state_key,
 				array(
-					'original' => $original,
-					'term_id'  => $term_id,
-					'ids'      => array(
+					'original'                    => $original,
+					'term_ids'                    => array(
+						'category' => $term_id,
+						'tag'      => $tag_id,
+						'genre'    => $genre_id,
+					),
+					'author_id'                   => $author_id,
+					'original_author_description' => $original_author_description,
+					'ids'                         => array(
 						'public'             => $public_id,
 						'no_image'           => $no_image_id,
 						'authored'           => $authored_id,
@@ -389,6 +479,14 @@ PHP;
 			$expect( isset( $registered['compseo_settings']['sanitize_callback'] ), 'Schema-versioned SEO settings were not registered.' );
 			$sanitize = $registered['compseo_settings']['sanitize_callback'];
 			$expect( is_callable( $sanitize ), 'SEO settings sanitizer is not callable.' );
+			register_taxonomy(
+				'compseo_retired',
+				array( 'post' ),
+				array(
+					'public' => true,
+					'label'  => 'Retired fixture taxonomy',
+				)
+			);
 
 			$valid = call_user_func(
 				$sanitize,
@@ -409,13 +507,29 @@ PHP;
 						'google' => '<meta name="google-site-verification" content="google-token_123">',
 						'bing'   => '<meta content="bing-token_456" name="msvalidate.01">',
 					),
+					'indexing'       => array(
+						'blog'       => 'index',
+						'post_types' => array( 'compseo_book' => 'noindex' ),
+						'taxonomies' => array(
+							'category'        => 'noindex',
+							'post_tag'        => 'index',
+							'compseo_genre'   => 'noindex',
+							'compseo_retired' => 'noindex',
+						),
+						'author'     => 'noindex',
+						'date'       => 'noindex',
+						'filtered'   => 'noindex',
+					),
 				)
 			);
-			$expect( is_array( $valid ) && 1 === $valid['schema_version'], 'Settings schema version must be server-owned.' );
+			$expect( is_array( $valid ) && 2 === $valid['schema_version'], 'Settings schema version must be server-owned.' );
 			$expect( 'google-token_123' === $valid['verification']['google'], 'Google verification tag was not reduced to its token.' );
 			$expect( 'bing-token_456' === $valid['verification']['bing'], 'Bing verification tag was not reduced to its token.' );
 			$expect( 'runtime_studio' === $valid['social']['x_handle'], 'X handle was not normalized.' );
 			$expect( 2 === count( $valid['social']['profiles'] ), 'Social profile list was not normalized.' );
+			$expect( 'noindex' === $valid['indexing']['post_types']['compseo_book'], 'Per-post-type archive policy was not retained.' );
+			$expect( 'noindex' === $valid['indexing']['taxonomies']['category'], 'Category policy was not retained independently.' );
+			$expect( 'index' === $valid['indexing']['taxonomies']['post_tag'], 'Tag policy was not retained independently.' );
 			update_option( 'compseo_settings', $valid );
 
 			$bare                           = $valid;
@@ -437,6 +551,16 @@ PHP;
 			$errors = wp_json_encode( get_settings_errors( 'compseo_settings' ) );
 			$expect( is_string( $errors ) && false === strpos( $errors, $secret_google ) && false === strpos( $errors, $secret_bing ), 'Settings errors exposed rejected verification values.' );
 
+			unregister_taxonomy( 'compseo_genre' );
+			unregister_taxonomy( 'compseo_retired' );
+			$unrelated = $valid;
+			unset( $unrelated['indexing']['taxonomies']['compseo_genre'] );
+			$unrelated['social']['x_handle'] = '@saved_during_plugin_pause';
+			$preserved                       = call_user_func( $sanitize, $unrelated );
+			$expect( 'noindex' === $preserved['indexing']['taxonomies']['compseo_genre'], 'A temporarily unregistered taxonomy policy was pruned on an unrelated save.' );
+			$expect( 'noindex' === $preserved['indexing']['taxonomies']['compseo_retired'], 'An inert stale taxonomy policy was pruned on save.' );
+			update_option( 'compseo_settings', $preserved );
+
 			$administrator = get_users(
 				array(
 					'role'   => 'administrator',
@@ -454,7 +578,25 @@ PHP;
 			$expect( false !== strpos( $page, 'name="compseo_settings[entity][type]"' ), 'Entity controls do not use the nested settings schema.' );
 			$expect( false !== strpos( $page, 'name="compseo_settings[social][default_image_id]"' ), 'Social-image control does not use the nested settings schema.' );
 			$expect( false !== strpos( $page, 'name="compseo_settings[verification][google]"' ), 'Verification controls do not use the nested settings schema.' );
-			$expect( false === strpos( strtolower( $page ), 'archive policy' ), 'PR 3 settings must not expose deferred archive policy controls.' );
+			$expect( false !== strpos( $page, 'name="compseo_settings[indexing][taxonomies][category]"' ), 'Category archive policy control is missing.' );
+			$expect( false !== strpos( $page, 'name="compseo_settings[indexing][taxonomies][post_tag]"' ), 'Tag archive policy control is missing.' );
+			$expect( false !== strpos( $page, 'Effective indexing policy' ), 'Effective policy table is missing its visible caption.' );
+			$expect( false !== strpos( $page, '<th scope="row">' ), 'Effective policy rows are missing row headers.' );
+			$expect( false !== strpos( $page, '<code>compseo_genre</code>' ) && false !== strpos( $page, 'Not currently registered' ), 'Temporarily unregistered taxonomy policy is not visible as stale.' );
+			$expect( false !== strpos( $page, '<code>search</code>' ) && false !== strpos( $page, '<code>not_found</code>' ), 'Fixed noindex routes are missing from the effective policy table.' );
+
+			register_taxonomy(
+				'compseo_genre',
+				array( 'compseo_book' ),
+				array(
+					'public'       => true,
+					'rewrite'      => array( 'slug' => 'runtime-genre' ),
+					'show_in_rest' => true,
+					'label'        => 'Runtime genres',
+				)
+			);
+			$expect( 'noindex' === Futurebase\SEO\Policy::value( 'taxonomy', 'compseo_genre' ), 'A returning taxonomy did not recover its saved policy.' );
+			remove_filter( 'sanitize_option_compseo_settings', $sanitize );
 			update_option( 'compseo_settings', $before );
 
 			WP_CLI::success( 'Companion SEO settings schema and sanitization pass.' );
@@ -496,7 +638,7 @@ PHP;
 			call_user_func( $admin_register );
 			$registered_settings = get_registered_settings();
 			$expect( isset( $registered_settings['compseo_settings'] ), 'Suppression must retain schema-backed settings registration.' );
-			$before   = get_option( 'compseo_settings', array() );
+			$before   = Futurebase\SEO\Settings::all();
 			$sanitize = $registered_settings['compseo_settings']['sanitize_callback'];
 			$after    = call_user_func( $sanitize, array( 'verification' => array( 'google' => 'changed' ) ) );
 			$expect( $before === $after, 'Suppressed settings must remain read-only.' );
@@ -535,6 +677,9 @@ PHP;
 				3
 			);
 
+			$query_vars = Futurebase\SEO\Contracts::indexable_query_vars( array() );
+			$expect( array() === $query_vars, 'Invalid indexable-query output did not retain the internal fallback.' );
+
 			ob_start();
 			// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Intentionally exercising core's wp_head lifecycle.
 			do_action( 'wp_head' );
@@ -545,7 +690,11 @@ PHP;
 			$expect( false !== strpos( $output, 'Första meningen med café. Second sentence stays public.' ), 'Invalid document filter did not retain the internal fallback.' );
 			$expect( false === strpos( $output, 'COMPSEO_REJECTED_VALUE' ), 'Rejected filter values must never be emitted.' );
 			$expect( is_string( $messages ) && false !== strpos( $messages, 'compseo_document' ), 'Invalid filter output must trigger a named development warning.' );
+			$expect( false !== strpos( (string) $messages, 'compseo_indexing_decision' ), 'Invalid indexing-decision output must trigger a named development warning.' );
+			$expect( false !== strpos( (string) $messages, 'compseo_indexable_query_vars' ), 'Invalid indexable-query output must trigger a named development warning.' );
 			$expect( false === strpos( (string) $messages, 'COMPSEO_REJECTED_VALUE' ), 'Development warnings must not echo rejected values.' );
+			$expect( false === strpos( (string) $messages, 'COMPSEO_REJECTED_INDEX_SECRET' ), 'Indexing warnings must not echo rejected values.' );
+			$expect( false === strpos( (string) $messages, 'COMPSEO_REJECTED_QUERY_SECRET' ), 'Query-variable warnings must not echo rejected values.' );
 
 			WP_CLI::success( 'Companion SEO invalid-filter fallback passes.' );
 			return;
@@ -559,8 +708,13 @@ PHP;
 						wp_delete_post( (int) $post_id, true );
 					}
 				}
-				if ( isset( $state['term_id'] ) ) {
-					wp_delete_term( (int) $state['term_id'], 'category' );
+				if ( isset( $state['term_ids'] ) && is_array( $state['term_ids'] ) ) {
+					wp_delete_term( (int) ( $state['term_ids']['category'] ?? 0 ), 'category' );
+					wp_delete_term( (int) ( $state['term_ids']['tag'] ?? 0 ), 'post_tag' );
+					wp_delete_term( (int) ( $state['term_ids']['genre'] ?? 0 ), 'compseo_genre' );
+				}
+				if ( isset( $state['author_id'], $state['original_author_description'] ) ) {
+					update_user_meta( (int) $state['author_id'], 'description', $state['original_author_description'] );
 				}
 				if ( isset( $state['original'] ) && is_array( $state['original'] ) ) {
 					foreach ( $state['original'] as $option => $value ) {
@@ -572,6 +726,10 @@ PHP;
 			delete_option( $state_key );
 			delete_option( 'compseo_runtime_invalid_contract' );
 			delete_option( 'compseo_runtime_valid_contract' );
+			delete_option( 'compseo_runtime_invalid_indexing_contract' );
+			delete_option( 'compseo_runtime_invalid_query_contract' );
+			delete_option( 'compseo_runtime_indexable_lang' );
+			delete_option( 'compseo_runtime_force_index' );
 			flush_rewrite_rules();
 			WP_CLI::success( 'Companion SEO runtime fixtures removed.' );
 			return;

@@ -3,6 +3,10 @@ includes:
 
 parameters:
     level: 6
+    stubFiles:
+        - phpstan-stubs/wp-cli.stub
+    scanFiles:
+        - phpstan-stubs/wp-cli.stub
     # Expand paths as the theme grows — add patterns/, inc/, blocks/, or any
     # other theme-specific PHP entry points when they appear.
     paths:

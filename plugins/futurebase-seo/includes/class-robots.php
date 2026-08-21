@@ -10,33 +10,33 @@ declare(strict_types=1);
 namespace Futurebase\SEO;
 
 /**
- * Makes per-post noindex and password protection effective immediately.
+ * Applies the central indexing decision without disturbing core directives.
  */
 final class Robots {
 	/**
-	 * Add noindex, follow for opted-out or password-protected singulars.
+	 * Apply explicit index/follow values while preserving inherited directives.
 	 *
 	 * @param array<string, bool|string> $robots Existing directives.
 	 * @return array<string, bool|string>
 	 */
 	public static function filter( array $robots ): array {
-		if ( ! get_option( 'blog_public' ) ) {
-			return $robots;
+		$decision = Decision::resolve();
+
+		if ( 'index' === $decision['index'] ) {
+			unset( $robots['noindex'] );
+			$robots['index'] = true;
+		} elseif ( 'noindex' === $decision['index'] ) {
+			unset( $robots['index'] );
+			$robots['noindex'] = true;
 		}
 
-		$context = Context::current();
-		if ( 'singular' !== $context['kind'] || $context['object_id'] < 1 ) {
-			return $robots;
+		if ( 'follow' === $decision['follow'] ) {
+			unset( $robots['nofollow'] );
+			$robots['follow'] = true;
+		} elseif ( 'nofollow' === $decision['follow'] ) {
+			unset( $robots['follow'] );
+			$robots['nofollow'] = true;
 		}
-
-		$noindex = ! empty( $context['password_protected'] ) || Metadata::sanitize_noindex( get_post_meta( $context['object_id'], Identifiers::META_NOINDEX, true ) );
-		if ( ! $noindex ) {
-			return $robots;
-		}
-
-		unset( $robots['index'], $robots['nofollow'] );
-		$robots['noindex'] = true;
-		$robots['follow']  = true;
 
 		return $robots;
 	}

@@ -157,7 +157,8 @@ final class Document {
 		}
 
 		if ( 'archive' === $kind && 1 === (int) ( $context['paged'] ?? 1 ) ) {
-			return self::site_description();
+			$description = self::plain_text( get_the_archive_description() );
+			return '' !== $description ? $description : self::site_description();
 		}
 
 		return '';

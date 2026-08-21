@@ -13,10 +13,10 @@ namespace Futurebase\SEO;
  * Owns the permanent, schema-versioned settings option.
  */
 final class Settings {
-	public const SCHEMA_VERSION = 1;
+	public const SCHEMA_VERSION = 2;
 
 	/**
-	 * Return the complete V1 settings shape.
+	 * Return the complete V2 settings shape.
 	 *
 	 * @return array<string, mixed>
 	 */
@@ -38,6 +38,14 @@ final class Settings {
 				'google' => '',
 				'bing'   => '',
 			),
+			'indexing'       => array(
+				'blog'       => Policy::INDEX,
+				'post_types' => array(),
+				'taxonomies' => array(),
+				'author'     => Policy::NOINDEX,
+				'date'       => Policy::NOINDEX,
+				'filtered'   => Policy::NOINDEX,
+			),
 		);
 	}
 
@@ -52,6 +60,7 @@ final class Settings {
 		$entity = isset( $stored['entity'] ) && is_array( $stored['entity'] ) ? $stored['entity'] : array();
 		$social = isset( $stored['social'] ) && is_array( $stored['social'] ) ? $stored['social'] : array();
 		$verify = isset( $stored['verification'] ) && is_array( $stored['verification'] ) ? $stored['verification'] : array();
+		$index  = isset( $stored['indexing'] ) && is_array( $stored['indexing'] ) ? $stored['indexing'] : array();
 
 		$type = isset( $entity['type'] ) && is_string( $entity['type'] ) ? strtolower( $entity['type'] ) : '';
 		if ( ! in_array( $type, array( 'person', 'organization' ), true ) ) {
@@ -93,6 +102,14 @@ final class Settings {
 				'google' => self::stored_token( $verify['google'] ?? '' ),
 				'bing'   => self::stored_token( $verify['bing'] ?? '' ),
 			),
+			'indexing'       => array(
+				'blog'       => self::stored_policy( $index['blog'] ?? null, Policy::INDEX ),
+				'post_types' => self::stored_policy_map( $index['post_types'] ?? array() ),
+				'taxonomies' => self::stored_policy_map( $index['taxonomies'] ?? array() ),
+				'author'     => self::stored_policy( $index['author'] ?? null, Policy::NOINDEX ),
+				'date'       => self::stored_policy( $index['date'] ?? null, Policy::NOINDEX ),
+				'filtered'   => self::stored_policy( $index['filtered'] ?? null, Policy::NOINDEX ),
+			),
 		);
 	}
 
@@ -122,9 +139,11 @@ final class Settings {
 		$entity     = isset( $input['entity'] ) && is_array( $input['entity'] ) ? $input['entity'] : array();
 		$social     = isset( $input['social'] ) && is_array( $input['social'] ) ? $input['social'] : array();
 		$verify     = isset( $input['verification'] ) && is_array( $input['verification'] ) ? $input['verification'] : array();
+		$indexing   = isset( $input['indexing'] ) && is_array( $input['indexing'] ) ? $input['indexing'] : array();
 		$old_entity = $old['entity'];
 		$old_social = $old['social'];
 		$old_verify = $old['verification'];
+		$old_index  = $old['indexing'];
 
 		$type = isset( $entity['type'] ) && is_scalar( $entity['type'] ) ? strtolower( trim( (string) $entity['type'] ) ) : '';
 		if ( ! in_array( $type, array( '', 'person', 'organization' ), true ) ) {
@@ -169,7 +188,34 @@ final class Settings {
 			'bing'
 		);
 
+		$next['indexing']['blog']       = self::sanitize_policy( $indexing['blog'] ?? null, (string) $old_index['blog'], Policy::INDEX, 'blog' );
+		$next['indexing']['author']     = self::sanitize_policy( $indexing['author'] ?? null, (string) $old_index['author'], Policy::NOINDEX, 'author' );
+		$next['indexing']['date']       = self::sanitize_policy( $indexing['date'] ?? null, (string) $old_index['date'], Policy::NOINDEX, 'date' );
+		$next['indexing']['filtered']   = self::sanitize_policy( $indexing['filtered'] ?? null, (string) $old_index['filtered'], Policy::NOINDEX, 'filtered' );
+		$next['indexing']['post_types'] = self::sanitize_policy_map(
+			$indexing['post_types'] ?? array(),
+			is_array( $old_index['post_types'] ) ? $old_index['post_types'] : array(),
+			array_keys( Policy::post_types() ),
+			'post_type'
+		);
+		$next['indexing']['taxonomies'] = self::sanitize_policy_map(
+			$indexing['taxonomies'] ?? array(),
+			is_array( $old_index['taxonomies'] ) ? $old_index['taxonomies'] : array(),
+			array_keys( Policy::taxonomies() ),
+			'taxonomy'
+		);
+
 		return $next;
+	}
+
+	/**
+	 * Return the normalized archive-policy settings.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function indexing(): array {
+		$settings = self::all();
+		return $settings['indexing'];
 	}
 
 	/**
@@ -328,6 +374,86 @@ final class Settings {
 
 		$value = trim( $value );
 		return 1 === preg_match( '/^[A-Za-z0-9._~:+\/=\-]+$/D', $value ) ? $value : '';
+	}
+
+	/**
+	 * Normalize one stored index/noindex value.
+	 *
+	 * @param mixed  $value   Stored value.
+	 * @param string $fallback Inherited default.
+	 */
+	private static function stored_policy( mixed $value, string $fallback ): string {
+		return Policy::is_value( $value ) ? $value : $fallback;
+	}
+
+	/**
+	 * Normalize a stored slug-keyed policy map without pruning stale entries.
+	 *
+	 * @param mixed $value Stored map.
+	 * @return array<string, string>
+	 */
+	private static function stored_policy_map( mixed $value ): array {
+		if ( ! is_array( $value ) ) {
+			return array();
+		}
+
+		$normalized = array();
+		foreach ( $value as $slug => $policy ) {
+			if ( ! is_string( $slug ) || sanitize_key( $slug ) !== $slug || ! Policy::is_value( $policy ) ) {
+				continue;
+			}
+			$normalized[ $slug ] = $policy;
+		}
+		ksort( $normalized );
+		return $normalized;
+	}
+
+	/**
+	 * Sanitize one submitted policy, retaining its last safe value on error.
+	 *
+	 * @param mixed  $value   Submitted value.
+	 * @param string $old     Previous safe value.
+	 * @param string $fallback Default when the field is absent.
+	 * @param string $field   Stable field identifier.
+	 */
+	private static function sanitize_policy( mixed $value, string $old, string $fallback, string $field ): string {
+		if ( null === $value ) {
+			return Policy::is_value( $old ) ? $old : $fallback;
+		}
+		if ( ! Policy::is_value( $value ) ) {
+			self::error( 'indexing_' . $field, __( 'Choose a valid index or noindex archive policy.', 'futurebase-seo' ) );
+			return Policy::is_value( $old ) ? $old : $fallback;
+		}
+		return $value;
+	}
+
+	/**
+	 * Save registered object policies while retaining every safe stale entry.
+	 *
+	 * @param mixed                $value      Submitted map.
+	 * @param array<string, mixed> $old        Previous normalized map.
+	 * @param array                $registered Currently registered slugs.
+	 * @param string               $field      Stable field identifier.
+	 * @return array<string, string>
+	 * @phpstan-param list<string> $registered
+	 */
+	private static function sanitize_policy_map( mixed $value, array $old, array $registered, string $field ): array {
+		$submitted = is_array( $value ) ? $value : array();
+		$next      = self::stored_policy_map( $old );
+
+		foreach ( $registered as $slug ) {
+			if ( ! array_key_exists( $slug, $submitted ) ) {
+				continue;
+			}
+			if ( ! Policy::is_value( $submitted[ $slug ] ) ) {
+				self::error( 'indexing_' . $field . '_' . $slug, __( 'Choose a valid index or noindex archive policy.', 'futurebase-seo' ) );
+				continue;
+			}
+			$next[ $slug ] = $submitted[ $slug ];
+		}
+
+		ksort( $next );
+		return $next;
 	}
 
 	/**

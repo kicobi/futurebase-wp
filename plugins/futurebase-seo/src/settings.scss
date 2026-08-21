@@ -46,3 +46,20 @@
 	max-width: min(100%, 24rem);
 	height: auto;
 }
+
+.compseo-settings__policy-table {
+	max-width: 50rem;
+	margin-top: 2rem;
+}
+
+.compseo-settings__policy-table caption {
+	padding-block: 0 0.75rem;
+	font-size: 1.3em;
+	font-weight: 600;
+	text-align: start;
+}
+
+.compseo-settings__policy-table th,
+.compseo-settings__policy-table td {
+	overflow-wrap: anywhere;
+}

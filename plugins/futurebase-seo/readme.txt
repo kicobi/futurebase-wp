@@ -2,7 +2,7 @@
 Contributors: kicobi
 Requires at least: 6.9
 Requires PHP: 8.3
-Stable tag: 0.3.0
+Stable tag: 0.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -12,10 +12,17 @@ A private, client-owned SEO companion for promoted projects.
 
 Provides privacy-safe metadata, social previews, canonicals, robots directives,
 and factual schema when Yoast or Rank Math is not active. Settings → SEO owns
-site entity, social-default, and search-verification settings, while the block
-editor document sidebar exposes revisioned per-page controls.
+site entity, social-default, search-verification, and per-object archive-policy
+settings, while the block editor document sidebar exposes revisioned per-page
+controls. Non-secret WP-CLI diagnostics explain each URL's indexing decision.
 
 == Changelog ==
+
+= 0.4.0 =
+* Add per-object blog, post-type, taxonomy, author, date, and filtered archive policies.
+* Add centralized canonical and robots decisions with stable reason codes.
+* Add secret-free `wp compseo status` and same-origin `wp compseo decision` diagnostics.
+* Retain inactive object policies so temporary plugin changes cannot reset indexing choices.
 
 = 0.3.0 =
 * Add block-editor controls and schema-versioned site SEO settings.

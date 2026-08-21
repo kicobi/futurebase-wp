@@ -149,6 +149,89 @@ final class Contracts {
 	}
 
 	/**
+	 * Apply and validate the explicitly indexable query-variable filter.
+	 *
+	 * @param array $fallback Internal query-variable names.
+	 * @return array
+	 * @phpstan-param list<string> $fallback
+	 * @phpstan-return list<string>
+	 */
+	public static function indexable_query_vars( array $fallback ): array {
+		// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.DynamicHooknameFound -- Frozen compseo-prefixed contract stored in a constant.
+		$value = apply_filters( Identifiers::FILTER_INDEXABLE_QUERY_VARS, $fallback );
+		if ( ! is_array( $value ) || ! array_is_list( $value ) ) {
+			self::invalid( Identifiers::FILTER_INDEXABLE_QUERY_VARS, 'return a list of safe query-variable names' );
+			return $fallback;
+		}
+
+		$validated = array();
+		foreach ( $value as $name ) {
+			if ( ! is_string( $name ) || '' === $name || sanitize_key( $name ) !== $name ) {
+				self::invalid( Identifiers::FILTER_INDEXABLE_QUERY_VARS, 'return a list of safe query-variable names' );
+				return $fallback;
+			}
+			$validated[] = $name;
+		}
+
+		return array_values( array_unique( $validated ) );
+	}
+
+	/**
+	 * Apply and validate the central indexing-decision filter.
+	 *
+	 * @param array $fallback Internal decision.
+	 * @param array $context  Request context.
+	 * @return array
+	 * @phpstan-param array{index: string, follow: string, canonical: string|null, reason: string} $fallback
+	 * @phpstan-param array<string, mixed> $context
+	 * @phpstan-return array{index: string, follow: string, canonical: string|null, reason: string}
+	 */
+	public static function indexing_decision( array $fallback, array $context ): array {
+		// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.DynamicHooknameFound -- Frozen compseo-prefixed contract stored in a constant.
+		$value = apply_filters( Identifiers::FILTER_INDEXING_DECISION, $fallback, $context );
+		if ( ! is_array( $value ) ) {
+			self::invalid( Identifiers::FILTER_INDEXING_DECISION, 'return the documented array payload' );
+			return $fallback;
+		}
+
+		foreach ( array( 'index', 'follow', 'canonical', 'reason' ) as $key ) {
+			if ( ! array_key_exists( $key, $value ) ) {
+				self::invalid( Identifiers::FILTER_INDEXING_DECISION, 'retain every required payload key' );
+				return $fallback;
+			}
+		}
+
+		if ( ! is_string( $value['index'] ) || ! in_array( $value['index'], array( 'index', 'noindex', 'inherit' ), true ) ) {
+			self::invalid( Identifiers::FILTER_INDEXING_DECISION, 'use index, noindex, or inherit for index' );
+			return $fallback;
+		}
+		if ( ! is_string( $value['follow'] ) || ! in_array( $value['follow'], array( 'follow', 'nofollow', 'inherit' ), true ) ) {
+			self::invalid( Identifiers::FILTER_INDEXING_DECISION, 'use follow, nofollow, or inherit for follow' );
+			return $fallback;
+		}
+		if ( ! is_string( $value['reason'] ) || '' === $value['reason'] || sanitize_key( $value['reason'] ) !== $value['reason'] ) {
+			self::invalid( Identifiers::FILTER_INDEXING_DECISION, 'return a non-empty safe reason code' );
+			return $fallback;
+		}
+
+		$canonical = null;
+		if ( null !== $value['canonical'] && ( ! is_string( $value['canonical'] ) || '' === Url::canonical( $value['canonical'] ) ) ) {
+			self::invalid( Identifiers::FILTER_INDEXING_DECISION, 'return null or an absolute HTTP(S) canonical without userinfo or fragments' );
+			return $fallback;
+		}
+		if ( is_string( $value['canonical'] ) ) {
+			$canonical = Url::canonical( $value['canonical'] );
+		}
+
+		return array(
+			'index'     => $value['index'],
+			'follow'    => $value['follow'],
+			'canonical' => $canonical,
+			'reason'    => $value['reason'],
+		);
+	}
+
+	/**
 	 * Report invalid adapter output without exposing the rejected value.
 	 *
 	 * @param string $hook   Hook name.
