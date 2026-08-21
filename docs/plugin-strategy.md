@@ -60,7 +60,7 @@ entirely when a blessed premium SEO plugin (Yoast, RankMath) is active.
 Closes the measured SEO gap in [scorecard.md](scorecard.md) without coupling
 the theme to a third-party product.
 
-### Futurebase Core
+### Futurebase Content
 
 The theme-swap survivors:
 
@@ -96,8 +96,8 @@ block gets does not change; this plugin is simply the other side of it.
 
 Each project's plugins are renamed to that project's slug in the same pass
 that renames the theme — see [conventions.md](conventions.md) for the slug
-substitution grammar. A client's site runs `<slug>-core`, not
-`futurebase-core`, and carries the client's identity throughout.
+substitution grammar. A client's site runs `<slug>-content`, not
+`futurebase-content`, and carries the client's identity throughout.
 
 The sources live under `plugins/` in this repository so the theme and plugins
 share CI, promotion, and sync tooling. They remain separate WordPress products:
@@ -159,7 +159,7 @@ expensive afterwards:
 - `bin/rename-theme.sh` grows the plugin paths as scan roots, and
   `bin/test-rename.sh` asserts no slug literal survives, as it already does
   for the theme
-- Futurebase Core is the sharp case: post type and taxonomy names are durable
+- Futurebase Content is the sharp case: post type and taxonomy names are durable
   stored identifiers too, so they must use a neutral permanent prefix. A
   careless client slug in `register_post_type()` is content loss on rename,
   not a cosmetic leftover
@@ -204,13 +204,13 @@ accessibility testing.
 | --- | --- | --- |
 | 0 | Shared scaffold, CI reuse, rename + sync wiring | ~1½ weeks |
 | 1 | Futurebase SEO | 2–3 weeks |
-| 2 | Futurebase Core, partly extracted from Phase 1 | ~2 weeks |
+| 2 | Futurebase Content, partly extracted from Phase 1 | ~2 weeks |
 | 3 | Futurebase Blocks, initial 4–5 components | 4–6 weeks |
 
 Roughly a quarter in elapsed time. Phase 0 is the leverage step — three
 plugins inherit whatever it establishes, so it is worth doing properly before
 Phase 1 rather than retrofitting. It carries the renameability contract, and
-retrofitting that after Futurebase Core registers post types is the expensive
+retrofitting that after Futurebase Content registers post types is the expensive
 version of this work.
 
 ## Promoting before build
