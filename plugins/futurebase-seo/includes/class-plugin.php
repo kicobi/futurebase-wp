@@ -48,6 +48,7 @@ final class Plugin {
 		add_action( 'wp', array( Document::class, 'prepare' ), 10, 0 );
 		add_filter( 'get_canonical_url', array( Canonical::class, 'filter_singular' ), 10, 2 );
 		add_filter( 'wp_robots', array( Robots::class, 'filter' ) );
+		Sitemaps::register();
 		Editor::register();
 		Verification::register();
 		add_action( 'wp_head', array( Output::class, 'render' ), 5 );

@@ -2,7 +2,7 @@
 Contributors: kicobi
 Requires at least: 6.9
 Requires PHP: 8.3
-Stable tag: 0.4.0
+Stable tag: 0.5.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -11,12 +11,18 @@ A private, client-owned SEO companion for promoted projects.
 == Description ==
 
 Provides privacy-safe metadata, social previews, canonicals, robots directives,
-and factual schema when Yoast or Rank Math is not active. Settings → SEO owns
-site entity, social-default, search-verification, and per-object archive-policy
-settings, while the block editor document sidebar exposes revisioned per-page
-controls. Non-secret WP-CLI diagnostics explain each URL's indexing decision.
+native sitemap policy, and factual schema when Yoast or Rank Math is not active.
+Settings → SEO owns site entity, social-default, search-verification, and
+per-object archive-policy settings, while the block editor document sidebar
+exposes revisioned per-page controls. Non-secret WP-CLI diagnostics explain each
+URL's indexing decision.
 
 == Changelog ==
+
+= 0.5.0 =
+* Exclude noindex, externally canonicalized, and password-protected content from native sitemaps.
+* Remove noindexed taxonomy sitemaps and the users sitemap when author archives are noindex.
+* Keep sitemap filtering query-based so URL lists do not perform per-entry metadata lookups.
 
 = 0.4.0 =
 * Add per-object blog, post-type, taxonomy, author, date, and filtered archive policies.

@@ -245,7 +245,7 @@ const SeoPanel = () => {
 					checked={ Boolean( meta[ META.noindex ] ) }
 					onChange={ ( value ) => updateMeta( META.noindex, value ) }
 					help={ __(
-						'This requests noindex but does not make the page private. Anyone with its URL can still visit it.',
+						'This requests noindex and removes the page from the native WordPress sitemap, but does not make it private. Anyone with its URL can still visit it.',
 						'__compseo_text_domain__'
 					) }
 				/>

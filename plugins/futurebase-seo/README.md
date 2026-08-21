@@ -7,8 +7,7 @@ quality gates, but it is built, packaged, installed, and deployed separately.
 The plugin supplies its privacy-safe metadata and output baseline when no
 blessed premium SEO provider is active. It includes a block-editor document
 sidebar, schema-versioned site settings, per-object archive policy, and
-scriptable diagnostics. Native sitemap integration arrives in a later focused
-change.
+scriptable diagnostics, and native WordPress sitemap integration.
 
 ## Editor and site settings
 
@@ -68,6 +67,26 @@ project adapter explicitly declares their query variables indexable. Search,
 redirected by core are left untouched. Core’s `max-image-preview:large` remains
 intact, `max-snippet` remains unset, and feeds receive no companion
 `X-Robots-Tag` header.
+
+## Native sitemaps
+
+The plugin augments WordPress core sitemaps instead of registering a competing
+sitemap system. Singular items are omitted when they are explicitly noindex,
+carry a canonical on another origin, or have a stored post password. Same-origin
+canonical overrides remain eligible. Taxonomy sitemap subtypes are omitted when
+their individual archive policy is noindex, and the users provider is omitted
+while author archives are noindex.
+
+Post exclusions are applied to the provider's existing `WP_Query` as two
+metadata conditions plus the posts-table password condition. The integration
+does not load metadata once per sitemap entry, so query counts do not grow with
+the page size. The additional metadata joins are an accepted cost at normal
+client-site volumes. Projects approaching five-figure public-content counts
+must benchmark sitemap generation before rollout or use the premium SEO layer.
+
+Yoast or Rank Math suppression removes every companion sitemap filter along
+with the rest of the runtime. Core or the active premium provider then owns the
+complete sitemap response.
 
 ## Diagnostics
 

@@ -40,6 +40,7 @@ for required in \
 	"$slug/includes/class-plugin.php" \
 	"$slug/includes/class-policy.php" \
 	"$slug/includes/class-robots.php" \
+	"$slug/includes/class-sitemaps.php" \
 	"$slug/includes/class-schema.php" \
 	"$slug/includes/class-settings.php" \
 	"$slug/includes/class-suppression.php" \
