@@ -29,6 +29,7 @@ required_paths=(
 	"$main_file"
 	"$plugin_dir/includes/class-admin.php"
 	"$plugin_dir/includes/class-canonical.php"
+	"$plugin_dir/includes/class-cleanup.php"
 	"$plugin_dir/includes/class-cli.php"
 	"$plugin_dir/includes/class-context.php"
 	"$plugin_dir/includes/class-contracts.php"

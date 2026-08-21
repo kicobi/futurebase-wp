@@ -13,6 +13,8 @@ namespace Futurebase\SEO;
  * Presents suppression, configuration, and per-URL indexing decisions.
  */
 final class Cli {
+	private const BACKUP_ADVICE = 'Back up the current site database before deleting companion SEO data.';
+
 	/**
 	 * Register diagnostics in every suppression state.
 	 */
@@ -108,6 +110,73 @@ final class Cli {
 		);
 
 		self::display( $data, self::format( $assoc_args ) );
+	}
+
+	/**
+	 * Report or delete all companion SEO data owned by the current site.
+	 *
+	 * The command is a dry run unless --yes is present. It never deletes posts,
+	 * media, referenced attachments, or data belonging to another site.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--yes]
+	 * : Delete the reported settings option and post metadata.
+	 *
+	 * [--network]
+	 * : Unsupported safety flag. Network-wide cleanup is always refused.
+	 *
+	 * [--format=<format>]
+	 * : Output format. Accepts table or json.
+	 * ---
+	 * default: table
+	 * options:
+	 *   - table
+	 *   - json
+	 * ---
+	 *
+	 * @param array                $args       Positional arguments.
+	 * @param array<string, mixed> $assoc_args Named arguments.
+	 * @phpstan-param list<string> $args
+	 */
+	public function purge( array $args, array $assoc_args ): void {
+		if ( array() !== $args ) {
+			\WP_CLI::error( 'The purge command does not accept positional arguments.' );
+		}
+		if ( array_key_exists( 'network', $assoc_args ) ) {
+			\WP_CLI::error( 'Network-wide cleanup is unsupported. Target one site at a time with the WP-CLI --url global parameter.' );
+		}
+
+		$format = self::format( $assoc_args );
+		$before = Cleanup::report();
+		$data   = array(
+			'action'              => 'dry-run',
+			'site_id'             => get_current_blog_id(),
+			'site_url'            => home_url( '/' ),
+			'settings_options'    => $before['settings_options'],
+			'metadata_rows'       => $before['metadata_rows'],
+			'posts_with_metadata' => $before['posts_with_metadata'],
+			'metadata_by_key'     => $before['metadata_by_key'],
+			'posts_deleted'       => 0,
+			'attachments_deleted' => 0,
+			'backup_advice'       => self::BACKUP_ADVICE,
+		);
+
+		if ( ! array_key_exists( 'yes', $assoc_args ) ) {
+			self::display( $data, $format );
+			return;
+		}
+
+		try {
+			$result = Cleanup::purge();
+		} catch ( \RuntimeException ) {
+			\WP_CLI::error( 'Companion SEO cleanup did not complete. No posts or media were targeted; restore from the database backup if needed.' );
+		}
+
+		$data['action']                     = 'purged';
+		$data['remaining_settings_options'] = $result['after']['settings_options'];
+		$data['remaining_metadata_rows']    = $result['after']['metadata_rows'];
+		self::display( $data, $format );
 	}
 
 	/**
@@ -244,7 +313,7 @@ final class Cli {
 	/**
 	 * Validate the documented output formats.
 	 *
-	 * @param array<string, string> $assoc_args Named arguments.
+	 * @param array<string, mixed> $assoc_args Named arguments.
 	 */
 	private static function format( array $assoc_args ): string {
 		$format = $assoc_args['format'] ?? 'table';

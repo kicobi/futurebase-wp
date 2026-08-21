@@ -205,7 +205,7 @@ each block is edit UI plus Interactivity API plus manual accessibility testing.
 | Phase | Work | Estimate and state |
 | --- | --- | --- |
 | 0 | Shared scaffold, CI reuse, rename + sync wiring | ~1½ weeks; implemented |
-| 1 | Futurebase SEO | 3–4 weeks; 0.5.0 merged; release evidence pending |
+| 1 | Futurebase SEO | 3–4 weeks; 0.6.0 complete; public evidence pending |
 | 2 | Futurebase Content | ~2 weeks; not started |
 | 3 | Futurebase Blocks, initial 4–5 components | 4–6 weeks; not started |
 
@@ -275,11 +275,11 @@ Three, all downstream of the model rather than objections to it.
 
 The shared Phase 0 foundation lives under `plugins/`: separate packaging,
 promotion identity, review-only sync mapping, and CI/install gates. Futurebase
-SEO is implemented through version 0.5.0 with metadata output and privacy,
-editor and site settings, archive policy, diagnostics, and native sitemap
-integration. The remaining release round covers explicit data cleanup,
-remaining lifecycle acceptance fixtures, final documentation, and
-promoted-demo evidence.
+SEO is implemented through version 0.6.0 with metadata output and privacy,
+editor and site settings, archive policy, diagnostics, native sitemap
+integration, lifecycle fixtures, and explicit data cleanup. Its starter
+release round is complete. Promoted-demo before/after evidence remains a
+downstream publication gate, not unfinished product behavior.
 
 Futurebase Content and Futurebase Blocks have not started. This document keeps
 the theme from absorbing work that belongs in a plugin — the same role

@@ -28,6 +28,7 @@ for required in \
 	"$slug/$slug.php" \
 	"$slug/includes/class-admin.php" \
 	"$slug/includes/class-canonical.php" \
+	"$slug/includes/class-cleanup.php" \
 	"$slug/includes/class-cli.php" \
 	"$slug/includes/class-context.php" \
 	"$slug/includes/class-contracts.php" \

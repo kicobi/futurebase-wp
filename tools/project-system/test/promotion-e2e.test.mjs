@@ -502,10 +502,13 @@ test('the real starter promotes, packages, and syncs its renamed companion plugi
 		const pluginDir = join(result.dest, 'plugins', 'acme-seo');
 		const bootstrap = join(pluginDir, 'acme-seo.php');
 		const identifiers = readFileSync(join(pluginDir, 'includes', 'class-identifiers.php'), 'utf8');
+		const cli = readFileSync(join(pluginDir, 'includes', 'class-cli.php'), 'utf8');
 		assert.equal(existsSync(bootstrap), true);
+		assert.equal(existsSync(join(pluginDir, 'includes', 'class-cleanup.php')), true);
 		assert.equal(existsSync(join(result.dest, 'plugins', 'futurebase-seo')), false);
 		assert.match(readFileSync(bootstrap, 'utf8'), /Plugin Name:\s+Acme SEO/);
 		assert.match(readFileSync(bootstrap, 'utf8'), /namespace Acme\\SEO;/);
+		assert.match(cli, /function purge\(/);
 		for (const identifier of [
 			'_compseo_title',
 			'_compseo_description',
