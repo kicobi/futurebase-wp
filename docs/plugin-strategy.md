@@ -60,7 +60,7 @@ entirely when a blessed premium SEO plugin (Yoast, RankMath) is active.
 Closes the measured SEO gap in [scorecard.md](scorecard.md) without coupling
 the theme to a third-party product.
 
-### Futurebase Core
+### Futurebase Content
 
 The theme-swap survivors:
 
@@ -96,13 +96,19 @@ block gets does not change; this plugin is simply the other side of it.
 
 Each project's plugins are renamed to that project's slug in the same pass
 that renames the theme — see [conventions.md](conventions.md) for the slug
-substitution grammar. A client's site runs `<slug>-core`, not
-`futurebase-core`, and carries the client's identity throughout.
+substitution grammar. A client's site runs `<slug>-content`, not
+`futurebase-content`, and carries the client's identity throughout.
 
-This is one model for everything a client receives, rather than two. It also
-means nothing of ours sits on a site under our name, which removes the
-offboarding and disclosure questions entirely instead of leaving them to be
-managed.
+The sources live under `plugins/` in this repository so the theme and plugins
+share CI, promotion, and sync tooling. They remain separate WordPress products:
+each plugin has its own build and ZIP, `wp-env` mounts it independently, and the
+theme package excludes the entire `plugins/` tree.
+
+This is one model for everything a client receives, rather than two.
+Client-facing runtime identity becomes the client's; Kicobi remains only in
+standard `Author` and `Contributors` metadata as factual code authorship. This
+removes the offboarding and disclosure questions entirely instead of leaving
+them to be managed.
 
 Promotion is the only safe moment for this. A rename changes the plugin
 directory, so WordPress deactivates the old plugin and sees a new one;
@@ -145,14 +151,18 @@ The rename only works if the plugins are built for it, the same way the theme
 was. This is a Phase 0 requirement, cheap before any code exists and
 expensive afterwards:
 
-- the slug must not leak into stored state — option keys, post meta keys, or
-  registered post type names — or a migration must ship with it
+- client-facing and structural identity is renamed, but durable stored state
+  and developer APIs use a neutral, permanent owner prefix. Futurebase SEO uses
+  `compseo` (“companion SEO”) for option/meta keys and hooks; promotion never
+  rewrites it. When an existing identifier cannot follow this rule, a migration
+  must ship with the rename
 - `bin/rename-theme.sh` grows the plugin paths as scan roots, and
   `bin/test-rename.sh` asserts no slug literal survives, as it already does
   for the theme
-- Futurebase Core is the sharp case: it registers post types, so a careless
-  slug in a `register_post_type()` call is content loss on rename, not a
-  cosmetic leftover
+- Futurebase Content is the sharp case: post type and taxonomy names are durable
+  stored identifiers too, so they must use a neutral permanent prefix. A
+  careless client slug in `register_post_type()` is content loss on rename,
+  not a cosmetic leftover
 
 ### Ownership
 
@@ -194,13 +204,13 @@ accessibility testing.
 | --- | --- | --- |
 | 0 | Shared scaffold, CI reuse, rename + sync wiring | ~1½ weeks |
 | 1 | Futurebase SEO | 2–3 weeks |
-| 2 | Futurebase Core, partly extracted from Phase 1 | ~2 weeks |
+| 2 | Futurebase Content, partly extracted from Phase 1 | ~2 weeks |
 | 3 | Futurebase Blocks, initial 4–5 components | 4–6 weeks |
 
 Roughly a quarter in elapsed time. Phase 0 is the leverage step — three
 plugins inherit whatever it establishes, so it is worth doing properly before
 Phase 1 rather than retrofitting. It carries the renameability contract, and
-retrofitting that after Futurebase Core registers post types is the expensive
+retrofitting that after Futurebase Content registers post types is the expensive
 version of this work.
 
 ## Promoting before build
@@ -223,7 +233,7 @@ Capability claims follow the same evidence standard as
 [scorecard.md](scorecard.md): a plugin earns a claim once it runs on the
 public demo site, not before.
 
-The messages that hold today, without any plugin existing yet:
+The messages that hold while the plugin remains an inert foundation:
 
 - The catalogue is short because each entry is maintained permanently on
   every site that runs it.
@@ -238,10 +248,10 @@ Three, all downstream of the model rather than objections to it.
 
 1. **Porting, not updating.** Because each project's plugins are renamed,
    every fix is a hand port into a divergent copy rather than an update
-   applied to an identical one. `futurebase sync` reports theme drift and
-   would need to grow the same reporting for plugins; without it, knowing
-   which site is behind is guesswork. This becomes necessary around the third
-   or fourth live site, not the tenth.
+   applied to an identical one. `futurebase sync` maps the starter plugin path
+   onto the promoted path, removes bounded technical identity noise, and
+   reports genuine plugin drift for hand-porting without ever overwriting the
+   client copy.
 
 2. **Manual security patching.** A vulnerability in one of these has to be
    carried to every site by hand, and the porting cost above applies to
@@ -256,7 +266,9 @@ Three, all downstream of the model rather than objections to it.
 
 ## Status
 
-Nothing is built. Phase 0 has not started. This document records the decided
-architecture so that the plugin layer is not improvised under deadline, and
-so that the theme does not absorb work that belongs in a plugin in the
-meantime — the same role [seo.md](seo.md) plays for SEO output specifically.
+The shared Phase 0 foundation now lives under `plugins/`: separate packaging,
+promotion identity, review-only sync mapping, and CI/install gates. The SEO
+plugin itself is intentionally inert until its focused output and management
+phases land. This document keeps the theme from absorbing work that belongs in
+a plugin in the meantime — the same role [seo.md](seo.md) plays for SEO output
+specifically.

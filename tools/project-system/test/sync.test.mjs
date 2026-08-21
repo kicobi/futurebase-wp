@@ -27,11 +27,13 @@ import {
 	classifyPath,
 	detectBase,
 	isAncestor,
+	mapReviewPath,
 	missingWorkflowScripts,
 	planDeps,
 	planFiles,
 	PORTABLE_CONFIG,
 	PRODUCT_ONLY,
+	reverseNormalizePluginReviewIdentity,
 	reverseNormalizeReviewIdentity,
 	safeFiles,
 	VERIFIER_CLOSURE,
@@ -77,6 +79,14 @@ test('client-owned WordPress readme metadata is never surfaced by sync', () => {
 	assert.equal(classifyPath('readme.txt'), CLASS.NEVER);
 });
 
+test('companion plugins are review-only and map onto the promoted identity', () => {
+	assert.equal(classifyPath('plugins/futurebase-seo/futurebase-seo.php'), CLASS.REVIEW);
+	const starter = { slug: 'futurebase-seo' };
+	const project = { slug: 'acme-client-seo' };
+	assert.equal(mapReviewPath('plugins/futurebase-seo/futurebase-seo.php', project, starter), 'plugins/acme-client-seo/acme-client-seo.php');
+	assert.equal(mapReviewPath('docs/seo.md', project, starter), 'docs/seo.md');
+});
+
 test('review comparison removes only known technical rename identity', () => {
 	const starterIdentity = { slug: 'futurebase', snake: 'futurebase', upper: 'FUTUREBASE' };
 	const projectIdentity = { slug: 'acme-client', snake: 'acme_client', upper: 'ACME_CLIENT' };
@@ -100,6 +110,45 @@ test('review comparison removes only known technical rename identity', () => {
 	assert.match(normalized, /name="prefixes"><element value="futurebase"/);
 	assert.match(normalized, /name="text_domain"><element value="futurebase"/);
 	assert.match(normalized, /Acme Client prose and an arbitrary acme-client mention stay client-owned/);
+});
+
+test('plugin review comparison normalizes structural identity but preserves permanent contracts and prose', () => {
+	const starter = {
+		slug: 'futurebase-seo',
+		snake: 'futurebase_seo',
+		upper: 'FUTUREBASE_SEO',
+		display: 'Futurebase SEO',
+		namespace: 'Futurebase\\SEO',
+	};
+	const project = {
+		slug: 'acme-client-seo',
+		snake: 'acme_client_seo',
+		upper: 'ACME_CLIENT_SEO',
+		display: 'Acme Client SEO',
+		namespace: 'AcmeClient\\SEO',
+	};
+	const content = [
+		' * Plugin Name:       Acme Client SEO',
+		' * Text Domain:       acme-client-seo',
+		' * @package acme-client-seo',
+		'namespace AcmeClient\\SEO;',
+		"define('ACME_CLIENT_SEO_VERSION', '1.0.0');",
+		"define('ACME_CLIENT_SEO_HANDLE', 'acme-client-seo-editor');",
+		'"./plugins/acme-client-seo"',
+		"'_compseo_title' 'compseo_document'",
+		'Acme Client SEO is arbitrary client prose here and must remain.',
+	].join('\n');
+	const normalized = reverseNormalizePluginReviewIdentity(content, project, starter);
+
+	assert.match(normalized, /Plugin Name:\s+Futurebase SEO/);
+	assert.match(normalized, /Text Domain:\s+futurebase-seo/);
+	assert.match(normalized, /@package futurebase-seo/);
+	assert.match(normalized, /namespace Futurebase\\SEO;/);
+	assert.match(normalized, /FUTUREBASE_SEO_VERSION/);
+	assert.match(normalized, /futurebase-seo-editor/);
+	assert.match(normalized, /plugins\/futurebase-seo/);
+	assert.match(normalized, /'_compseo_title' 'compseo_document'/);
+	assert.match(normalized, /Acme Client SEO is arbitrary client prose here and must remain/);
 });
 
 test('identity-only review drift is omitted while prose, real drift, and safe files remain', () => {
@@ -127,6 +176,63 @@ test('identity-only review drift is omitted while prose, real drift, and safe fi
 		assert.notEqual(byPath.get('docs/prose.md').state, 'up-to-date', 'unquoted client prose is never normalized');
 		assert.notEqual(byPath.get('docs/changed.md').state, 'up-to-date', 'real review drift remains visible');
 		assert.notEqual(byPath.get('tools/project-system/portable.txt').state, 'up-to-date', 'safe files retain byte comparison');
+	} finally {
+		cleanup();
+	}
+});
+
+test('renamed plugin identity is omitted while real plugin drift remains review-only', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const starter = join(dir, 'starter');
+		const projectRoot = join(dir, 'project');
+		initRepo(starter);
+		mkdirSync(projectRoot);
+		write(starter, 'style.css', '/*\nTheme Name: Futurebase WP\nText Domain: futurebase\n*/\n');
+		write(
+			starter,
+			'plugins/futurebase-seo/futurebase-seo.php',
+			" * Plugin Name:       Futurebase SEO\n * Text Domain:       futurebase-seo\n * @package futurebase-seo\nnamespace Futurebase\\SEO;\ndefine('FUTUREBASE_SEO_VERSION', '0.1.0');\ndefine('FUTUREBASE_SEO_HANDLE', 'futurebase-seo-editor');\nconst META = '_compseo_title';\n",
+		);
+		write(starter, 'plugins/futurebase-seo/includes/class-plugin.php', "namespace Futurebase\\SEO;\nconst BEHAVIOR = 'starter';\n");
+		write(starter, '.wp-env.json', '{"plugins":["./plugins/futurebase-seo"]}\n');
+		const ref = commitAll(starter, 'starter plugin');
+
+		write(projectRoot, 'style.css', '/*\nTheme Name: Acme Client\nText Domain: acme-client\n*/\n');
+		write(
+			projectRoot,
+			'plugins/acme-client-seo/acme-client-seo.php',
+			" * Plugin Name:       Acme Client SEO\n * Text Domain:       acme-client-seo\n * @package acme-client-seo\nnamespace AcmeClient\\SEO;\ndefine('ACME_CLIENT_SEO_VERSION', '0.1.0');\ndefine('ACME_CLIENT_SEO_HANDLE', 'acme-client-seo-editor');\nconst META = '_compseo_title';\n",
+		);
+		write(projectRoot, 'plugins/acme-client-seo/includes/class-plugin.php', "namespace AcmeClient\\SEO;\nconst BEHAVIOR = 'locally changed';\n");
+		write(projectRoot, '.wp-env.json', '{"plugins":["./plugins/acme-client-seo"]}\n');
+
+		const entries = planFiles({ projectRoot, starter, ref });
+		const byPath = new Map(entries.map((entry) => [entry.rel, entry]));
+		assert.equal(byPath.get('plugins/acme-client-seo/acme-client-seo.php').state, 'up-to-date');
+		assert.equal(byPath.get('.wp-env.json').state, 'up-to-date');
+		assert.equal(byPath.get('plugins/acme-client-seo/includes/class-plugin.php').cls, CLASS.REVIEW);
+		assert.equal(byPath.get('plugins/acme-client-seo/includes/class-plugin.php').state, 'conflict');
+	} finally {
+		cleanup();
+	}
+});
+
+test('a client without the companion plugin sees mapped review additions, never writable files', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const starter = join(dir, 'starter');
+		const projectRoot = join(dir, 'project');
+		initRepo(starter);
+		mkdirSync(projectRoot);
+		write(starter, 'style.css', '/*\nTheme Name: Futurebase WP\nText Domain: futurebase\n*/\n');
+		write(starter, 'plugins/futurebase-seo/futurebase-seo.php', ' * Plugin Name: Futurebase SEO\n');
+		const ref = commitAll(starter, 'starter plugin');
+		write(projectRoot, 'style.css', '/*\nTheme Name: Acme Client\nText Domain: acme-client\n*/\n');
+
+		const entry = planFiles({ projectRoot, starter, ref }).find((candidate) => candidate.rel === 'plugins/acme-client-seo/acme-client-seo.php');
+		assert.equal(entry?.cls, CLASS.REVIEW);
+		assert.equal(entry?.state, 'add');
 	} finally {
 		cleanup();
 	}

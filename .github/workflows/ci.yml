@@ -45,12 +45,24 @@ jobs:
             - run: npm run lint:css
             - run: npm run lint:pkg
             - run: npm run build
+            - name: Build companion SEO plugin
+              if: hashFiles('plugins/*-seo/src/index.js') != ''
+              run: bin/build-seo-plugin.sh build
             - name: Check committed build output
               run: |
                   if [ -n "$(git status --porcelain -- build)" ]; then
                       echo "Committed build output is stale. Run 'npm run build' and commit the updated build/ files."
                       git status --short -- build
                       git diff -- build
+                      exit 1
+                  fi
+            - name: Check committed companion plugin build output
+              if: hashFiles('plugins/*-seo/src/index.js') != ''
+              run: |
+                  if [ -n "$(git status --porcelain -- plugins/*-seo/build)" ]; then
+                      echo "Committed companion plugin build output is stale. Run 'npm run build:seo' and commit the updated files."
+                      git status --short -- plugins/*-seo/build
+                      git diff -- plugins/*-seo/build
                       exit 1
                   fi
 
@@ -145,6 +157,9 @@ jobs:
 
             - run: npm ci
             - run: npm run package:check
+            - name: Companion SEO plugin package
+              if: hashFiles('plugins/*-seo/*.php') != ''
+              run: bin/build-seo-plugin.sh build && bin/test-seo-package.sh
 
     a11y:
         name: Accessibility (wp-env + pa11y)
@@ -162,6 +177,9 @@ jobs:
             - run: npm ci
             - run: npm run build
             - run: npm run env:start
+            - name: Companion SEO clean install
+              if: hashFiles('plugins/*-seo/*.php') != ''
+              run: bin/test-seo-install.sh
             # inc/ is CLASS.NEVER, so sync never delivers the navigation
             # migration to a client — a project promoted before that feature
             # existed has nothing for this gate to exercise, and the synced

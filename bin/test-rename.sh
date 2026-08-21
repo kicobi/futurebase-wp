@@ -43,6 +43,10 @@ if [ "$base_theme_name" != "$FUTUREBASE_BASE_DISPLAY" ] \
 	echo "rename non-regression: FAIL (Futurebase WP base identity surfaces disagree)"
 	exit 1
 fi
+if [ ! -f "plugins/$FUTUREBASE_SEO_BASE_SLUG/$FUTUREBASE_SEO_BASE_SLUG.php" ]; then
+	echo "rename non-regression: FAIL (companion SEO template sentinel missing)"
+	exit 1
+fi
 if [ "$(grep -cF '<!-- template-setup:start -->' README.md 2>/dev/null || true)" != "1" ] \
 	|| [ "$(grep -cF '<!-- template-setup:end -->' README.md 2>/dev/null || true)" != "1" ]; then
 	echo "rename non-regression: FAIL (README.md managed template-setup block is missing or ambiguous)"
@@ -117,6 +121,10 @@ REAL_NAME="Acme Client"
 REAL_VERSION="1.0.0"
 REAL_REPOSITORY="kicobi/acme-client"
 REAL_CONTRIBUTORS="kicobi, jsmith"
+REAL_SEO_SLUG="${REAL_SLUG}-seo"
+REAL_SEO_DISPLAY="${REAL_NAME} SEO"
+REAL_SEO_NAMESPACE='AcmeClient\SEO'
+BASE_SEO_VERSION="$(sed -n 's/^ \* Version:[[:space:]]*//p' "plugins/$FUTUREBASE_SEO_BASE_SLUG/$FUTUREBASE_SEO_BASE_SLUG.php" | head -1 | sed 's/[[:space:]]*$//')"
 make_worktree
 WT2="$NEW_WT"
 
@@ -167,6 +175,28 @@ if grep -q '^Contributors:' "$WT2/style.css" 2>/dev/null; then
 fi
 grep -qF '* Initial client theme release.' "$WT2/readme.txt" 2>/dev/null || problems+=("client changelog was not reset")
 grep -qF " * $REAL_NAME theme functions." "$WT2/functions.php" 2>/dev/null || problems+=("functions.php display-name docblock mismatch")
+client_plugin="$WT2/plugins/$REAL_SEO_SLUG"
+client_plugin_main="$client_plugin/$REAL_SEO_SLUG.php"
+[ -f "$client_plugin_main" ] || problems+=("renamed plugin bootstrap is missing")
+[ ! -e "$WT2/plugins/$FUTUREBASE_SEO_BASE_SLUG" ] || problems+=("starter plugin directory survived")
+grep -qE "^ \* Plugin Name:[[:space:]]*$REAL_SEO_DISPLAY$" "$client_plugin_main" 2>/dev/null || problems+=("plugin display name mismatch")
+grep -qE "^ \* Text Domain:[[:space:]]*$REAL_SEO_SLUG$" "$client_plugin_main" 2>/dev/null || problems+=("plugin text domain mismatch")
+grep -qE "^ \* Version:[[:space:]]*$BASE_SEO_VERSION$" "$client_plugin_main" 2>/dev/null || problems+=("plugin version changed during promotion")
+grep -qE "^Stable tag:[[:space:]]*$BASE_SEO_VERSION$" "$client_plugin/readme.txt" 2>/dev/null || problems+=("plugin stable tag changed during promotion")
+grep -qF "namespace $REAL_SEO_NAMESPACE;" "$client_plugin_main" 2>/dev/null || problems+=("plugin namespace mismatch")
+grep -qF "define( '${REAL_UPPER}_SEO_VERSION'" "$client_plugin_main" 2>/dev/null || problems+=("plugin constant prefix mismatch")
+grep -qF "'${REAL_SEO_SLUG}-editor'" "$client_plugin_main" 2>/dev/null || problems+=("plugin asset handle mismatch")
+grep -qF "./plugins/$REAL_SEO_SLUG" "$WT2/.wp-env.json" 2>/dev/null || problems+=("wp-env plugin mount was not renamed")
+grep -qF "plugins/$REAL_SEO_SLUG" "$WT2/phpstan.neon.dist" 2>/dev/null || problems+=("PHPStan plugin path was not renamed")
+for identifier in "${FUTUREBASE_SEO_FROZEN_IDENTIFIERS[@]}"; do
+	grep -rqF "$identifier" "$client_plugin" 2>/dev/null || problems+=("frozen companion identifier changed or disappeared: $identifier")
+done
+if grep -rEq "(_${REAL_SNAKE}_seo|${REAL_SNAKE}_seo_(settings|document|schema|index))" "$client_plugin" 2>/dev/null; then
+	problems+=("client-branded stored key or hook was introduced")
+fi
+if ! (cd "$WT2" && bash bin/test-seo-package.sh >>"$LOG" 2>&1); then
+	problems+=("renamed companion plugin package failed validation")
+fi
 if grep -qF "$REAL_NAME WP" "$WT2/style.css" "$WT2/readme.txt" "$WT2/functions.php" 2>/dev/null; then
 	problems+=("client display name retained a trailing WP product suffix")
 fi

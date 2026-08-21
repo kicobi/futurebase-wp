@@ -130,6 +130,11 @@ fi
 
 NEW_SNAKE="$(printf '%s' "$NEW_SLUG" | tr '-' '_')"
 NEW_UPPER="$(printf '%s' "$NEW_SNAKE" | tr '[:lower:]' '[:upper:]')"
+NEW_NAMESPACE="$(printf '%s\n' "$NEW_SLUG" | awk -F- '{ for (i = 1; i <= NF; i++) { printf "%s", toupper(substr($i, 1, 1)) substr($i, 2) } }')"
+SEO_SLUG="${NEW_SLUG}-seo"
+SEO_UPPER="${NEW_UPPER}_SEO"
+SEO_DISPLAY="${THEME_NAME} SEO"
+SEO_NAMESPACE="${NEW_NAMESPACE}\\SEO"
 
 cd "$ROOT"
 
@@ -144,6 +149,7 @@ echo "  prefix:   ${FUTUREBASE_BASE_SNAKE}_ → ${NEW_SNAKE}_"
 echo "  constants:${FUTUREBASE_BASE_UPPER}_ → ${NEW_UPPER}_"
 echo "  name:     $FUTUREBASE_BASE_DISPLAY → $THEME_NAME"
 echo "  version:  $THEME_VERSION"
+echo "  plugin:   $FUTUREBASE_SEO_BASE_SLUG → $SEO_SLUG"
 echo
 
 # Keep the surface narrow. readme.txt is the only .txt file intentionally
@@ -151,10 +157,10 @@ echo
 # never passed through text substitution.
 TARGETS=()
 while IFS= read -r file; do TARGETS+=("$file"); done < <(
-	scan_roots=(functions.php style.css composer.json package.json phpcs.xml.dist readme.txt)
+	scan_roots=(functions.php style.css composer.json package.json phpcs.xml.dist phpstan.neon.dist readme.txt .wp-env.json)
 	[ -f README.md ] && scan_roots+=(README.md)
 	[ -f CLAUDE.md ] && scan_roots+=(CLAUDE.md)
-	for dir in patterns templates parts docs src inc bin; do
+	for dir in patterns templates parts docs src inc bin plugins; do
 		[ -d "$dir" ] && scan_roots+=("$dir")
 	done
 	find "${scan_roots[@]}" -type f \
@@ -169,12 +175,15 @@ while IFS= read -r file; do TARGETS+=("$file"); done < <(
 # PHPCS stores the text domain and prefix in identically-shaped nested value
 # elements, so the owning property provides the context for each replacement.
 # Track the property line-by-line so the same keep-line contract applies here.
-KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" BASE_SLUG="$FUTUREBASE_BASE_SLUG" NEW_SNAKE="$NEW_SNAKE" NEW_SLUG="$NEW_SLUG" perl -i -pe '
+KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" BASE_SLUG="$FUTUREBASE_BASE_SLUG" SEO_BASE_SLUG="$FUTUREBASE_SEO_BASE_SLUG" NEW_SNAKE="$NEW_SNAKE" NEW_SLUG="$NEW_SLUG" SEO_SLUG="$SEO_SLUG" perl -i -pe '
 	$property = "prefixes" if /<property\s+name="prefixes"/;
 	$property = "text_domain" if /<property\s+name="text_domain"/;
 	if (index($_, $ENV{KEEP_MARKER}) < 0 && /<element\s+value="\Q$ENV{BASE_SLUG}\E"\s*\/>/) {
 		s/value="\Q$ENV{BASE_SLUG}\E"/value="$ENV{NEW_SNAKE}"/ if $property eq "prefixes";
 		s/value="\Q$ENV{BASE_SLUG}\E"/value="$ENV{NEW_SLUG}"/ if $property eq "text_domain";
+	}
+	if (index($_, $ENV{KEEP_MARKER}) < 0 && $property eq "text_domain") {
+		s/value="\Q$ENV{SEO_BASE_SLUG}\E"/value="$ENV{SEO_SLUG}"/g;
 	}
 	$property = "" if /<\/property>/;
 ' phpcs.xml.dist
@@ -202,7 +211,49 @@ for file in "${TARGETS[@]}"; do
 		next if index($_, $ENV{KEEP_MARKER}) >= 0;
 		s/\Q$ENV{BASE_DISPLAY}\E/$ENV{DISPLAY}/g;
 	' "$file"
+	# Repository configuration refers to the plugin by path. Rewrite this
+	# bounded structural form wherever it appears, including wp-env and PHPStan.
+	KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" BASE_SLUG="$FUTUREBASE_SEO_BASE_SLUG" SLUG="$SEO_SLUG" perl -i -pe '
+		next if index($_, $ENV{KEEP_MARKER}) >= 0;
+		s#plugins/\Q$ENV{BASE_SLUG}\E#plugins/$ENV{SLUG}#g;
+	' "$file"
+
+	# The companion plugin has a second, structural identity axis. Database
+	# keys and extension hooks use compseo and therefore match none of these
+	# transformations; they remain permanent across every promotion.
+	case "$file" in
+		plugins/*)
+			KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" BASE_SLUG="$FUTUREBASE_SEO_BASE_SLUG" SLUG="$SEO_SLUG" perl -i -pe '
+				next if index($_, $ENV{KEEP_MARKER}) >= 0;
+				s/\Q$ENV{BASE_SLUG}\E/$ENV{SLUG}/g;
+			' "$file"
+			KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" BASE_DISPLAY="$FUTUREBASE_SEO_BASE_DISPLAY" DISPLAY="$SEO_DISPLAY" perl -i -pe '
+				next if index($_, $ENV{KEEP_MARKER}) >= 0;
+				s/\Q$ENV{BASE_DISPLAY}\E/$ENV{DISPLAY}/g;
+			' "$file"
+			KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" BASE_NAMESPACE="$FUTUREBASE_SEO_BASE_NAMESPACE" NAMESPACE="$SEO_NAMESPACE" perl -i -pe '
+				next if index($_, $ENV{KEEP_MARKER}) >= 0;
+				s/\Q$ENV{BASE_NAMESPACE}\E/$ENV{NAMESPACE}/g;
+			' "$file"
+			;;
+	esac
 done
+
+# Directory and bootstrap names are WordPress plugin identity, not stored
+# state. Move them after content rewriting so the target list stays stable.
+source_plugin_dir="plugins/$FUTUREBASE_SEO_BASE_SLUG"
+target_plugin_dir="plugins/$SEO_SLUG"
+if [ -d "$source_plugin_dir" ]; then
+	if [ -e "$target_plugin_dir" ]; then
+		echo "error: companion plugin target already exists: $target_plugin_dir" >&2
+		exit 1
+	fi
+	mv "$source_plugin_dir/$FUTUREBASE_SEO_BASE_SLUG.php" "$source_plugin_dir/$SEO_SLUG.php"
+	mv "$source_plugin_dir" "$target_plugin_dir"
+elif [ ! -f "$target_plugin_dir/$SEO_SLUG.php" ]; then
+	echo "error: companion SEO plugin is missing or has an unexpected identity" >&2
+	exit 1
+fi
 
 # Explicit identity/version fields.
 DISPLAY="$THEME_NAME" VERSION="$THEME_VERSION" perl -i -pe '
@@ -214,6 +265,15 @@ DISPLAY="$THEME_NAME" VERSION="$THEME_VERSION" perl -i -pe '
 	s/^(Stable tag:\s*).*$/$1$ENV{VERSION}/;
 ' readme.txt
 VERSION="$THEME_VERSION" perl -0777 -i -pe 's/== Changelog ==\n.*\z/== Changelog ==\n\n= $ENV{VERSION} =\n* Initial client theme release.\n/s' readme.txt
+
+plugin_main="$target_plugin_dir/$SEO_SLUG.php"
+DISPLAY="$SEO_DISPLAY" SLUG="$SEO_SLUG" perl -i -pe '
+	s/^( \* Plugin Name:\s*).*$/$1$ENV{DISPLAY}/;
+	s/^( \* Text Domain:\s*).*$/$1$ENV{SLUG}/;
+' "$plugin_main"
+DISPLAY="$SEO_DISPLAY" perl -i -pe '
+	s/^=== .* ===$/=== $ENV{DISPLAY} ===/ if $. == 1;
+' "$target_plugin_dir/readme.txt"
 
 # Root package identity is client-owned. The lock helper then copies these
 # authoritative values to the four root lockfile fields without resolution.
@@ -284,6 +344,19 @@ NEW_SNAKE="$NEW_SNAKE" perl -0777 -ne '
 	exit 1 unless /<property\s+name="prefixes".*?<element\s+value="\Q$ENV{NEW_SNAKE}\E"\s*\/>/s;
 ' phpcs.xml.dist || problems+=("PHPCS prefix mismatch")
 grep -qF " * $THEME_NAME theme functions." functions.php || problems+=("functions.php display-name docblock mismatch")
+actual_plugin_name="$(sed -n 's/^ \* Plugin Name:[[:space:]]*//p' "$plugin_main" | head -1 | sed 's/[[:space:]]*$//')"
+[ "$actual_plugin_name" = "$SEO_DISPLAY" ] || problems+=("plugin name mismatch: expected '$SEO_DISPLAY', found '$actual_plugin_name'")
+grep -qE "^ \* Text Domain:[[:space:]]*${SEO_SLUG}[[:space:]]*$" "$plugin_main" || problems+=("plugin Text Domain mismatch")
+plugin_version="$(sed -n 's/^ \* Version:[[:space:]]*//p' "$plugin_main" | head -1 | sed 's/[[:space:]]*$//')"
+[ -n "$plugin_version" ] || problems+=("plugin Version header missing")
+grep -qE "^Stable tag:[[:space:]]*${plugin_version}[[:space:]]*$" "$target_plugin_dir/readme.txt" || problems+=("plugin Stable tag does not match its Version header")
+grep -qF "namespace $SEO_NAMESPACE;" "$plugin_main" || problems+=("plugin namespace mismatch")
+grep -qF "define( '${SEO_UPPER}_VERSION'" "$plugin_main" || problems+=("plugin constant prefix mismatch")
+grep -qF "'${SEO_SLUG}-editor'" "$plugin_main" || problems+=("plugin asset handle mismatch")
+[ ! -e "$source_plugin_dir" ] || problems+=("source plugin directory survived promotion")
+for identifier in "${FUTUREBASE_SEO_FROZEN_IDENTIFIERS[@]}"; do
+	grep -rqF "$identifier" "$target_plugin_dir" || problems+=("permanent companion identifier missing after rename: $identifier")
+done
 if [ -n "$CONTRIBUTORS" ]; then
 	grep -qF "Contributors: $CONTRIBUTORS" readme.txt || problems+=("readme.txt Contributors mismatch")
 fi

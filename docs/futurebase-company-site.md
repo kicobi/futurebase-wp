@@ -1,10 +1,11 @@
 # Futurebase family and product-page integration brief
 
 Futurebase is the house brand. Futurebase WP is its WordPress product, alongside
-Futurebase Statamic and later products such as Futurebase Blocks and Futurebase
-AI. Use [futurebase-wp.md](futurebase-wp.md) as the canonical narrative for the
-WordPress product; this brief defines how that narrative fits into the broader
-company-site architecture.
+Futurebase Statamic and Futurebase Core, the private cross-platform design
+foundation. Planned products include Futurebase Content, Futurebase Blocks,
+and Futurebase AI. Use [futurebase-wp.md](futurebase-wp.md) as the canonical
+narrative for the WordPress product; this brief defines how that narrative
+fits into the broader company-site architecture.
 
 ## Recommended information architecture
 
@@ -16,8 +17,9 @@ company-site architecture.
 - **Positioning:** A family of in-house foundations, tools, and delivery systems
   for accessible, maintainable digital work.
 - **Product navigation:** Futurebase WP, Futurebase Statamic, and clearly marked
-  future product slots for Blocks and AI. Do not present an unreleased product
-  as available.
+  product or future-product slots for Core, Content, Blocks, and AI. Do not
+  present an unreleased product as available or imply that private Core assets
+  are publicly distributed.
 - **Primary CTA:** Talk to us about a project.
 
 The family page should stay platform-neutral. Accessibility, maintainability,
@@ -76,11 +78,14 @@ Give Futurebase Statamic its own canonical product narrative and
 platform-specific proof. Reuse the family principles and page architecture,
 not the WordPress copy or evidence.
 
-### Future product pages: Blocks and AI
+### Future product pages: Core, Content, Blocks and AI
 
-Reserve navigation and URL structure only when useful. Publish Futurebase
-Blocks and Futurebase AI pages when each offer has a concrete scope and
-evidence base.
+Reserve navigation and URL structure only when useful. Futurebase Core is the
+private design foundation extracted from proven client work; it is not a
+public UI kit. Futurebase Content is the planned WordPress plugin for durable
+content types, taxonomies, block bindings, and editor curation. Publish any of
+these pages only when the product has a concrete scope and evidence base, and
+mark unbuilt products as in development.
 
 ## Assets
 
@@ -92,6 +97,9 @@ evidence base.
 ## Editorial boundaries
 
 - Use **Futurebase** for the family and shared lifecycle system.
+- Use **Futurebase Core** for the cross-platform design foundation.
+- Use **Futurebase Content** for the planned WordPress content-foundation
+  plugin; do not reuse “Core” for that plugin.
 - Use **Futurebase WP** for the WordPress foundation and its evidence.
 - Describe Futurebase WP as an in-house foundation, not a theme-marketplace
   product or page builder.

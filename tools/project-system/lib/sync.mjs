@@ -82,10 +82,15 @@ export const VERIFIER_CLOSURE = [
 
 export const PORTABLE_BIN = [
 	'bin/_page-set.sh',
+	'bin/_seo-plugin.sh',
+	'bin/build-seo-plugin.sh',
 	'bin/demo-content.sh',
+	'bin/package-seo-plugin.sh',
 	'bin/scorecard.sh',
 	'bin/smoke-render.sh',
 	'bin/smoke-render.php',
+	'bin/test-seo-install.sh',
+	'bin/test-seo-package.sh',
 	...VERIFIER_CLOSURE,
 ];
 
@@ -220,6 +225,26 @@ function themeDisplayName(styleCss) {
 	return /^Theme Name:\s*(.+?)\s*$/im.exec(String(styleCss || ''))?.[1] ?? null;
 }
 
+function pascalSlug(slug) {
+	return String(slug || '')
+		.split('-')
+		.filter(Boolean)
+		.map((part) => `${part[0]?.toUpperCase() ?? ''}${part.slice(1)}`)
+		.join('');
+}
+
+function pluginTechnicalIdentity(themeIdentity, themeDisplay) {
+	if (!themeIdentity || !themeDisplay) return null;
+	const displayBase = themeIdentity.slug === 'futurebase' && themeDisplay === 'Futurebase WP' ? 'Futurebase' : themeDisplay;
+	return {
+		slug: `${themeIdentity.slug}-seo`,
+		snake: `${themeIdentity.snake}_seo`,
+		upper: `${themeIdentity.upper}_SEO`,
+		display: `${displayBase} SEO`,
+		namespace: `${pascalSlug(themeIdentity.slug)}\\SEO`,
+	};
+}
+
 function escapeRegExp(value) {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -261,6 +286,41 @@ function translateTechnicalIdentity(content, fromIdentity, toIdentity) {
 // prose and unquoted client language deliberately remain untouched.
 export function reverseNormalizeReviewIdentity(content, projectIdentity, starterIdentity) {
 	return translateTechnicalIdentity(content, projectIdentity, starterIdentity);
+}
+
+function translatePluginTechnicalIdentity(content, fromIdentity, toIdentity) {
+	if (!fromIdentity || !toIdentity || fromIdentity.slug === toIdentity.slug) return String(content);
+	const from = Object.fromEntries(Object.entries(fromIdentity).map(([key, value]) => [key, escapeRegExp(value)]));
+	const to = toIdentity;
+	let translated = String(content);
+
+	translated = translated.replace(new RegExp(`(?<![A-Za-z0-9])${from.snake}_`, 'g'), `${to.snake}_`);
+	translated = translated.replace(new RegExp(`(?<![A-Za-z0-9])${from.upper}_`, 'g'), `${to.upper}_`);
+	translated = translated.replace(new RegExp(`(['"\\x60])${from.slug}\\1`, 'g'), `$1${to.slug}$1`);
+	translated = translated.replace(new RegExp(`plugins/${from.slug}`, 'g'), `plugins/${to.slug}`);
+	translated = translated.replace(new RegExp(`\\b${from.slug}-(editor|admin|settings)\\b`, 'g'), `${to.slug}-$1`);
+	translated = translated.replace(new RegExp(`(@package\\s+)${from.slug}\\b`, 'g'), `$1${to.slug}`);
+	translated = translated.replace(new RegExp(`(Text Domain:\\s*)${from.slug}\\b`, 'g'), `$1${to.slug}`);
+	translated = translated.replace(new RegExp(`(namespace\\s+)${from.namespace}(;)`, 'g'), `$1${to.namespace}$2`);
+	translated = translated.replace(new RegExp(`(use\\s+)${from.namespace}(\\\\|;)`, 'g'), `$1${to.namespace}$2`);
+	translated = translated.replace(new RegExp(`(Plugin Name:\\s*)${from.display}(\\s*)$`, 'gm'), `$1${to.display}$2`);
+	translated = translated.replace(new RegExp(`^=== ${from.display} ===$`, 'gm'), `=== ${to.display} ===`);
+	translated = translated.replace(new RegExp(`^# ${from.display}$`, 'gm'), `# ${to.display}`);
+
+	return translated;
+}
+
+export function reverseNormalizePluginReviewIdentity(content, projectIdentity, starterIdentity) {
+	return translatePluginTechnicalIdentity(content, projectIdentity, starterIdentity);
+}
+
+export function mapReviewPath(rel, projectIdentity, starterIdentity) {
+	if (!projectIdentity || !starterIdentity) return rel;
+	const starterPrefix = `plugins/${starterIdentity.slug}/`;
+	if (!rel.startsWith(starterPrefix)) return rel;
+	const tail = rel.slice(starterPrefix.length);
+	const projectTail = tail === `${starterIdentity.slug}.php` ? `${projectIdentity.slug}.php` : tail;
+	return `plugins/${projectIdentity.slug}/${projectTail}`;
 }
 
 // Has this exact content ever been the upstream version of this path?
@@ -319,16 +379,20 @@ export function planFiles({ projectRoot, starter, ref, only }) {
 	const projectStyle = existsSync(join(projectRoot, 'style.css')) ? readFileSync(join(projectRoot, 'style.css'), 'utf8') : null;
 	const projectIdentity = themeTechnicalIdentity(projectStyle);
 	const starterIdentity = themeTechnicalIdentity(textAt(starter, ref, 'style.css'));
+	const projectPluginIdentity = pluginTechnicalIdentity(projectIdentity, themeDisplayName(projectStyle));
+	const starterStyle = textAt(starter, ref, 'style.css');
+	const starterPluginIdentity = pluginTechnicalIdentity(starterIdentity, themeDisplayName(starterStyle));
 
 	for (const { rel, mode, blob: starterBlob } of upstream) {
 		const cls = classifyPath(rel);
 		if (cls === CLASS.NEVER || cls === CLASS.DEPS) continue;
 		if (only && cls !== only) continue;
 
-		const abs = join(projectRoot, rel);
+		const projectRel = cls === CLASS.REVIEW ? mapReviewPath(rel, projectPluginIdentity, starterPluginIdentity) : rel;
+		const abs = join(projectRoot, projectRel);
 
 		if (!existsSync(abs)) {
-			entries.push({ rel, cls, state: 'add', starterBlob, mode });
+			entries.push({ rel: projectRel, cls, state: 'add', starterBlob, mode });
 			continue;
 		}
 		const projectBlob = hashFile(abs);
@@ -338,10 +402,10 @@ export function planFiles({ projectRoot, starter, ref, only }) {
 			// and current but unrunnable, and comparing content alone would call
 			// that in sync forever. Re-copying is how the mode gets repaired.
 			if (isExec(abs) === wantsExec(mode)) {
-				entries.push({ rel, cls, state: 'up-to-date' });
+				entries.push({ rel: projectRel, cls, state: 'up-to-date' });
 			} else {
 				const note = `content matches — mode only (${wantsExec(mode) ? 'not executable → executable' : 'executable → not executable'})`;
-				entries.push({ rel, cls, state: 'update', starterBlob, projectBlob, mode, note });
+				entries.push({ rel: projectRel, cls, state: 'update', starterBlob, projectBlob, mode, note });
 			}
 			continue;
 		}
@@ -351,9 +415,10 @@ export function planFiles({ projectRoot, starter, ref, only }) {
 			// Identity-aware comparison is text-only. A NUL marks an opaque file;
 			// those keep the existing byte-for-byte review behavior.
 			if (starterBytes && !starterBytes.includes(0) && !projectBytes.includes(0)) {
-				const normalized = reverseNormalizeReviewIdentity(projectBytes.toString('utf8'), projectIdentity, starterIdentity);
+				let normalized = reverseNormalizeReviewIdentity(projectBytes.toString('utf8'), projectIdentity, starterIdentity);
+				normalized = reverseNormalizePluginReviewIdentity(normalized, projectPluginIdentity, starterPluginIdentity);
 				if (normalized === starterBytes.toString('utf8')) {
-					entries.push({ rel, cls, state: 'up-to-date' });
+					entries.push({ rel: projectRel, cls, state: 'up-to-date' });
 					continue;
 				}
 			}
@@ -361,7 +426,7 @@ export function planFiles({ projectRoot, starter, ref, only }) {
 		const stale =
 			isKnownUpstreamVersion(starter, ref, rel, projectBlob) ||
 			(cls === CLASS.SAFE && isKnownPromotedVerifierRunner(starter, ref, rel, projectRoot, projectIdentity));
-		entries.push({ rel, cls, state: stale ? 'update' : 'conflict', starterBlob, projectBlob, mode });
+		entries.push({ rel: projectRel, cls, state: stale ? 'update' : 'conflict', starterBlob, projectBlob, mode });
 	}
 
 	// Files the starter has since removed. Reported, never deleted — removing

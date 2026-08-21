@@ -3,6 +3,7 @@
 	"phpVersion": "8.3",
 	"testsEnvironment": false,
 	"themes": [ "." ],
+	"plugins": [ "./plugins/futurebase-seo" ],
 	"config": {
 		"WP_DEBUG": true,
 		"WP_DEBUG_LOG": true

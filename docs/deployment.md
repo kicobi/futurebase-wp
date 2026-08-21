@@ -43,7 +43,7 @@ What it does, in order:
 1. **Preflight.** Aborts if `rsync` or `zip` are missing from `PATH`.
 2. **Reads the slug from the `Text Domain` line in `style.css`** — not the repo name, not the working directory. The archive is `<slug>.zip` and its single top-level folder is `<slug>/`, which becomes the installed theme's directory name on the server. Run `npm run rename -- <slug>` first if that isn't the name you want there.
 3. **Checks the build exists.** Missing `build/main.{js,css,asset.php}` — or any of `style.css`, `functions.php`, `theme.json`, `templates/index.html`, `parts/header.html`, `patterns/home.php` — aborts with a pointer to `npm run build`.
-4. **Copies runtime paths only:** `style.css`, `functions.php`, `theme.json`, `readme.txt`, `screenshot.png`, `LICENSE`, `assets/images`, `assets/fonts`, `build`, `inc`, `languages`, `parts`, `patterns`, `styles`, `templates`. Anything absent is skipped silently.
+4. **Copies runtime paths only:** `style.css`, `functions.php`, `theme.json`, `readme.txt`, `screenshot.png`, `LICENSE`, `assets/images`, `assets/fonts`, `build`, `inc`, `languages`, `parts`, `patterns`, `styles`, `templates`. Anything absent is skipped silently; `plugins/` is explicitly forbidden from the theme ZIP.
 5. **Prints the zip path on stdout**, so it composes: `npm run package --silent | tail -1`.
 
 Everything else stays out: `src/`, `bin/`, `docs/`, `tools/`, `fixtures/`, `node_modules/`, the SCSS and JS sources under `assets/`, `.git`, and the Composer files. `vendor/` is excluded too — if the project has Composer runtime dependencies, run `composer install --no-dev` on the host after installing the theme.
@@ -60,6 +60,15 @@ Two of its checks are worth knowing about, because the failures they catch are s
 - every locally hosted font that `theme.json` registers at `file:./assets/fonts/…` must exist in the zip — WordPress falls back silently when it doesn't, so the brand font just disappears.
 
 Run it before handing a zip to a client or pushing one to a demo host.
+
+### Packaging the companion SEO plugin
+
+The companion source shares this repository but is a separate WordPress
+product. `npm run package:seo:check` compiles its independent asset entry and
+writes `.dist/<slug>-seo.zip`, then verifies that the archive contains plugin
+runtime only—never theme files, theme build output, source, or repository
+tooling. Install that ZIP under Plugins; do not copy the repository's
+`plugins/` directory into the theme directory on a host.
 
 ### Installing the zip
 
@@ -125,11 +134,11 @@ This starter ships `.github/workflows/ci.yml` — a GitHub Actions workflow that
 
 | Job | What it runs | Depends on |
 | --- | --- | --- |
-| `node` | `npm run lint`, `npm run lint:css`, `npm run build`, then fails if committed `build/` output is stale | — |
+| `node` | Theme lint/build plus a guarded companion-plugin build, then fails if committed build output is stale | — |
 | `php` | `composer phpcs`, `composer phpstan` | — |
 | `scaffold` | Representative `block:new` and `cpt:new` probes, invalid input rejection probes, `npm run build`, `npm run verify` | — |
-| `package` | `npm run package:check`, which builds the installable theme zip and verifies package contents | `node` |
-| `a11y` | Starts `wp-env`, runs `npm run a11y` at desktop/mobile widths, then stops `wp-env` | `node` |
+| `package` | Validates the theme ZIP and, when present, the separately built companion-plugin ZIP | `node` |
+| `a11y` | Starts `wp-env`, verifies the separately mounted companion plugin activates, runs `npm run a11y`, then stops `wp-env` | `node` |
 | `verify` | `bin/verify-theme.sh` | `node` + `php` |
 
 `bin/verify-theme.sh` re-runs the lint/build/phpcs/phpstan stack (redundant but cheap) and adds parsed block-theme contract checks across markup, root `theme.json`, and every style variation, plus the `pa11y-ci` WCAG2AA gate. The `verify` job does not boot `wp-env`, so that embedded a11y check still degrades to a yellow warning there. The separate `a11y` job boots `wp-env` and makes WCAG2AA a hard CI gate.

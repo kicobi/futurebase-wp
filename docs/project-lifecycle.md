@@ -98,7 +98,9 @@ duplicating rename/scaffold logic.
    branch, generated initial commit, and template repository identity.
    Clone only after that receipt is durable.
 3. **Rename** via the existing implementation with the client name, `1.0.0`
-   version, Theme URI, and repository identity.
+   version, Theme URI, and repository identity. The same pass gives companion
+   plugins client-facing identity while preserving neutral permanent stored
+   keys and extension hooks.
 4. **Reconcile Composer metadata** with `composer update --lock --no-install
    --no-interaction --quiet`, then require `composer validate
    --no-check-publish` to pass. The quiet update emits no untagged-package
@@ -215,9 +217,12 @@ node tools/project-system/bin/futurebase.mjs sync --apply --confirm
 ```
 
 It writes only what the rename contract proves is slug-free (`tools/`,
-`.github/workflows/`, `fixtures/`) plus the dependency layer. `bin/` and `docs/`
-are **reported, never written** — they carry the theme slug, and porting them is
-a judgement call. Locally edited files are skipped rather than clobbered.
+`.github/workflows/`, `fixtures/`, and a bounded portable script set) plus the
+dependency layer. `bin/`, `docs/`, and `plugins/` are **reported, never
+written**. Plugin comparisons map the starter path onto the promoted plugin
+path and remove bounded structural identity noise; genuine code drift remains
+a hand-porting decision. Locally edited files are skipped rather than
+clobbered.
 
 > **Provenance caveat.** `starter.template_commit` records what promotion
 > *believed* it copied. Promotions before the fix recorded the local starter
