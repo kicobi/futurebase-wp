@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Futurebase SEO
  * Description:       A private, client-owned SEO companion for promoted projects.
- * Version:           0.4.0
+ * Version:           0.5.0
  * Requires at least: 6.9
  * Requires PHP:      8.3
  * Author:            Kicobi
@@ -22,7 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'FUTUREBASE_SEO_VERSION', '0.4.0' );
+define( 'FUTUREBASE_SEO_VERSION', '0.5.0' );
 define( 'FUTUREBASE_SEO_FILE', __FILE__ );
 define( 'FUTUREBASE_SEO_BUILD_HANDLE', 'futurebase-seo-editor' );
 
@@ -41,6 +41,7 @@ require_once __DIR__ . '/includes/class-canonical.php';
 require_once __DIR__ . '/includes/class-decision.php';
 require_once __DIR__ . '/includes/class-document.php';
 require_once __DIR__ . '/includes/class-robots.php';
+require_once __DIR__ . '/includes/class-sitemaps.php';
 require_once __DIR__ . '/includes/class-schema.php';
 require_once __DIR__ . '/includes/class-output.php';
 require_once __DIR__ . '/includes/class-cli.php';

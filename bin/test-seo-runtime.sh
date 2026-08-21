@@ -48,6 +48,7 @@ cleanup() {
 		wp option delete compseo_runtime_invalid_query_contract > /dev/null 2>&1 || true
 		wp option delete compseo_runtime_indexable_lang > /dev/null 2>&1 || true
 		wp option delete compseo_runtime_force_index > /dev/null 2>&1 || true
+		wp option delete compseo_runtime_sitemap_page_size > /dev/null 2>&1 || true
 		wp eval-file "$SEO_TEST_THEME_DIR/bin/test-seo-runtime.php" cleanup > /dev/null 2>&1 || true
 	fi
 	for fixture in compseo-fixture-yoast compseo-fixture-rank-math compseo-runtime-fixture; do
@@ -256,6 +257,30 @@ done
 SEO_TEST_HEAD=$(curl -fsS "$SEO_TEST_AUTHOR_URL" | head_only)
 contains "$SEO_TEST_HEAD" 'Native author archive biography.' || fail "author archive did not use the native biography"
 pass "per-object archive policies, native descriptions, pagination, and core robots directives"
+
+wp option update compseo_runtime_sitemap_page_size 1 > /dev/null
+wp eval-file "$SEO_TEST_THEME_DIR/bin/test-seo-runtime.php" assert-sitemaps > /dev/null
+SEO_TEST_SITEMAP_INDEX=$(curl -fsS "$SEO_TEST_URL/wp-sitemap.xml")
+contains "$SEO_TEST_SITEMAP_INDEX" 'wp-sitemap-posts-compseo_book-1.xml' || fail "native sitemap index is missing the first filtered post-type page"
+contains "$SEO_TEST_SITEMAP_INDEX" 'wp-sitemap-posts-compseo_book-2.xml' || fail "native sitemap index is missing the second filtered post-type page"
+not_contains "$SEO_TEST_SITEMAP_INDEX" 'wp-sitemap-posts-compseo_book-3.xml' || fail "excluded singular items inflated native sitemap pagination"
+contains "$SEO_TEST_SITEMAP_INDEX" 'wp-sitemap-taxonomies-post_tag-1.xml' || fail "indexable taxonomy is missing from the native sitemap index"
+not_contains "$SEO_TEST_SITEMAP_INDEX" 'wp-sitemap-taxonomies-category' || fail "noindex category remained in the native sitemap index"
+not_contains "$SEO_TEST_SITEMAP_INDEX" 'wp-sitemap-taxonomies-compseo_genre' || fail "noindex custom taxonomy remained in the native sitemap index"
+not_contains "$SEO_TEST_SITEMAP_INDEX" 'wp-sitemap-users' || fail "users provider remained while author archives are noindex"
+
+SEO_TEST_BOOK_SITEMAPS="$(curl -fsS "$SEO_TEST_URL/wp-sitemap-posts-compseo_book-1.xml")$(curl -fsS "$SEO_TEST_URL/wp-sitemap-posts-compseo_book-2.xml")"
+contains "$SEO_TEST_BOOK_SITEMAPS" '/compseo-runtime-book/' || fail "absent-metadata singular item is missing from the native sitemap"
+contains "$SEO_TEST_BOOK_SITEMAPS" '/compseo-sitemap-local/' || fail "same-origin canonical singular item is missing from the native sitemap"
+not_contains "$SEO_TEST_BOOK_SITEMAPS" '/compseo-sitemap-noindex/' || fail "noindex singular item remained in the native sitemap"
+not_contains "$SEO_TEST_BOOK_SITEMAPS" '/compseo-sitemap-external/' || fail "externally canonicalized singular item remained in the native sitemap"
+not_contains "$SEO_TEST_BOOK_SITEMAPS" '/compseo-sitemap-protected/' || fail "password-protected singular item remained in the native sitemap"
+
+wp eval-file "$SEO_TEST_THEME_DIR/bin/test-seo-runtime.php" set-author-index > /dev/null
+wp eval-file "$SEO_TEST_THEME_DIR/bin/test-seo-runtime.php" assert-author-sitemap > /dev/null
+wp eval-file "$SEO_TEST_THEME_DIR/bin/test-seo-runtime.php" set-author-noindex > /dev/null
+wp option delete compseo_runtime_sitemap_page_size > /dev/null
+pass "native sitemaps exclude blocked content without per-entry queries and follow archive policy"
 
 SEO_TEST_HEAD=$(curl -fsS "${SEO_TEST_ARCHIVE_URL}?utm_source=runtime&gclid=fixture" | head_only)
 contains "$SEO_TEST_HEAD" "<link rel=\"canonical\" href=\"$SEO_TEST_ARCHIVE_URL\"" || fail "tracking-only archive state did not canonicalize to the base archive"

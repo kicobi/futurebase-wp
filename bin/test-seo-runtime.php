@@ -148,6 +148,15 @@ if ( get_option( 'compseo_runtime_force_index' ) ) {
 		}
 	);
 }
+
+if ( get_option( 'compseo_runtime_sitemap_page_size' ) ) {
+	add_filter(
+		'wp_sitemaps_max_urls',
+		static function (): int {
+			return 1;
+		}
+	);
+}
 PHP;
 		};
 
@@ -341,6 +350,46 @@ PHP;
 			);
 			wp_set_post_terms( $book_id, array( $genre_id ), 'compseo_genre' );
 
+			$book_local_id = $insert_post(
+				array(
+					'post_type'   => 'compseo_book',
+					'post_status' => 'publish',
+					'post_name'   => 'compseo-sitemap-local',
+					'post_title'  => 'Local canonical sitemap book',
+				)
+			);
+			update_post_meta( $book_local_id, '_compseo_canonical', home_url( '/local-canonical-reference/' ) );
+
+			$book_noindex_id = $insert_post(
+				array(
+					'post_type'   => 'compseo_book',
+					'post_status' => 'publish',
+					'post_name'   => 'compseo-sitemap-noindex',
+					'post_title'  => 'Noindex sitemap book',
+				)
+			);
+			update_post_meta( $book_noindex_id, '_compseo_noindex', true );
+
+			$book_external_id = $insert_post(
+				array(
+					'post_type'   => 'compseo_book',
+					'post_status' => 'publish',
+					'post_name'   => 'compseo-sitemap-external',
+					'post_title'  => 'External canonical sitemap book',
+				)
+			);
+			update_post_meta( $book_external_id, '_compseo_canonical', 'https://canonical.example/external-book' );
+
+			$book_protected_id = $insert_post(
+				array(
+					'post_type'     => 'compseo_book',
+					'post_status'   => 'publish',
+					'post_name'     => 'compseo-sitemap-protected',
+					'post_title'    => 'Protected sitemap book',
+					'post_password' => 'sitemap-secret',
+				)
+			);
+
 			update_option( 'permalink_structure', '/%postname%/' );
 			update_option( 'posts_per_page', 1 );
 			update_option( 'blogdescription', 'Public site tagline' );
@@ -401,6 +450,10 @@ PHP;
 						'front'              => $front_id,
 						'posts_page'         => $posts_page_id,
 						'book'               => $book_id,
+						'book_local'         => $book_local_id,
+						'book_noindex'       => $book_noindex_id,
+						'book_external'      => $book_external_id,
+						'book_protected'     => $book_protected_id,
 						'featured'           => $featured_id,
 						'default'            => $default_id,
 					),
@@ -623,8 +676,88 @@ PHP;
 			foreach ( array( 'wp-block-editor', 'wp-components', 'wp-data', 'wp-editor', 'wp-plugins' ) as $dependency ) {
 				$expect( in_array( $dependency, $editor_script->deps, true ), 'Editor asset dependency is missing: ' . $dependency );
 			}
+			$editor_build = file_get_contents( plugin_dir_path( FUTUREBASE_SEO_FILE ) . 'build/index.js' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Read-only assertion against the mounted plugin build.
+			$expect( is_string( $editor_build ) && false !== strpos( $editor_build, 'native WordPress sitemap' ), 'Noindex consequence copy does not disclose native sitemap exclusion.' );
 
 			WP_CLI::success( 'Companion SEO editor asset registration passes.' );
+			return;
+		}
+
+		if ( 'assert-sitemaps' === $command ) {
+			$state     = $load_state();
+			$providers = wp_get_sitemap_providers();
+			$expect( isset( $providers['posts'] ) && $providers['posts'] instanceof WP_Sitemaps_Posts, 'Native posts sitemap provider is missing.' );
+			$expect( isset( $providers['taxonomies'] ) && $providers['taxonomies'] instanceof WP_Sitemaps_Taxonomies, 'Native taxonomy sitemap provider is missing.' );
+			$expect( ! isset( $providers['users'] ), 'Users sitemap provider must be removed while author archives are noindex.' );
+
+			$taxonomies = $providers['taxonomies']->get_object_subtypes();
+			$expect( isset( $taxonomies['post_tag'] ), 'Indexable tag taxonomy is missing from native sitemaps.' );
+			$expect( ! isset( $taxonomies['category'] ), 'Noindex category taxonomy remained in native sitemaps.' );
+			$expect( ! isset( $taxonomies['compseo_genre'] ), 'Noindex custom taxonomy remained in native sitemaps.' );
+
+			$meta_reads = 0;
+			$meta_probe = static function ( mixed $value, int $object_id, string $meta_key ) use ( &$meta_reads ): mixed {
+				unset( $object_id );
+				if ( in_array( $meta_key, array( '_compseo_noindex', '_compseo_canonical' ), true ) ) {
+					++$meta_reads;
+				}
+				return $value;
+			};
+			add_filter( 'get_post_metadata', $meta_probe, 10, 3 );
+
+			global $wpdb;
+			$before_queries = (int) $wpdb->num_queries;
+			$page_one       = $providers['posts']->get_url_list( 1, 'compseo_book' );
+			$page_one_count = (int) $wpdb->num_queries - $before_queries;
+			$before_queries = (int) $wpdb->num_queries;
+			$page_two       = $providers['posts']->get_url_list( 2, 'compseo_book' );
+			$page_two_count = (int) $wpdb->num_queries - $before_queries;
+			remove_filter( 'get_post_metadata', $meta_probe, 10 );
+
+			$locations = array_merge( wp_list_pluck( $page_one, 'loc' ), wp_list_pluck( $page_two, 'loc' ) );
+			$expected  = array(
+				get_permalink( (int) $state['ids']['book'] ),
+				get_permalink( (int) $state['ids']['book_local'] ),
+			);
+			sort( $locations );
+			sort( $expected );
+
+			$expect( 2 === $providers['posts']->get_max_num_pages( 'compseo_book' ), 'Filtered post sitemap did not retain correct pagination.' );
+			$expect( $expected === $locations, 'Native post sitemap did not keep exactly the absent-meta and local-canonical fixtures.' );
+			$expect( 0 === $meta_reads, 'Sitemap generation performed per-entry companion metadata reads.' );
+			$expect( $page_one_count <= 3 && $page_two_count <= 3, 'Sitemap query count exceeded the fixed provider-query budget.' );
+
+			$existing_query = array(
+				array(
+					'key'   => '_fixture_existing_sitemap_rule',
+					'value' => 'yes',
+				),
+			);
+			$existing_args  = array();
+			// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Fixture input verifies safe composition with an existing sitemap constraint.
+			$existing_args['meta_query'] = $existing_query;
+			$filtered_args               = Futurebase\SEO\Sitemaps::posts_query_args( $existing_args, 'post' );
+			$expect( false === $filtered_args['has_password'], 'Password exclusion must use the posts-table query condition.' );
+			$expect( 'AND' === $filtered_args['meta_query']['relation'] && $existing_query === $filtered_args['meta_query'][0], 'Existing sitemap metadata constraints were not composed safely.' );
+
+			WP_CLI::success( 'Companion SEO native sitemap integration passes.' );
+			return;
+		}
+
+		if ( 'set-author-index' === $command || 'set-author-noindex' === $command ) {
+			$settings = get_option( 'compseo_settings', array() );
+			$expect( is_array( $settings ), 'Companion SEO settings fixture is malformed.' );
+			$settings['indexing']           = isset( $settings['indexing'] ) && is_array( $settings['indexing'] ) ? $settings['indexing'] : array();
+			$settings['indexing']['author'] = 'set-author-index' === $command ? 'index' : 'noindex';
+			update_option( 'compseo_settings', $settings );
+			WP_CLI::success( 'Companion SEO author sitemap policy updated.' );
+			return;
+		}
+
+		if ( 'assert-author-sitemap' === $command ) {
+			$providers = wp_get_sitemap_providers();
+			$expect( isset( $providers['users'] ) && $providers['users'] instanceof WP_Sitemaps_Users, 'Users sitemap provider is missing while author archives are indexable.' );
+			WP_CLI::success( 'Companion SEO author sitemap provider passes.' );
 			return;
 		}
 
@@ -632,7 +765,14 @@ PHP;
 			$registered = get_registered_meta_keys( 'post', 'post' );
 			$expect( ! isset( $registered['_compseo_title'] ), 'Suppressed runtime must not register REST metadata.' );
 			$expect( null === $find_class_callback( 'enqueue_block_editor_assets', '\\SEO\\Editor', 'enqueue_assets' ), 'Suppressed runtime must not register editor assets.' );
+			$expect( null === $find_class_callback( 'wp_sitemaps_posts_query_args', '\\SEO\\Sitemaps', 'posts_query_args' ), 'Suppressed runtime must not filter post sitemaps.' );
+			$expect( null === $find_class_callback( 'wp_sitemaps_taxonomies', '\\SEO\\Sitemaps', 'taxonomies' ), 'Suppressed runtime must not filter taxonomy sitemaps.' );
+			$expect( null === $find_class_callback( 'wp_sitemaps_add_provider', '\\SEO\\Sitemaps', 'provider' ), 'Suppressed runtime must not filter sitemap providers.' );
 			$expect( null !== $find_class_callback( 'admin_menu', '\\SEO\\Admin', 'register_page' ), 'Suppression must not hide management registration.' );
+			$providers = wp_get_sitemap_providers();
+			$expect( isset( $providers['users'] ), 'Suppression did not return the users sitemap to WordPress core.' );
+			$taxonomies = isset( $providers['taxonomies'] ) && $providers['taxonomies'] instanceof WP_Sitemaps_Taxonomies ? $providers['taxonomies']->get_object_subtypes() : array();
+			$expect( isset( $taxonomies['category'], $taxonomies['compseo_genre'] ), 'Suppression did not return taxonomy sitemaps to WordPress core.' );
 			$admin_register = $find_class_callback( 'admin_init', '\\SEO\\Admin', 'register_setting' );
 			$expect( is_callable( $admin_register ), 'Suppressed settings registration callback is missing.' );
 			call_user_func( $admin_register );
@@ -730,6 +870,7 @@ PHP;
 			delete_option( 'compseo_runtime_invalid_query_contract' );
 			delete_option( 'compseo_runtime_indexable_lang' );
 			delete_option( 'compseo_runtime_force_index' );
+			delete_option( 'compseo_runtime_sitemap_page_size' );
 			flush_rewrite_rules();
 			WP_CLI::success( 'Companion SEO runtime fixtures removed.' );
 			return;

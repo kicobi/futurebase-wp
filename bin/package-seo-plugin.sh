@@ -41,6 +41,7 @@ required_paths=(
 	"$plugin_dir/includes/class-plugin.php"
 	"$plugin_dir/includes/class-policy.php"
 	"$plugin_dir/includes/class-robots.php"
+	"$plugin_dir/includes/class-sitemaps.php"
 	"$plugin_dir/includes/class-schema.php"
 	"$plugin_dir/includes/class-settings.php"
 	"$plugin_dir/includes/class-suppression.php"
