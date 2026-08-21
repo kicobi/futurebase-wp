@@ -104,10 +104,11 @@ share CI, promotion, and sync tooling. They remain separate WordPress products:
 each plugin has its own build and ZIP, `wp-env` mounts it independently, and the
 theme package excludes the entire `plugins/` tree.
 
-This is one model for everything a client receives, rather than two. It also
-means nothing of ours sits on a site under our name, which removes the
-offboarding and disclosure questions entirely instead of leaving them to be
-managed.
+This is one model for everything a client receives, rather than two.
+Client-facing runtime identity becomes the client's; Kicobi remains only in
+standard `Author` and `Contributors` metadata as factual code authorship. This
+removes the offboarding and disclosure questions entirely instead of leaving
+them to be managed.
 
 Promotion is the only safe moment for this. A rename changes the plugin
 directory, so WordPress deactivates the old plugin and sees a new one;
