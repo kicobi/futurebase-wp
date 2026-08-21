@@ -1,0 +1,96 @@
+name: WordPress compatibility
+
+# Futurebase-only compatibility canary. This workflow is intentionally listed
+# in tools/project-system/lib/sync.mjs STARTER_ONLY: promoted projects keep
+# their normal CI without inheriting this scheduled two-environment matrix.
+on:
+    schedule:
+        - cron: '0 6 * * 1'
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    wordpress:
+        name: WordPress ${{ matrix.label }}
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - label: supported floor
+                      channel: floor
+                      core: ''
+                    - label: latest stable
+                      channel: latest
+                      core: https://wordpress.org/latest.zip
+        env:
+            CI: 'true'
+            # An empty value leaves .wp-env.json authoritative for the floor.
+            WP_ENV_CORE: ${{ matrix.core }}
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+            - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+              with:
+                  node-version-file: .nvmrc
+                  cache: npm
+
+            - run: npm ci
+            - run: npm run build
+            - run: npm run env:start
+
+            - name: Verify the WordPress version under test
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  installed=$(
+                      npx --silent wp-env run cli wp core version 2>/dev/null \
+                          | grep -E '^[0-9]+\.[0-9]+' \
+                          | head -1
+                  )
+                  if [ -z "$installed" ]; then
+                      echo "error: could not resolve the installed WordPress version" >&2
+                      exit 1
+                  fi
+                  {
+                      echo "### WordPress ${{ matrix.label }}"
+                      echo
+                      echo "Resolved version: \`$installed\`"
+                  } >> "$GITHUB_STEP_SUMMARY"
+                  if [ "${{ matrix.channel }}" = floor ]; then
+                      node bin/verify-version-surfaces.mjs "--assert-floor=$installed"
+                  else
+                      node bin/verify-version-surfaces.mjs "--warn-newer=$installed"
+                  fi
+
+            # Activate the mounted theme and import the deterministic fixture
+            # before any runtime gate. A green result against a core default
+            # theme would not be compatibility evidence for Futurebase.
+            - name: Activate theme and import demo fixture
+              run: npm run demo:import
+
+            - name: Companion SEO clean install
+              run: bin/test-seo-install.sh
+
+            - name: Companion SEO runtime
+              run: bin/test-seo-runtime.sh
+
+            - name: Navigation migration
+              run: npm run test:navigation
+
+            - name: Render smoke test
+              run: bin/smoke-render.sh
+
+            - name: Accessibility
+              run: npm run a11y
+
+            - name: Stop wp-env
+              if: always()
+              run: npm run env:stop
