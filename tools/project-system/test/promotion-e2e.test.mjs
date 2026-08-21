@@ -4,6 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+	appendFileSync,
 	existsSync,
 	chmodSync,
 	lstatSync,
@@ -89,6 +90,12 @@ function makeTemplate(root, variant = 'ordinary') {
 	runGit(template, ['init', '-q']);
 	runGit(template, ['add', '-A']);
 	runGit(template, ['commit', '-q', '-m', 'template']);
+	return template;
+}
+
+function cloneRealTemplate(root) {
+	const template = join(root, 'template');
+	runGit(root, ['clone', '--quiet', STARTER_ROOT, template]);
 	return template;
 }
 
@@ -479,6 +486,69 @@ test('offline promotion completes, commits, and removes its checkpoint', () => {
 			[['ci', '--prefix', 'tools/project-system', '--ignore-scripts']],
 		);
 		assert.match(npmCalls(npm).find((call) => call.args[0] === 'ci')?.cwd || '', /\/dest$/, 'nested install must run inside the promoted destination');
+	} finally {
+		cleanup();
+	}
+});
+
+test('the real starter promotes, packages, and syncs its renamed companion plugin without overwriting it', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const template = cloneRealTemplate(dir);
+		const workspace = makeLead(dir);
+		const result = promote({ root: dir, template, workspace });
+
+		assert.equal(result.status, 0, result.output);
+		const pluginDir = join(result.dest, 'plugins', 'acme-seo');
+		const bootstrap = join(pluginDir, 'acme-seo.php');
+		const identifiers = readFileSync(join(pluginDir, 'includes', 'class-identifiers.php'), 'utf8');
+		assert.equal(existsSync(bootstrap), true);
+		assert.equal(existsSync(join(result.dest, 'plugins', 'futurebase-seo')), false);
+		assert.match(readFileSync(bootstrap, 'utf8'), /Plugin Name:\s+Acme SEO/);
+		assert.match(readFileSync(bootstrap, 'utf8'), /namespace Acme\\SEO;/);
+		for (const identifier of [
+			'_compseo_title',
+			'_compseo_description',
+			'_compseo_noindex',
+			'_compseo_canonical',
+			'_compseo_social_image_id',
+			'compseo_settings',
+			'compseo_is_suppressed',
+			'compseo_supported_post_types',
+			'compseo_document',
+			'compseo_schema_graph',
+			'compseo_indexable_query_vars',
+			'compseo_indexing_decision',
+		]) {
+			assert.match(identifiers, new RegExp(identifier));
+		}
+
+		const packaged = spawnSync('bash', ['bin/test-seo-package.sh'], { cwd: result.dest, encoding: 'utf8' });
+		assert.equal(packaged.status, 0, packaged.stderr || packaged.stdout);
+
+		const syncArgs = [CLI, 'sync', '--project-root', result.dest, '--futurebase-path', STARTER_ROOT, '--ref', 'HEAD', '--json'];
+		const preview = spawnSync(process.execPath, syncArgs, { encoding: 'utf8' });
+		assert.equal(preview.status, 0, preview.stderr || preview.stdout);
+		const previewPayload = JSON.parse(preview.stdout);
+		assert.deepEqual(
+			previewPayload.entries.filter((entry) => entry.rel.startsWith('plugins/acme-seo/')),
+			[],
+		);
+
+		appendFileSync(bootstrap, "\n// Local project integration.\n");
+		const locallyModified = readFileSync(bootstrap, 'utf8');
+		const drift = spawnSync(process.execPath, syncArgs, { encoding: 'utf8' });
+		assert.equal(drift.status, 0, drift.stderr || drift.stdout);
+		const pluginDrift = JSON.parse(drift.stdout).entries.find((entry) => entry.rel === 'plugins/acme-seo/acme-seo.php');
+		assert.deepEqual(pluginDrift, {
+			rel: 'plugins/acme-seo/acme-seo.php',
+			cls: 'review',
+			state: 'conflict',
+		});
+
+		const applied = spawnSync(process.execPath, [...syncArgs.slice(0, -1), '--apply', '--confirm', '--json'], { encoding: 'utf8' });
+		assert.equal(applied.status, 0, applied.stderr || applied.stdout);
+		assert.equal(readFileSync(bootstrap, 'utf8'), locallyModified, 'review-class plugin code must never be overwritten');
 	} finally {
 		cleanup();
 	}

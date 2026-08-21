@@ -124,6 +124,7 @@ REAL_CONTRIBUTORS="kicobi, jsmith"
 REAL_SEO_SLUG="${REAL_SLUG}-seo"
 REAL_SEO_DISPLAY="${REAL_NAME} SEO"
 REAL_SEO_NAMESPACE='AcmeClient\SEO'
+BASE_SEO_VERSION="$(sed -n 's/^ \* Version:[[:space:]]*//p' "plugins/$FUTUREBASE_SEO_BASE_SLUG/$FUTUREBASE_SEO_BASE_SLUG.php" | head -1 | sed 's/[[:space:]]*$//')"
 make_worktree
 WT2="$NEW_WT"
 
@@ -180,7 +181,8 @@ client_plugin_main="$client_plugin/$REAL_SEO_SLUG.php"
 [ ! -e "$WT2/plugins/$FUTUREBASE_SEO_BASE_SLUG" ] || problems+=("starter plugin directory survived")
 grep -qE "^ \* Plugin Name:[[:space:]]*$REAL_SEO_DISPLAY$" "$client_plugin_main" 2>/dev/null || problems+=("plugin display name mismatch")
 grep -qE "^ \* Text Domain:[[:space:]]*$REAL_SEO_SLUG$" "$client_plugin_main" 2>/dev/null || problems+=("plugin text domain mismatch")
-grep -qE "^ \* Version:[[:space:]]*$REAL_VERSION$" "$client_plugin_main" 2>/dev/null || problems+=("plugin version mismatch")
+grep -qE "^ \* Version:[[:space:]]*$BASE_SEO_VERSION$" "$client_plugin_main" 2>/dev/null || problems+=("plugin version changed during promotion")
+grep -qE "^Stable tag:[[:space:]]*$BASE_SEO_VERSION$" "$client_plugin/readme.txt" 2>/dev/null || problems+=("plugin stable tag changed during promotion")
 grep -qF "namespace $REAL_SEO_NAMESPACE;" "$client_plugin_main" 2>/dev/null || problems+=("plugin namespace mismatch")
 grep -qF "define( '${REAL_UPPER}_SEO_VERSION'" "$client_plugin_main" 2>/dev/null || problems+=("plugin constant prefix mismatch")
 grep -qF "'${REAL_SEO_SLUG}-editor'" "$client_plugin_main" 2>/dev/null || problems+=("plugin asset handle mismatch")

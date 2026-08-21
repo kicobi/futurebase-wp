@@ -267,16 +267,13 @@ DISPLAY="$THEME_NAME" VERSION="$THEME_VERSION" perl -i -pe '
 VERSION="$THEME_VERSION" perl -0777 -i -pe 's/== Changelog ==\n.*\z/== Changelog ==\n\n= $ENV{VERSION} =\n* Initial client theme release.\n/s' readme.txt
 
 plugin_main="$target_plugin_dir/$SEO_SLUG.php"
-DISPLAY="$SEO_DISPLAY" VERSION="$THEME_VERSION" SLUG="$SEO_SLUG" perl -i -pe '
+DISPLAY="$SEO_DISPLAY" SLUG="$SEO_SLUG" perl -i -pe '
 	s/^( \* Plugin Name:\s*).*$/$1$ENV{DISPLAY}/;
-	s/^( \* Version:\s*).*$/$1$ENV{VERSION}/;
 	s/^( \* Text Domain:\s*).*$/$1$ENV{SLUG}/;
 ' "$plugin_main"
-DISPLAY="$SEO_DISPLAY" VERSION="$THEME_VERSION" perl -i -pe '
+DISPLAY="$SEO_DISPLAY" perl -i -pe '
 	s/^=== .* ===$/=== $ENV{DISPLAY} ===/ if $. == 1;
-	s/^(Stable tag:\s*).*$/$1$ENV{VERSION}/;
 ' "$target_plugin_dir/readme.txt"
-VERSION="$THEME_VERSION" perl -0777 -i -pe 's/== Changelog ==\n.*\z/== Changelog ==\n\n= $ENV{VERSION} =\n* Initial client companion plugin release.\n/s' "$target_plugin_dir/readme.txt"
 
 # Root package identity is client-owned. The lock helper then copies these
 # authoritative values to the four root lockfile fields without resolution.
@@ -350,7 +347,9 @@ grep -qF " * $THEME_NAME theme functions." functions.php || problems+=("function
 actual_plugin_name="$(sed -n 's/^ \* Plugin Name:[[:space:]]*//p' "$plugin_main" | head -1 | sed 's/[[:space:]]*$//')"
 [ "$actual_plugin_name" = "$SEO_DISPLAY" ] || problems+=("plugin name mismatch: expected '$SEO_DISPLAY', found '$actual_plugin_name'")
 grep -qE "^ \* Text Domain:[[:space:]]*${SEO_SLUG}[[:space:]]*$" "$plugin_main" || problems+=("plugin Text Domain mismatch")
-grep -qE "^ \* Version:[[:space:]]*${THEME_VERSION}[[:space:]]*$" "$plugin_main" || problems+=("plugin Version mismatch")
+plugin_version="$(sed -n 's/^ \* Version:[[:space:]]*//p' "$plugin_main" | head -1 | sed 's/[[:space:]]*$//')"
+[ -n "$plugin_version" ] || problems+=("plugin Version header missing")
+grep -qE "^Stable tag:[[:space:]]*${plugin_version}[[:space:]]*$" "$target_plugin_dir/readme.txt" || problems+=("plugin Stable tag does not match its Version header")
 grep -qF "namespace $SEO_NAMESPACE;" "$plugin_main" || problems+=("plugin namespace mismatch")
 grep -qF "define( '${SEO_UPPER}_VERSION'" "$plugin_main" || problems+=("plugin constant prefix mismatch")
 grep -qF "'${SEO_SLUG}-editor'" "$plugin_main" || problems+=("plugin asset handle mismatch")
