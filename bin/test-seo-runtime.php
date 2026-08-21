@@ -124,7 +124,7 @@ PHP;
 			};
 
 			$insert_image = static function ( string $source_name, string $alt ) use ( $expect, $author_id ): int {
-				$source = get_stylesheet_directory() . '/fixtures/media/' . $source_name;
+				$source = dirname( __DIR__ ) . '/fixtures/media/' . $source_name;
 				$expect( is_file( $source ), 'Fixture image is missing: ' . $source_name );
 				$contents = file_get_contents( $source ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Local disposable fixture image.
 				$expect( false !== $contents, 'Could not read fixture image: ' . $source_name );

@@ -62,8 +62,10 @@ SEO_TEST_URL=$(
 [ -n "$SEO_TEST_URL" ] || fail "wp-env is not reachable; start it with npm run env:start"
 SEO_TEST_URL="${SEO_TEST_URL%/}"
 
+SEO_TEST_THEME_TEXT_DOMAIN=$(sed -n 's/^Text Domain:[[:space:]]*//p' style.css | head -1 | tr -d '[:space:]')
+[[ "$SEO_TEST_THEME_TEXT_DOMAIN" =~ ^[a-z0-9-]+$ ]] || fail "could not resolve the mounted theme identity"
 SEO_TEST_THEME_DIR=$(
-	wp eval 'echo get_stylesheet_directory();' 2>/dev/null \
+	wp eval "\$matches = array(); foreach ( wp_get_themes() as \$slug => \$theme ) { if ( '$SEO_TEST_THEME_TEXT_DOMAIN' === \$theme->get( 'TextDomain' ) ) { \$matches[] = get_theme_root( \$slug ) . '/' . \$slug; } } if ( 1 === count( \$matches ) ) { echo \$matches[0]; }" --skip-themes --skip-plugins 2>/dev/null \
 		| grep -E '^/' \
 		| head -1 \
 		|| true
