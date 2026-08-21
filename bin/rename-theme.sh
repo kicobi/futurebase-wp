@@ -157,7 +157,7 @@ echo
 # never passed through text substitution.
 TARGETS=()
 while IFS= read -r file; do TARGETS+=("$file"); done < <(
-	scan_roots=(functions.php style.css composer.json package.json phpcs.xml.dist readme.txt .wp-env.json)
+	scan_roots=(functions.php style.css composer.json package.json phpcs.xml.dist phpstan.neon.dist readme.txt .wp-env.json)
 	[ -f README.md ] && scan_roots+=(README.md)
 	[ -f CLAUDE.md ] && scan_roots+=(CLAUDE.md)
 	for dir in patterns templates parts docs src inc bin plugins; do
