@@ -33,7 +33,7 @@ it, so the list stays short.** Anything specific to one project is built for
 that project. The plugin layer holds only what is true on every project.
 
 This is a positioning asset, not a gap to grow out of. See
-[Promoting before build](#promoting-before-build).
+[Promoting before release evidence](#promoting-before-release-evidence).
 
 ### The test for a fourth
 
@@ -53,12 +53,14 @@ architecture. So:
 
 ### Futurebase SEO
 
-Fully specified in [seo.md](seo.md). Provides meta description, OpenGraph and
-Twitter tags, and `schema.org` essentials as a fallback baseline, and yields
-entirely when a blessed premium SEO plugin (Yoast, RankMath) is active.
+Fully specified in [seo.md](seo.md). Provides editor and site settings,
+metadata and social output, factual schema, indexing policy, diagnostics, and
+native sitemap augmentation as a fallback baseline. It yields all runtime
+ownership when a blessed premium SEO plugin (Yoast or Rank Math) is active.
 
-Closes the measured SEO gap in [scorecard.md](scorecard.md) without coupling
-the theme to a third-party product.
+It addresses the measured gap in [scorecard.md](scorecard.md) without coupling
+the theme to a third-party product. Final public claims remain gated on the
+promoted-demo evidence round.
 
 ### Futurebase Content
 
@@ -195,17 +197,17 @@ notification practice to maintain.
 
 ## Sequencing
 
-Part-time alongside client work. Futurebase SEO goes first because it is the
-most sharply specified and closes a measured gap; Futurebase Blocks goes last
-because each block is edit UI plus Interactivity API plus manual
-accessibility testing.
+Part-time alongside client work. Futurebase SEO went first because it was the
+most sharply specified and closed a measured gap. Futurebase Content follows,
+partly informed by the plugin foundation. Futurebase Blocks goes last because
+each block is edit UI plus Interactivity API plus manual accessibility testing.
 
-| Phase | Work | Estimate |
+| Phase | Work | Estimate and state |
 | --- | --- | --- |
-| 0 | Shared scaffold, CI reuse, rename + sync wiring | ~1½ weeks |
-| 1 | Futurebase SEO | 2–3 weeks |
-| 2 | Futurebase Content, partly extracted from Phase 1 | ~2 weeks |
-| 3 | Futurebase Blocks, initial 4–5 components | 4–6 weeks |
+| 0 | Shared scaffold, CI reuse, rename + sync wiring | ~1½ weeks; implemented |
+| 1 | Futurebase SEO | 3–4 weeks; 0.5.0 merged; release evidence pending |
+| 2 | Futurebase Content | ~2 weeks; not started |
+| 3 | Futurebase Blocks, initial 4–5 components | 4–6 weeks; not started |
 
 Roughly a quarter in elapsed time. Phase 0 is the leverage step — three
 plugins inherit whatever it establishes, so it is worth doing properly before
@@ -213,27 +215,31 @@ Phase 1 rather than retrofitting. It carries the renameability contract, and
 retrofitting that after Futurebase Content registers post types is the expensive
 version of this work.
 
-## Promoting before build
+## Promoting before release evidence
 
-The plugin layer will be promoted on the company site before it is built.
-That is compatible with the editorial boundaries in
-[futurebase-company-site.md](futurebase-company-site.md), but only under the
-conditions that document already sets.
+The company site may describe the plugin layer before implementation and
+public evidence are complete. That is compatible with the editorial
+boundaries in [futurebase-company-site.md](futurebase-company-site.md), but
+only under the conditions that document already sets. Futurebase SEO is now
+implemented; its final capability and performance claims still wait for the
+promoted-demo evidence round. Futurebase Content and Futurebase Blocks remain
+planned products.
 
 **Permitted:** describing the plugins, their scope, and the reasoning behind
-a deliberately small catalogue. Marking each clearly as in development.
+a deliberately small catalogue. State each product's implementation and
+evidence status accurately.
 
 **Not permitted, until true:**
 
 - presenting an unbuilt plugin as available, installable, or shipping
 - implying it runs on client sites
-- any capability or performance claim about it
+- publishing capability or performance claims without the required evidence
 
 Capability claims follow the same evidence standard as
 [scorecard.md](scorecard.md): a plugin earns a claim once it runs on the
 public demo site, not before.
 
-The messages that hold while the plugin remains an inert foundation:
+The messages that hold regardless of release status:
 
 - The catalogue is short because each entry is maintained permanently on
   every site that runs it.
@@ -261,14 +267,20 @@ Three, all downstream of the model rather than objections to it.
    and after a rename they are not running anything under our name in any
    case.
 
-3. **Opportunity cost.** Futurebase SEO currently sits at Tier 2 on the
-   theme's own roadmap. Phase 1 is a reprioritisation, not an addition.
+3. **Opportunity cost.** Futurebase SEO began at Tier 2 on the theme's own
+   roadmap. Implementing Phase 1 was a reprioritisation, not an addition. Its
+   final release round should close before Futurebase Content begins.
 
 ## Status
 
-The shared Phase 0 foundation now lives under `plugins/`: separate packaging,
-promotion identity, review-only sync mapping, and CI/install gates. The SEO
-plugin itself is intentionally inert until its focused output and management
-phases land. This document keeps the theme from absorbing work that belongs in
-a plugin in the meantime — the same role [seo.md](seo.md) plays for SEO output
-specifically.
+The shared Phase 0 foundation lives under `plugins/`: separate packaging,
+promotion identity, review-only sync mapping, and CI/install gates. Futurebase
+SEO is implemented through version 0.5.0 with metadata output and privacy,
+editor and site settings, archive policy, diagnostics, and native sitemap
+integration. The remaining release round covers explicit data cleanup,
+remaining lifecycle acceptance fixtures, final documentation, and
+promoted-demo evidence.
+
+Futurebase Content and Futurebase Blocks have not started. This document keeps
+the theme from absorbing work that belongs in a plugin — the same role
+[seo.md](seo.md) plays for SEO output specifically.

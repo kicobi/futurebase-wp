@@ -169,6 +169,16 @@ auto-register through `futurebase_register_blocks()` in
 its own `build:seo` command so theme builds and theme ZIPs never absorb plugin
 code.
 
+### Companion SEO plugin
+
+The SEO companion is developed in this repository but packaged and deployed
+separately from the theme. Start with [the SEO stance](docs/seo.md) for the
+theme/plugin boundary and current status, read the
+[plugin README](plugins/futurebase-seo/README.md) for runtime behavior and
+permanent extension contracts, and see
+[the plugin strategy](docs/plugin-strategy.md) for promotion, ownership, sync,
+and maintenance policy.
+
 ## AI agents
 
 This repo is set up for two assistants in parallel:
