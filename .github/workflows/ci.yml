@@ -180,6 +180,9 @@ jobs:
             - name: Companion SEO clean install
               if: hashFiles('plugins/*-seo/*.php') != ''
               run: bin/test-seo-install.sh
+            - name: Companion SEO runtime
+              if: hashFiles('plugins/*-seo/*.php') != ''
+              run: bin/test-seo-runtime.sh
             # inc/ is CLASS.NEVER, so sync never delivers the navigation
             # migration to a client — a project promoted before that feature
             # existed has nothing for this gate to exercise, and the synced

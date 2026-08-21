@@ -31,6 +31,7 @@ import {
 	missingWorkflowScripts,
 	planDeps,
 	planFiles,
+	PORTABLE_BIN,
 	PORTABLE_CONFIG,
 	PRODUCT_ONLY,
 	reverseNormalizePluginReviewIdentity,
@@ -610,6 +611,17 @@ test('portable scripts travel with the configuration they invoke', () => {
 	// review-class, so a client could receive a newer script without them.
 	assert.equal(classifyPath('bin/scorecard.sh'), CLASS.SAFE);
 	for (const rel of PORTABLE_CONFIG) assert.equal(classifyPath(rel), CLASS.SAFE, `${rel} must travel with the script that reads it`);
+});
+
+test('the sync-safe workflow receives the complete companion SEO runtime closure', () => {
+	const root = resolve(TOOL_ROOT, '..', '..');
+	const workflow = readFileSync(join(root, '.github', 'workflows', 'ci.yml'), 'utf8');
+	assert.match(workflow, /run: bin\/test-seo-runtime\.sh/);
+	for (const rel of ['bin/test-seo-runtime.sh', 'bin/test-seo-runtime.php']) {
+		assert.ok(PORTABLE_BIN.includes(rel), `${rel} must be explicitly portable`);
+		assert.equal(classifyPath(rel), CLASS.SAFE, `${rel} must travel with the workflow that invokes it`);
+		assert.doesNotThrow(() => readFileSync(join(root, rel)), `${rel} must exist`);
+	}
 });
 
 test('the verifier runner invokes its checker and executable negative tests', () => {

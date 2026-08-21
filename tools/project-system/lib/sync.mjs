@@ -91,6 +91,8 @@ export const PORTABLE_BIN = [
 	'bin/smoke-render.php',
 	'bin/test-seo-install.sh',
 	'bin/test-seo-package.sh',
+	'bin/test-seo-runtime.php',
+	'bin/test-seo-runtime.sh',
 	...VERIFIER_CLOSURE,
 ];
 

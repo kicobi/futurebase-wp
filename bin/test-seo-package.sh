@@ -26,8 +26,19 @@ outside_prefix="$(printf '%s\n' "$entries" | grep -vE "^${slug}(/|$)" || true)"
 
 for required in \
 	"$slug/$slug.php" \
+	"$slug/includes/class-canonical.php" \
+	"$slug/includes/class-context.php" \
+	"$slug/includes/class-contracts.php" \
+	"$slug/includes/class-document.php" \
 	"$slug/includes/class-identifiers.php" \
+	"$slug/includes/class-metadata.php" \
+	"$slug/includes/class-output.php" \
 	"$slug/includes/class-plugin.php" \
+	"$slug/includes/class-robots.php" \
+	"$slug/includes/class-schema.php" \
+	"$slug/includes/class-settings.php" \
+	"$slug/includes/class-suppression.php" \
+	"$slug/includes/class-url.php" \
 	"$slug/build/index.asset.php" \
 	"$slug/build/index.js" \
 	"$slug/readme.txt" \
