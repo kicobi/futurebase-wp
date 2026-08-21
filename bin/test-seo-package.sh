@@ -26,10 +26,12 @@ outside_prefix="$(printf '%s\n' "$entries" | grep -vE "^${slug}(/|$)" || true)"
 
 for required in \
 	"$slug/$slug.php" \
+	"$slug/includes/class-admin.php" \
 	"$slug/includes/class-canonical.php" \
 	"$slug/includes/class-context.php" \
 	"$slug/includes/class-contracts.php" \
 	"$slug/includes/class-document.php" \
+	"$slug/includes/class-editor.php" \
 	"$slug/includes/class-identifiers.php" \
 	"$slug/includes/class-metadata.php" \
 	"$slug/includes/class-output.php" \
@@ -39,8 +41,13 @@ for required in \
 	"$slug/includes/class-settings.php" \
 	"$slug/includes/class-suppression.php" \
 	"$slug/includes/class-url.php" \
+	"$slug/includes/class-verification.php" \
 	"$slug/build/index.asset.php" \
+	"$slug/build/index.css" \
 	"$slug/build/index.js" \
+	"$slug/build/settings.asset.php" \
+	"$slug/build/settings.css" \
+	"$slug/build/settings.js" \
 	"$slug/readme.txt" \
 	"$slug/LICENSE"; do
 	printf '%s\n' "$entries" | grep -Fxq "$required" || fail "missing required entry: $required"
@@ -58,6 +65,7 @@ for forbidden in \
 	"$slug/vendor/" \
 	"$slug/docs/" \
 	"$slug/bin/" \
+	"$slug/webpack.config.js" \
 	"$slug/package.json" \
 	"$slug/composer.json" \
 	"$slug/phpcs.xml.dist"; do

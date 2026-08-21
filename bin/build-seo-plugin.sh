@@ -26,7 +26,14 @@ else
 	exit "$status"
 fi
 
-npx wp-scripts "$mode" \
+text_domain="$(awk '/^[[:space:]]*\*[[:space:]]*Text Domain:/ { print $4; exit }' "$plugin_dir"/*.php)"
+if ! [[ "$text_domain" =~ ^[a-z0-9-]+$ ]]; then
+	echo "companion SEO build: could not resolve a safe plugin text domain" >&2
+	exit 1
+fi
+
+COMPSEO_PLUGIN_DIR="$plugin_dir" COMPSEO_TEXT_DOMAIN="$text_domain" npx wp-scripts "$mode" \
 	--webpack-src-dir="$plugin_dir/src" \
+	index.js settings.js \
 	--output-path="$plugin_dir/build" \
-	--config=node_modules/@wordpress/scripts/config/webpack.config.js
+	--config="$plugin_dir/webpack.config.js"

@@ -197,6 +197,16 @@ fi
 if ! (cd "$WT2" && bash bin/test-seo-package.sh >>"$LOG" 2>&1); then
 	problems+=("renamed companion plugin package failed validation")
 fi
+build_snapshot="$WT2/.seo-build-before"
+cp -R "$client_plugin/build" "$build_snapshot"
+ln -s "$ROOT/node_modules" "$WT2/node_modules"
+if ! (cd "$WT2" && bash bin/build-seo-plugin.sh build >>"$LOG" 2>&1); then
+	problems+=("renamed companion plugin failed to rebuild")
+elif ! diff -qr "$build_snapshot" "$client_plugin/build" >>"$LOG" 2>&1; then
+	problems+=("renamed companion plugin build output was stale")
+fi
+rm -rf "$build_snapshot"
+rm -f "$WT2/node_modules"
 if grep -qF "$REAL_NAME WP" "$WT2/style.css" "$WT2/readme.txt" "$WT2/functions.php" 2>/dev/null; then
 	problems+=("client display name retained a trailing WP product suffix")
 fi
