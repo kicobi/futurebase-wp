@@ -101,7 +101,8 @@ The script performs the following edits in one pass:
 8. **Repository identity** — updates Theme URI, npm repository/homepage/bugs fields, and the Composer vendor/package when `--repository` is supplied.
 9. **`phpcs.xml.dist`** — updates the dashed text domain and snake-case prefix independently.
 10. **Client readme history** — resets `readme.txt` to one initial client release and leaves exactly one Futurebase WP provenance sentence in `README.md`.
-11. **Base-only product material** — removes the Futurebase WP narrative, company-site brief, social image, and branded theme screenshot from the client checkout while rewriting client-owned identity in `docs/`, `src/`, and `inc/`.
+11. **Companion plugin identity** — renames `futurebase-seo` to `<slug>-seo`, including its bootstrap, display name, namespace, text domain, constants, asset handles, and configuration paths, while preserving every neutral `compseo` database key and hook.
+12. **Base-only product material** — removes the Futurebase WP narrative, company-site brief, social image, and branded theme screenshot from the client checkout while rewriting client-owned identity in `docs/`, `src/`, and `inc/`.
 
 Markdown lines that intentionally name the starter, product, or `futurebase` CLI carry the exact `<!-- futurebase-rename: keep-line -->` marker and remain unchanged. Client-specific technical examples continue to be renamed, so no starter-history prose needs manual repair. <!-- futurebase-rename: keep-line -->
 
@@ -133,6 +134,8 @@ npm run start:blocks   # watch theme-bound blocks (src/blocks/**)
 npm run build          # production build — theme assets + blocks
 npm run build:theme    # theme assets only
 npm run build:blocks   # blocks only (skips cleanly if src/blocks/ is empty)
+npm run build:seo      # separately compile the companion SEO plugin
+npm run package:seo:check # validate its independent plugin ZIP
 npm run block:new -- <slug> # scaffold a theme-bound block at src/blocks/<slug>/
 npm run cpt:new -- <slug>   # scaffold a custom post type at inc/post-types/<slug>.php
 npm run lint           # lint JS (same as lint:js; matches the PostToolUse hook)
@@ -162,7 +165,9 @@ into `build/`) and then `build:blocks` (compiles `src/blocks/*/block.json` into
 `build/blocks/` via `@wordpress/scripts`' standard block discovery). Blocks
 auto-register through `futurebase_register_blocks()` in
 [functions.php](functions.php) on `init`. A fresh repo with no blocks is fine
-— `build:blocks` exits 0 when `src/blocks/` is empty.
+— `build:blocks` exits 0 when `src/blocks/` is empty. The companion plugin uses
+its own `build:seo` command so theme builds and theme ZIPs never absorb plugin
+code.
 
 ## AI agents
 
@@ -253,6 +258,8 @@ futurebase/
 │   └── blocks/<slug>/        # compiled theme-bound blocks
 ├── parts/                    # template parts
 ├── patterns/                 # starter patterns and template-only content
+├── plugins/
+│   └── futurebase-seo/       # separately built and packaged companion plugin
 ├── src/
 │   └── blocks/<slug>/        # theme-bound block source (scaffold via block:new)
 ├── templates/                # FSE templates
@@ -277,7 +284,7 @@ futurebase/
 └── package.json
 ```
 
-Reusable blocks and non-theme-specific features belong in a **separate companion plugin repo**, not in this theme. Themes swap; plugin-registered blocks survive theme changes. That follows [WordPress's own guidance](https://developer.wordpress.org/block-editor/getting-started/fundamentals/registration-of-a-block/) on where custom blocks should live.
+Reusable blocks and non-theme-specific features belong in a **separately packaged companion plugin**, not in theme runtime. The in-house plugin sources share this repository's CI and promotion tooling under `plugins/`, while producing independent WordPress plugin ZIPs. Themes swap; plugin-registered blocks survive theme changes. That follows [WordPress's own guidance](https://developer.wordpress.org/block-editor/getting-started/fundamentals/registration-of-a-block/) on where custom blocks should live.
 
 ## Editor curation
 

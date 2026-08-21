@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <ruleset name="futurebase">
-	<description>Coding standards for the futurebase theme.</description>
+	<description>Coding standards for the futurebase theme and companion plugin.</description>
 
 	<file>.</file>
 	<exclude-pattern>*/build/*</exclude-pattern>
@@ -23,6 +23,7 @@
 		<properties>
 			<property name="text_domain" type="array">
 				<element value="futurebase"/>
+				<element value="futurebase-seo"/>
 			</property>
 		</properties>
 	</rule>

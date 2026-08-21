@@ -10,6 +10,7 @@ parameters:
         - patterns
         - inc
         - src/blocks
+        - plugins/futurebase-seo
     excludePaths:
         - build/*
         - node_modules/*

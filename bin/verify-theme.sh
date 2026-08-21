@@ -18,6 +18,8 @@ cd "$ROOT"
 
 # shellcheck source=./_pm-detect.sh
 . "$ROOT/bin/_pm-detect.sh"
+# shellcheck source=./_seo-plugin.sh
+. "$ROOT/bin/_seo-plugin.sh"
 
 FAIL=0
 pass() { printf "  \033[32m✓\033[0m %s\n" "$1"; }
@@ -273,6 +275,10 @@ run() {
 
 if command -v npm > /dev/null; then
 	run "npm run build"     npm run --silent build
+	if seo_plugin_dir > /dev/null 2>&1; then
+		run "companion SEO build" "$ROOT/bin/build-seo-plugin.sh" build
+		run "companion SEO package" "$ROOT/bin/test-seo-package.sh"
+	fi
 	run "npm run lint"      npm run --silent lint
 	run "npm run lint:css"  npm run --silent lint:css
 	run "npm run lint:pkg"  npm run --silent lint:pkg

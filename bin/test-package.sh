@@ -57,6 +57,7 @@ for forbidden in \
 	"$slug/.wp-env.override.json" \
 	"$slug/node_modules/" \
 	"$slug/vendor/" \
+	"$slug/plugins/" \
 	"$slug/docs/" \
 	"$slug/src/" \
 	"$slug/fixtures/" \

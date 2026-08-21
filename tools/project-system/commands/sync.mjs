@@ -199,7 +199,7 @@ export async function sync(_positional, flags) {
 		show(`Locally modified — skipped (${conflicts.length})`, conflicts, c.red);
 		if (review.length) {
 			show(`Drifted upstream — port by hand (${review.length})`, review, c.yellow);
-			info('These carry the theme slug, so copying them would undo the rename.');
+			info('These carry project identity or project-owned behavior, so copying them would undo promotion or local work.');
 			console.log('');
 		}
 		if (blocked.length) {

@@ -10,6 +10,9 @@ FUTUREBASE_BASE_SLUG="futurebase"
 FUTUREBASE_BASE_SNAKE="futurebase"
 FUTUREBASE_BASE_UPPER="FUTUREBASE"
 FUTUREBASE_BASE_DISPLAY="Futurebase WP"
+FUTUREBASE_SEO_BASE_SLUG="futurebase-seo"
+FUTUREBASE_SEO_BASE_DISPLAY="Futurebase SEO"
+FUTUREBASE_SEO_BASE_NAMESPACE='Futurebase\SEO'
 
 FUTUREBASE_TEMPLATE_TEXT_DOMAIN_RE='^Text Domain:[[:space:]]*futurebase[[:space:]]*$'
 FUTUREBASE_TOOL_TEMPLATE_SENTINEL='references/futurebase-context.md'
@@ -41,6 +44,24 @@ FUTUREBASE_RUNTIME_PATHS=(
 	functions.php
 	style.css
 	readme.txt
+	plugins
+)
+
+# Stored state and extension hooks belong to the companion product rather than
+# a branded project identity. Promotion must preserve every value exactly.
+FUTUREBASE_SEO_FROZEN_IDENTIFIERS=(
+	_compseo_title
+	_compseo_description
+	_compseo_noindex
+	_compseo_canonical
+	_compseo_social_image_id
+	compseo_settings
+	compseo_is_suppressed
+	compseo_supported_post_types
+	compseo_document
+	compseo_schema_graph
+	compseo_indexable_query_vars
+	compseo_indexing_decision
 )
 
 # Product-positioning files belong only to the Futurebase WP source repository.
