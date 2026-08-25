@@ -82,6 +82,7 @@ export const VERIFIER_CLOSURE = [
 	'bin/a11y-wp-env.sh',
 	'bin/verify-contract.mjs',
 	'bin/verify-contract.test.mjs',
+	'bin/verify-seo-contract.test.mjs',
 ];
 
 export const PORTABLE_BIN = [
@@ -296,6 +297,14 @@ export function reverseNormalizeReviewIdentity(content, projectIdentity, starter
 	return translateTechnicalIdentity(content, projectIdentity, starterIdentity);
 }
 
+// Produce the exact technical-identity form a freshly promoted review file
+// should have. Comparing in this direction matters: reverse-normalizing a raw
+// starter file at an already mapped client path is a no-op, which used to make
+// incorrectly branded client files look current.
+export function forwardPromoteReviewIdentity(content, starterIdentity, projectIdentity) {
+	return translateTechnicalIdentity(content, starterIdentity, projectIdentity);
+}
+
 function translatePluginTechnicalIdentity(content, fromIdentity, toIdentity) {
 	if (!fromIdentity || !toIdentity || fromIdentity.slug === toIdentity.slug) return String(content);
 	const from = Object.fromEntries(Object.entries(fromIdentity).map(([key, value]) => [key, escapeRegExp(value)]));
@@ -320,6 +329,10 @@ function translatePluginTechnicalIdentity(content, fromIdentity, toIdentity) {
 
 export function reverseNormalizePluginReviewIdentity(content, projectIdentity, starterIdentity) {
 	return translatePluginTechnicalIdentity(content, projectIdentity, starterIdentity);
+}
+
+export function forwardPromotePluginReviewIdentity(content, starterIdentity, projectIdentity) {
+	return translatePluginTechnicalIdentity(content, starterIdentity, projectIdentity);
 }
 
 export function mapReviewPath(rel, projectIdentity, starterIdentity) {
@@ -404,7 +417,7 @@ export function planFiles({ projectRoot, starter, ref, only }) {
 			continue;
 		}
 		const projectBlob = hashFile(abs);
-		if (projectBlob && projectBlob === starterBlob) {
+		const recordContentMatch = () => {
 			// Content agrees; the executable bit still may not. A project synced
 			// before applyEntry carried the mode has the scripts in bin/ present
 			// and current but unrunnable, and comparing content alone would call
@@ -415,25 +428,37 @@ export function planFiles({ projectRoot, starter, ref, only }) {
 				const note = `content matches — mode only (${wantsExec(mode) ? 'not executable → executable' : 'executable → not executable'})`;
 				entries.push({ rel: projectRel, cls, state: 'update', starterBlob, projectBlob, mode, note });
 			}
-			continue;
-		}
-		if (cls === CLASS.REVIEW && projectIdentity && starterIdentity && isExec(abs) === wantsExec(mode)) {
+		};
+
+		if (cls === CLASS.REVIEW && projectIdentity && starterIdentity) {
 			const starterBytes = blobBytes(starter, starterBlob);
 			const projectBytes = readFileSync(abs);
-			// Identity-aware comparison is text-only. A NUL marks an opaque file;
-			// those keep the existing byte-for-byte review behavior.
+			// Identity-aware comparison is text-only. Compare the project against
+			// the forward-promoted starter form so raw starter identity at a mapped
+			// client path remains visible as a conflict. A NUL marks an opaque file;
+			// those retain byte-for-byte review behavior.
 			if (starterBytes && !starterBytes.includes(0) && !projectBytes.includes(0)) {
-				let normalized = reverseNormalizeReviewIdentity(projectBytes.toString('utf8'), projectIdentity, starterIdentity);
-				normalized = reverseNormalizePluginReviewIdentity(normalized, projectPluginIdentity, starterPluginIdentity);
-				if (normalized === starterBytes.toString('utf8')) {
-					entries.push({ rel: projectRel, cls, state: 'up-to-date' });
+				let expected = forwardPromoteReviewIdentity(starterBytes.toString('utf8'), starterIdentity, projectIdentity);
+				expected = forwardPromotePluginReviewIdentity(expected, starterPluginIdentity, projectPluginIdentity);
+				if (expected === projectBytes.toString('utf8')) {
+					recordContentMatch();
 					continue;
 				}
+			} else if (projectBlob && projectBlob === starterBlob) {
+				recordContentMatch();
+				continue;
 			}
+		} else if (projectBlob && projectBlob === starterBlob) {
+			recordContentMatch();
+			continue;
 		}
+		// A mismatched REVIEW file is always a report-only conflict. Its current
+		// bytes may be a known raw starter version, but at a promoted client path
+		// that is incorrect identity rather than a safe stale copy. SAFE files may
+		// still upgrade from an exact historical upstream version.
 		const stale =
-			isKnownUpstreamVersion(starter, ref, rel, projectBlob) ||
-			(cls === CLASS.SAFE && isKnownPromotedVerifierRunner(starter, ref, rel, projectRoot, projectIdentity));
+			cls === CLASS.SAFE &&
+			(isKnownUpstreamVersion(starter, ref, rel, projectBlob) || isKnownPromotedVerifierRunner(starter, ref, rel, projectRoot, projectIdentity));
 		entries.push({ rel: projectRel, cls, state: stale ? 'update' : 'conflict', starterBlob, projectBlob, mode });
 	}
 

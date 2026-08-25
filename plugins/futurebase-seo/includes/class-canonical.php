@@ -45,6 +45,39 @@ final class Canonical {
 	}
 
 	/**
+	 * Enforce one coherent canonical after indexing and document adapters run.
+	 *
+	 * Indexable documents retain the document adapter contract. Noindex state is
+	 * owned by the indexing decision: a null stays null, same-document query
+	 * state is retained, and a cross-document signal falls back to self.
+	 *
+	 * @param string|null          $document_canonical Filtered document canonical.
+	 * @param array<string, mixed> $decision           Validated indexing decision.
+	 * @param array<string, mixed> $context            Request context.
+	 */
+	public static function cohere( ?string $document_canonical, array $decision, array $context ): ?string {
+		if ( ! get_option( 'blog_public' ) ) {
+			return null;
+		}
+
+		if ( 'noindex' !== ( $decision['index'] ?? '' ) ) {
+			return $document_canonical;
+		}
+
+		$decision_canonical = isset( $decision['canonical'] ) && is_string( $decision['canonical'] ) ? Url::canonical( $decision['canonical'] ) : '';
+		if ( '' === $decision_canonical ) {
+			return null;
+		}
+
+		$self = self::current_document_url( $context );
+		if ( null === $self ) {
+			return null;
+		}
+
+		return self::same_document( $decision_canonical, $self ) ? $decision_canonical : $self;
+	}
+
+	/**
 	 * Resolve the unfiltered canonical for singular and self-owned contexts.
 	 *
 	 * @param array<string, mixed> $context Request context.
@@ -117,6 +150,69 @@ final class Canonical {
 	public static function should_render( array $context ): bool {
 		$kind = $context['kind'] ?? '';
 		return in_array( $kind, array( 'home', 'archive' ), true ) && ! is_singular();
+	}
+
+	/**
+	 * Whether two canonicals identify the same document independent of query.
+	 *
+	 * @param string $left  Candidate canonical.
+	 * @param string $right Normalized current-document URL.
+	 */
+	private static function same_document( string $left, string $right ): bool {
+		$left_parts  = wp_parse_url( $left );
+		$right_parts = wp_parse_url( $right );
+		if ( ! is_array( $left_parts ) || ! is_array( $right_parts ) ) {
+			return false;
+		}
+
+		$identity = static function ( array $parts ): array {
+			$scheme = strtolower( (string) ( $parts['scheme'] ?? '' ) );
+			$port   = isset( $parts['port'] ) ? (int) $parts['port'] : ( 'https' === $scheme ? 443 : 80 );
+			$path   = '/' . ltrim( (string) ( $parts['path'] ?? '' ), '/' );
+			if ( '/' !== $path ) {
+				$path = untrailingslashit( $path );
+			}
+
+			return array(
+				$scheme,
+				strtolower( (string) ( $parts['host'] ?? '' ) ),
+				$port,
+				$path,
+			);
+		};
+
+		return $identity( $left_parts ) === $identity( $right_parts );
+	}
+
+	/**
+	 * Resolve the normalized current document without consulting authored or
+	 * filtered canonical overrides.
+	 *
+	 * @param array<string, mixed> $context Request context.
+	 */
+	private static function current_document_url( array $context ): ?string {
+		$kind      = isset( $context['kind'] ) && is_string( $context['kind'] ) ? $context['kind'] : 'unknown';
+		$object_id = absint( $context['object_id'] ?? 0 );
+		$paged     = max( 1, absint( $context['paged'] ?? 1 ) );
+		if ( 'home' === $kind && is_home() ) {
+			return self::self_url( $context );
+		}
+		if ( $object_id > 0 && in_array( $kind, array( 'home', 'singular' ), true ) ) {
+			$url = get_permalink( $object_id );
+			if ( $paged > 1 ) {
+				$url = empty( get_option( 'permalink_structure' ) )
+					? add_query_arg( 'page', $paged, $url )
+					: trailingslashit( $url ) . user_trailingslashit( (string) $paged, 'single_paged' );
+			}
+			$url = Url::canonical( $url );
+			return '' !== $url ? $url : null;
+		}
+		if ( $object_id > 0 && 'attachment' === $kind ) {
+			$url = Url::canonical( get_attachment_link( $object_id ) );
+			return '' !== $url ? $url : null;
+		}
+
+		return self::self_url( $context );
 	}
 
 	/**

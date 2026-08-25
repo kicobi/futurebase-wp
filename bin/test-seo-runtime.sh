@@ -48,6 +48,8 @@ cleanup() {
 		wp option delete compseo_runtime_invalid_query_contract > /dev/null 2>&1 || true
 		wp option delete compseo_runtime_indexable_lang > /dev/null 2>&1 || true
 		wp option delete compseo_runtime_force_index > /dev/null 2>&1 || true
+		wp option delete compseo_runtime_force_noindex > /dev/null 2>&1 || true
+		wp option delete compseo_runtime_force_cross_noindex > /dev/null 2>&1 || true
 		wp option delete compseo_runtime_sitemap_page_size > /dev/null 2>&1 || true
 		wp eval-file "$SEO_TEST_THEME_DIR/bin/test-seo-runtime.php" cleanup > /dev/null 2>&1 || true
 	fi
@@ -84,6 +86,8 @@ wp eval-file "$SEO_TEST_THEME_DIR/bin/test-seo-runtime.php" setup > /dev/null
 wp rewrite flush > /dev/null
 wp eval-file "$SEO_TEST_THEME_DIR/bin/test-seo-runtime.php" assert-contracts > /dev/null
 pass "registered metadata, permissions, sanitization, revisions, and public CPT support"
+wp eval-file "$SEO_TEST_THEME_DIR/bin/test-seo-runtime.php" assert-permanent-contract > /dev/null
+pass "permanent filters, payloads, tri-states, and internal reasons match their manifest"
 wp eval-file "$SEO_TEST_THEME_DIR/bin/test-seo-runtime.php" assert-settings > /dev/null
 pass "schema-versioned settings sanitize verification tags without echoing rejected values"
 wp eval-file "$SEO_TEST_THEME_DIR/bin/test-seo-runtime.php" assert-editor > /dev/null
@@ -92,6 +96,7 @@ pass "supported block-editor screens receive the compiled SEO sidebar asset"
 SEO_TEST_PUBLIC_ID=$(wp post list --post_type=post --name=compseo-runtime-public --field=ID --format=ids | tail -1 | tr -d '\r')
 SEO_TEST_NO_IMAGE_ID=$(wp post list --post_type=post --name=compseo-runtime-no-image --field=ID --format=ids | tail -1 | tr -d '\r')
 SEO_TEST_AUTHORED_ID=$(wp post list --post_type=post --name=compseo-runtime-authored --field=ID --format=ids | tail -1 | tr -d '\r')
+SEO_TEST_PAGED_NOINDEX_ID=$(wp post list --post_type=post --name=compseo-runtime-paged-noindex --field=ID --format=ids | tail -1 | tr -d '\r')
 SEO_TEST_PROTECTED_ID=$(wp post list --post_type=post --name=compseo-runtime-protected --field=ID --format=ids | tail -1 | tr -d '\r')
 SEO_TEST_PROTECTED_AUTHORED_ID=$(wp post list --post_type=post --name=compseo-runtime-protected-authored --field=ID --format=ids | tail -1 | tr -d '\r')
 SEO_TEST_FRONT_ID=$(wp post list --post_type=page --name=compseo-runtime-front --field=ID --format=ids | tail -1 | tr -d '\r')
@@ -99,13 +104,14 @@ SEO_TEST_POSTS_PAGE_ID=$(wp post list --post_type=page --name=compseo-runtime-ne
 SEO_TEST_BOOK_ID=$(wp post list --post_type=compseo_book --name=compseo-runtime-book --field=ID --format=ids | tail -1 | tr -d '\r')
 SEO_TEST_ATTACHMENT_ID=$(wp post meta get "$SEO_TEST_PUBLIC_ID" _thumbnail_id | tail -1 | tr -d '\r')
 
-for id in "$SEO_TEST_PUBLIC_ID" "$SEO_TEST_NO_IMAGE_ID" "$SEO_TEST_AUTHORED_ID" "$SEO_TEST_PROTECTED_ID" "$SEO_TEST_PROTECTED_AUTHORED_ID" "$SEO_TEST_FRONT_ID" "$SEO_TEST_POSTS_PAGE_ID" "$SEO_TEST_BOOK_ID" "$SEO_TEST_ATTACHMENT_ID"; do
+for id in "$SEO_TEST_PUBLIC_ID" "$SEO_TEST_NO_IMAGE_ID" "$SEO_TEST_AUTHORED_ID" "$SEO_TEST_PAGED_NOINDEX_ID" "$SEO_TEST_PROTECTED_ID" "$SEO_TEST_PROTECTED_AUTHORED_ID" "$SEO_TEST_FRONT_ID" "$SEO_TEST_POSTS_PAGE_ID" "$SEO_TEST_BOOK_ID" "$SEO_TEST_ATTACHMENT_ID"; do
 	[ -n "$id" ] || fail "runtime fixture IDs could not be resolved"
 done
 
 SEO_TEST_PUBLIC_URL=$(wp post url "$SEO_TEST_PUBLIC_ID" | grep -oE '^https?://[^[:space:]]+$' | head -1)
 SEO_TEST_NO_IMAGE_URL=$(wp post url "$SEO_TEST_NO_IMAGE_ID" | grep -oE '^https?://[^[:space:]]+$' | head -1)
 SEO_TEST_AUTHORED_URL=$(wp post url "$SEO_TEST_AUTHORED_ID" | grep -oE '^https?://[^[:space:]]+$' | head -1)
+SEO_TEST_PAGED_NOINDEX_URL=$(wp post url "$SEO_TEST_PAGED_NOINDEX_ID" | grep -oE '^https?://[^[:space:]]+$' | head -1)
 SEO_TEST_PROTECTED_URL=$(wp post url "$SEO_TEST_PROTECTED_ID" | grep -oE '^https?://[^[:space:]]+$' | head -1)
 SEO_TEST_PROTECTED_AUTHORED_URL=$(wp post url "$SEO_TEST_PROTECTED_AUTHORED_ID" | grep -oE '^https?://[^[:space:]]+$' | head -1)
 SEO_TEST_ATTACHMENT_URL=$(wp eval "echo get_attachment_link($SEO_TEST_ATTACHMENT_ID);" | grep -oE '^https?://[^[:space:]]+$' | head -1)
@@ -154,10 +160,27 @@ SEO_TEST_CANONICAL_COUNT=$(printf '%s' "$SEO_TEST_HEAD" | grep -c 'rel="canonica
 wp option delete compseo_runtime_valid_contract > /dev/null
 pass "valid document adapters control title, description, canonical, and social output"
 
+wp option update compseo_runtime_valid_contract 1 > /dev/null
+wp option update compseo_runtime_force_noindex 1 > /dev/null
+SEO_TEST_HEAD=$(curl -fsS "$SEO_TEST_PUBLIC_URL" | head_only)
+contains "$SEO_TEST_HEAD" "<link rel=\"canonical\" href=\"$SEO_TEST_PUBLIC_URL\"" || fail "document adapter cross-canonical survived a final noindex decision"
+not_contains "$SEO_TEST_HEAD" 'https://adapter.example/canonical?lang=sv' || fail "noindex output retained the document adapter cross-canonical"
+contains "$(printf '%s' "$SEO_TEST_HEAD" | robots_only)" 'noindex' || fail "noindex adapter fixture did not produce noindex"
+wp option delete compseo_runtime_valid_contract > /dev/null
+wp option delete compseo_runtime_force_noindex > /dev/null
+
+wp option update compseo_runtime_force_cross_noindex 1 > /dev/null
+SEO_TEST_HEAD=$(curl -fsS "$SEO_TEST_PUBLIC_URL" | head_only)
+contains "$SEO_TEST_HEAD" "<link rel=\"canonical\" href=\"$SEO_TEST_PUBLIC_URL\"" || fail "indexing adapter cross-canonical did not fall back to self under noindex"
+not_contains "$SEO_TEST_HEAD" 'https://adapter.example/cross-document' || fail "noindex output retained the indexing adapter cross-canonical"
+wp option delete compseo_runtime_force_cross_noindex > /dev/null
+pass "final noindex coherence rejects cross-document adapter canonicals"
+
 SEO_TEST_HTML=$(curl -fsS "$SEO_TEST_AUTHORED_URL")
 SEO_TEST_HEAD=$(printf '%s' "$SEO_TEST_HTML" | head_only)
 contains "$SEO_TEST_HEAD" '<title>Authored Full Title</title>' || fail "authored title was not treated as the complete document title"
-contains "$SEO_TEST_HEAD" '<link rel="canonical" href="https://example.net/reference?lang=sv"' || fail "cross-origin canonical override was not emitted"
+contains "$SEO_TEST_HEAD" "<link rel=\"canonical\" href=\"$SEO_TEST_AUTHORED_URL\"" || fail "authored noindex did not replace its cross-origin canonical with self"
+not_contains "$SEO_TEST_HEAD" 'https://example.net/reference?lang=sv' || fail "authored noindex retained a cross-origin canonical"
 if not_contains "$SEO_TEST_HEAD" 'name="robots"' && not_contains "$SEO_TEST_HEAD" "name='robots'"; then
 	fail "authored noindex did not produce robots output"
 fi
@@ -165,7 +188,15 @@ contains "$SEO_TEST_HEAD" 'noindex' || fail "authored noindex directive is missi
 contains "$SEO_TEST_HEAD" 'follow' || fail "authored noindex must remain follow"
 SEO_TEST_DESCRIPTION=$(printf '%s' "$SEO_TEST_HEAD" | grep -F 'name="description"' | head -1)
 [ "${#SEO_TEST_DESCRIPTION}" -gt 180 ] || fail "authored descriptions were truncated"
-pass "complete authored title, non-truncated description, canonical override, and noindex"
+pass "complete authored title, non-truncated description, coherent canonical, and noindex"
+
+SEO_TEST_PAGED_NOINDEX_PAGE_2_URL="${SEO_TEST_PAGED_NOINDEX_URL}2/"
+SEO_TEST_HEAD=$(curl -fsS "$SEO_TEST_PAGED_NOINDEX_PAGE_2_URL" | head_only)
+SEO_TEST_ROBOTS=$(printf '%s' "$SEO_TEST_HEAD" | robots_only)
+contains "$SEO_TEST_ROBOTS" 'noindex' || fail "paged singular noindex fixture did not emit noindex"
+contains "$SEO_TEST_HEAD" "<link rel=\"canonical\" href=\"$SEO_TEST_PAGED_NOINDEX_PAGE_2_URL\"" || fail "paged singular noindex collapsed its canonical to page one"
+not_contains "$SEO_TEST_HEAD" "<link rel=\"canonical\" href=\"$SEO_TEST_PAGED_NOINDEX_URL\"" || fail "paged singular noindex emitted a cross-document page-one canonical"
+pass "paged singular noindex retains its current-document canonical"
 
 SEO_TEST_BEFORE=$(curl -fsS "$SEO_TEST_PROTECTED_URL" | head_only | seo_metadata_only)
 not_contains "$SEO_TEST_BEFORE" 'TOP SECRET CONTENT MUST NOT LEAK' || fail "protected content leaked before password entry"
@@ -185,6 +216,8 @@ SEO_TEST_HEAD=$(curl -fsS "$SEO_TEST_PROTECTED_AUTHORED_URL" | head_only)
 contains "$SEO_TEST_HEAD" '<title>Public protected title</title>' || fail "deliberately authored protected title was withheld"
 contains "$SEO_TEST_HEAD" 'Deliberately public protected description.' || fail "deliberately authored protected description was withheld"
 contains "$SEO_TEST_HEAD" 'Protected featured artwork' || fail "deliberately authored protected social image was withheld"
+contains "$SEO_TEST_HEAD" "<link rel=\"canonical\" href=\"$SEO_TEST_PROTECTED_AUTHORED_URL\"" || fail "protected noindex did not replace its cross-origin canonical with self"
+not_contains "$SEO_TEST_HEAD" 'https://example.net/protected-reference' || fail "protected noindex retained a cross-origin canonical"
 pass "deliberately authored protected metadata remains public"
 
 SEO_TEST_HTML=$(curl -fsS "$SEO_TEST_URL/")
@@ -213,6 +246,12 @@ SEO_TEST_DESCRIPTION_LINES=$(printf '%s' "$SEO_TEST_HEAD" | grep -E 'description
 not_contains "$SEO_TEST_DESCRIPTION_LINES" 'Static front sentence three.' || fail "static front page emitted more than two sentences"
 SEO_TEST_HEAD=$(curl -fsS "$SEO_TEST_URL/compseo-runtime-news/" | head_only)
 contains "$SEO_TEST_HEAD" 'Assigned posts page description.' || fail "assigned posts page did not use its authored description"
+SEO_TEST_PAGED_POSTS_FILTERED_URL="$SEO_TEST_URL/compseo-runtime-news/page/2/?color=red"
+SEO_TEST_HEAD=$(curl -fsS "$SEO_TEST_PAGED_POSTS_FILTERED_URL" | head_only)
+SEO_TEST_ROBOTS=$(printf '%s' "$SEO_TEST_HEAD" | robots_only)
+contains "$SEO_TEST_ROBOTS" 'noindex' || fail "paged posts-page query state did not emit noindex"
+contains "$SEO_TEST_HEAD" "<link rel=\"canonical\" href=\"$SEO_TEST_PAGED_POSTS_FILTERED_URL\"" || fail "paged posts-page query state did not retain its normalized self-canonical"
+not_contains "$SEO_TEST_HEAD" "<link rel=\"canonical\" href=\"$SEO_TEST_URL/compseo-runtime-news/\"" || fail "paged posts-page query state collapsed its canonical to page one"
 pass "static front and assigned posts-page description order"
 
 wp option update show_on_front posts > /dev/null
@@ -282,7 +321,8 @@ wp eval-file "$SEO_TEST_THEME_DIR/bin/test-seo-runtime.php" set-author-noindex >
 wp option delete compseo_runtime_sitemap_page_size > /dev/null
 pass "native sitemaps exclude blocked content without per-entry queries and follow archive policy"
 
-SEO_TEST_HEAD=$(curl -fsS "${SEO_TEST_ARCHIVE_URL}?utm_source=runtime&gclid=fixture" | head_only)
+SEO_TEST_TRACKING_URL="${SEO_TEST_ARCHIVE_URL}?utm_source=runtime&gclid=fixture"
+SEO_TEST_HEAD=$(curl -fsS "$SEO_TEST_TRACKING_URL" | head_only)
 contains "$SEO_TEST_HEAD" "<link rel=\"canonical\" href=\"$SEO_TEST_ARCHIVE_URL\"" || fail "tracking-only archive state did not canonicalize to the base archive"
 not_contains "$SEO_TEST_HEAD" 'utm_source' || fail "tracking parameter leaked into archive metadata"
 not_contains "$SEO_TEST_HEAD" 'gclid' || fail "click identifier leaked into archive metadata"
@@ -329,14 +369,18 @@ wp option update wp_attachment_pages_enabled 1 > /dev/null
 pass "attachment-page policy follows the core attachment option"
 
 wp option update compseo_runtime_force_index 1 > /dev/null
+wp option update compseo_runtime_valid_contract 1 > /dev/null
 wp option update blog_public 0 > /dev/null
 SEO_TEST_PRIVATE_HEAD=$(curl -fsS "$SEO_TEST_URL/" | head_only)
 SEO_TEST_PRIVATE_ROBOTS=$(printf '%s' "$SEO_TEST_PRIVATE_HEAD" | robots_only)
 contains "$SEO_TEST_PRIVATE_ROBOTS" 'noindex' || fail "private-site override did not force noindex"
 contains "$SEO_TEST_PRIVATE_ROBOTS" 'nofollow' || fail "private-site override did not force nofollow"
 not_contains "$SEO_TEST_PRIVATE_HEAD" 'rel="canonical"' || fail "private-site override retained a companion canonical"
+SEO_TEST_PRIVATE_DECISION=$(wp compseo decision "$SEO_TEST_PUBLIC_URL" --format=json)
+contains "$SEO_TEST_PRIVATE_DECISION" '"reason":"site_private"' || fail "private-site decision did not retain its stable reason"
 wp option update blog_public 1 > /dev/null
 wp option delete compseo_runtime_force_index > /dev/null
+wp option delete compseo_runtime_valid_contract > /dev/null
 pass "site privacy overrides every companion policy"
 
 SEO_TEST_STATUS=$(wp compseo status --format=json)
@@ -353,6 +397,8 @@ assert_decision() {
 }
 assert_decision "$SEO_TEST_URL/" content_archive
 assert_decision "$SEO_TEST_PUBLIC_URL" singular_default
+assert_decision "$SEO_TEST_AUTHORED_URL" singular_noindex
+assert_decision "$SEO_TEST_PROTECTED_URL" password_protected
 assert_decision "$SEO_TEST_ARCHIVE_URL" content_archive
 assert_decision "${SEO_TEST_ARCHIVE_URL}page/2/" content_archive
 assert_decision "$SEO_TEST_URL/?paged=2" content_archive
@@ -361,6 +407,7 @@ assert_decision "$SEO_TEST_AUTHOR_URL" author_archive
 assert_decision "$SEO_TEST_DATE_URL" date_archive
 assert_decision "$SEO_TEST_ATTACHMENT_URL" attachment_live
 assert_decision "$SEO_TEST_URL/?s=runtime" search
+assert_decision "$SEO_TEST_TRACKING_URL" tracking_only
 assert_decision "$SEO_TEST_FILTERED_URL" filtered_query
 assert_decision "$SEO_TEST_URL/definitely-not-a-runtime-page/" not_found
 

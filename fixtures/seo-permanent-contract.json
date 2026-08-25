@@ -1,0 +1,80 @@
+{
+	"meta_keys": [
+		"_compseo_title",
+		"_compseo_description",
+		"_compseo_noindex",
+		"_compseo_canonical",
+		"_compseo_social_image_id"
+	],
+	"option": "compseo_settings",
+	"filters": [
+		{
+			"name": "compseo_is_suppressed",
+			"arguments": ["suppressed", "provider"],
+			"signature": "compseo_is_suppressed(bool $suppressed, ?string $provider): bool"
+		},
+		{
+			"name": "compseo_supported_post_types",
+			"arguments": ["post_types"],
+			"signature": "compseo_supported_post_types(array $post_types): array"
+		},
+		{
+			"name": "compseo_document",
+			"arguments": ["document", "context"],
+			"signature": "compseo_document(array $document, array $context): array"
+		},
+		{
+			"name": "compseo_schema_graph",
+			"arguments": ["graph", "context", "document"],
+			"signature": "compseo_schema_graph(array $graph, array $context, array $document): array"
+		},
+		{
+			"name": "compseo_indexable_query_vars",
+			"arguments": ["names"],
+			"signature": "compseo_indexable_query_vars(array $names): array"
+		},
+		{
+			"name": "compseo_indexing_decision",
+			"arguments": ["decision", "context"],
+			"signature": "compseo_indexing_decision(array $decision, array $context): array"
+		}
+	],
+	"payloads": {
+		"document": {
+			"title": "string",
+			"description": "string",
+			"canonical": "string|null",
+			"social_image_id": "int"
+		},
+		"indexing_decision": {
+			"index": "string",
+			"follow": "string",
+			"canonical": "string|null",
+			"reason": "string"
+		}
+	},
+	"tri_states": {
+		"index": ["index", "noindex", "inherit"],
+		"follow": ["follow", "nofollow", "inherit"]
+	},
+	"reason_codes": [
+		"site_private",
+		"singular_default",
+		"singular_noindex",
+		"password_protected",
+		"content_archive",
+		"author_archive",
+		"date_archive",
+		"search",
+		"not_found",
+		"attachment_live",
+		"attachment_redirected",
+		"tracking_only",
+		"filtered_query",
+		"declared_indexable_query",
+		"unknown_route",
+		"core_owned_feed",
+		"core_owned_embed"
+	],
+	"cli_subcommands": ["status", "decision", "purge"]
+}
