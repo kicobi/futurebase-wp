@@ -26,6 +26,7 @@
 		"@wordpress/prettier-config": "^4.51.0",
 		"@wordpress/scripts": "^34.0.0",
 		"@wordpress/stylelint-config": "^23.36.0",
+		"lighthouse": "12.6.1",
 		"pa11y-ci": "^4.1.1",
 		"webpack-remove-empty-scripts": "^1.0.4"
 	},
@@ -51,6 +52,7 @@
 		"lint:js": "wp-scripts lint-js assets webpack.config.js 'plugins/*-seo/webpack.config.js' 'plugins/*-seo/src/**/*.{js,jsx}' 'src/**/*.{js,jsx}' --no-error-on-unmatched-pattern",
 		"lint:css": "wp-scripts lint-style --allow-empty-input 'assets/**/*.scss' 'plugins/*-seo/src/**/*.scss' 'src/**/*.scss'",
 		"lint:pkg": "wp-scripts lint-pkg-json",
+		"lighthouse:sample": "node ./bin/lighthouse-sample.mjs",
 		"format": "wp-scripts format",
 		"verify": "./bin/verify-theme.sh",
 		"package": "npm run build && ./bin/package-theme.sh",

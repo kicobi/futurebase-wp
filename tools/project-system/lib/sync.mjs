@@ -89,6 +89,8 @@ export const PORTABLE_BIN = [
 	'bin/_seo-plugin.sh',
 	'bin/build-seo-plugin.sh',
 	'bin/demo-content.sh',
+	'bin/lighthouse-sample.mjs',
+	'bin/lighthouse-sample.test.mjs',
 	'bin/package-seo-plugin.sh',
 	'bin/scorecard.sh',
 	'bin/smoke-render.sh',
