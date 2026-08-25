@@ -19,7 +19,7 @@ function write(root, relative, body) {
 }
 
 function fixture({ floor = '7.4', tested = '7.6' } = {}) {
-	const root = mkdtempSync(join(tmpdir(), 'futurebase-version-audit-'));
+	const root = mkdtempSync(join(tmpdir(), 'version-audit-'));
 	const manifest = {
 		name: 'acme-theme',
 		version: '3.2.1',
