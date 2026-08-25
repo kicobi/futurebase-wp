@@ -68,6 +68,13 @@ redirected by core are left untouched. Core’s `max-image-preview:large` remain
 intact, `max-snippet` remains unset, and feeds receive no companion
 `X-Robots-Tag` header.
 
+The final indexing decision owns canonical behavior whenever it resolves to
+`noindex`. A decision with no canonical remains canonical-free, and an external
+or different-path canonical is replaced with the normalized current-document
+URL. Same-document query state may remain. The document filter cannot
+reintroduce a conflicting canonical after that decision, and `blog_public=0`
+has final precedence: `noindex, nofollow`, with no canonical.
+
 ## Native sitemaps
 
 The plugin augments WordPress core sitemaps instead of registering a competing
@@ -104,6 +111,11 @@ suppression state. Supported URL classes are home, singular, blog/post-type/
 taxonomy/author/date archives, pagination, attachments, search, filtered
 queries, and 404s. Status reports only whether verification is configured; it
 never exposes saved verification values. V1 is single-site only.
+
+The reported canonical is the validated indexing-decision value before the
+document filter and final noindex-coherence stage. Rendered noindex output may
+therefore replace a cross-document value with the normalized current-document
+URL; use the page source when diagnosing the effective emitted canonical.
 
 ## Cleanup and offboarding
 
@@ -172,7 +184,9 @@ The document payload contains `title`, `description`, `canonical`, and
 `null` or an absolute HTTP(S) URL without userinfo or a fragment, and social
 images are WordPress image-attachment IDs only. The schema graph is a list of
 schema node arrays. Document changes control the real title and canonical tags
-as well as social and schema output.
+as well as social and schema output for indexable or inherited documents. Under
+`noindex`, the validated indexing decision has final canonical ownership as
+described above.
 
 Indexable query variables are safe query-variable names. The indexing decision
 contains `index`, `follow`, `canonical`, and `reason`. `index` accepts `index`,

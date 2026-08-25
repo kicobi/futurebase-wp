@@ -6,7 +6,9 @@ import test from 'node:test';
 
 import {
 	auditVersionSurfaces,
+	companionRuntimeVersion,
 	compareVersions,
+	latestChangelogVersion,
 	main,
 	sameMajorMinor,
 	wordpressFloor,
@@ -42,8 +44,8 @@ function fixture({ floor = '7.4', tested = '7.6', lighthouse = '12.6.1' } = {}) 
 	write(root, 'tools/project-system/VERSION', '9.8.7\n');
 	write(root, 'tools/project-system/package.json', JSON.stringify({ version: '9.8.7' }));
 	write(root, 'tools/project-system/package-lock.json', JSON.stringify({ version: '9.8.7', packages: { '': { version: '9.8.7' } } }));
-	write(root, 'plugins/acme-theme-seo/readme.txt', `Requires at least: ${floor}\nTested up to: ${tested}\n`);
-	write(root, 'plugins/acme-theme-seo/acme-theme-seo.php', `<?php\n/**\n * Requires at least: ${floor}\n */\n`);
+	write(root, 'plugins/acme-theme-seo/readme.txt', `Requires at least: ${floor}\nTested up to: ${tested}\nStable tag: 4.5.6\n\n== Changelog ==\n\n= 4.5.6 =\n`);
+	write(root, 'plugins/acme-theme-seo/acme-theme-seo.php', `<?php\n/**\n * Version: 4.5.6\n * Requires at least: ${floor}\n */\ndefine( 'ACME_THEME_SEO_VERSION', '4.5.6' );\n`);
 	return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
@@ -59,6 +61,11 @@ test('the WordPress floor is derived rather than hardcoded', () => {
 	} finally {
 		cleanup();
 	}
+});
+
+test('companion version helpers survive promoted constant names', () => {
+	assert.equal(companionRuntimeVersion("define( 'ACME_CLIENT_SEO_VERSION', '1.2.3' );"), '1.2.3');
+	assert.equal(latestChangelogVersion("== Changelog ==\n\n= 1.2.3 =\n* Current.\n\n= 1.2.2 =\n"), '1.2.3');
 });
 
 test('floor identity accepts patches and prereleases only in the same major.minor line', () => {
@@ -103,6 +110,16 @@ test('minimum and tested-up-to drift are reported', () => {
 		const failures = auditVersionSurfaces(root).failures.join('\n');
 		assert.match(failures, /WordPress minimum/);
 		assert.match(failures, /WordPress tested up to/);
+	} finally {
+		cleanup();
+	}
+});
+
+test('companion plugin version drift is reported', () => {
+	const { root, cleanup } = fixture();
+	try {
+		write(root, 'plugins/acme-theme-seo/readme.txt', 'Requires at least: 7.4\nTested up to: 7.6\nStable tag: 4.5.5\n\n== Changelog ==\n\n= 4.5.6 =\n');
+		assert.match(auditVersionSurfaces(root).failures.join('\n'), /companion SEO/);
 	} finally {
 		cleanup();
 	}

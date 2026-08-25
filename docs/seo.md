@@ -24,7 +24,7 @@ providers and queries, but the theme does not replace or configure it.
 ## 2. First-party fallback: Futurebase SEO
 
 The separately packaged companion plugin is implemented through version
-0.6.0. It provides a dependable baseline when no dedicated SEO provider is
+0.6.1. It provides a dependable baseline when no dedicated SEO provider is
 active:
 
 - document titles, descriptions, canonical overrides, noindex requests, and
@@ -81,9 +81,11 @@ settings, archive policy and diagnostics, and native sitemap integration.
 
 The 91–92 Lighthouse SEO result recorded in [scorecard.md](scorecard.md) is a
 historical local regression-gate baseline from 2026-07-09, not a current
-product score or public guarantee. Version 0.6.0 completes the starter release
-round: explicit data cleanup, lifecycle acceptance fixtures, deterministic
-local SEO-100 enforcement for indexable routes, and permanent documentation.
+product score or public guarantee. Version 0.6.0 completed the starter release
+round; version 0.6.1 hardens promotion portability, canonical coherence,
+permanent contracts, and sitemap scaling evidence. The release line includes
+explicit data cleanup, lifecycle acceptance fixtures, deterministic local
+SEO-100 enforcement for indexable routes, and permanent documentation.
 The remaining evidence action belongs downstream: capture the promoted public
 demo before and after activation. A Lighthouse SEO 100 result may be published
 only after that public evidence is recorded with its targets, versions, dates,

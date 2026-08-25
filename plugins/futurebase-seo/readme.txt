@@ -3,7 +3,7 @@ Contributors: kicobi
 Requires at least: 6.9
 Tested up to: 6.9
 Requires PHP: 8.3
-Stable tag: 0.6.0
+Stable tag: 0.6.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -20,6 +20,11 @@ URL's indexing decision. Dry-run-first `wp compseo purge` removes only the
 current site's owned option and metadata after explicit confirmation.
 
 == Changelog ==
+
+= 0.6.1 =
+* Prevent noindex documents from emitting external or different-path canonicals.
+* Make promotion/runtime fixtures identity-independent and harden review-only sync classification.
+* Freeze the permanent extension contract and prove sitemap query work stays flat as page size grows.
 
 = 0.6.0 =
 * Add dry-run-first, site-scoped `wp compseo purge` cleanup with explicit backup guidance.

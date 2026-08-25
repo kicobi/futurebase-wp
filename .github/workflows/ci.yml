@@ -144,7 +144,7 @@ jobs:
             # permanently. bin/test-rename.sh asserts this guard stays exact.
             - name: Require Futurebase WP rename template smoke test
               if: github.repository == 'kicobi/futurebase-wp'
-              run: bash bin/test-rename.sh --require-template
+              run: bash bin/test-rename.sh --require-template --runtime
 
     package:
         name: Package smoke test
