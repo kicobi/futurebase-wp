@@ -34,6 +34,7 @@ import { projectInspect } from '../commands/project/inspect.mjs';
 import { projectStatus } from '../commands/project/status.mjs';
 import { projectValidate } from '../commands/project/validate.mjs';
 import { projectTasks } from '../commands/project/tasks.mjs';
+import { projectCloseout } from '../commands/project/closeout.mjs';
 
 const OPTIONS = {
 	type: { type: 'string' },
@@ -60,6 +61,9 @@ const OPTIONS = {
 	unit: { type: 'string' },
 	at: { type: 'string' },
 	status: { type: 'string' },
+	date: { type: 'string' },
+	evidence: { type: 'string', multiple: true },
+	notes: { type: 'string' },
 	preset: { type: 'string' },
 	write: { type: 'boolean', default: false },
 	// sync
@@ -127,6 +131,13 @@ Usage:
   futurebase project inspect | status | validate
   futurebase project tasks [--format markdown|json|github] [--launch-date <date>]
   futurebase project case-study
+  futurebase project closeout init
+  futurebase project closeout set-final --run-id <id>
+  futurebase project closeout accept --date YYYY-MM-DD --evidence <ref>
+  futurebase project closeout set --id <task> --status pending|complete|not-applicable
+      [--date YYYY-MM-DD] [--evidence <ref>] [--notes <text>]
+  futurebase project closeout review-lessons [--date YYYY-MM-DD]
+  futurebase project closeout status | report | complete --confirm
 
 Flags:
   --type new|redesign            project type (required for init)
@@ -293,6 +304,8 @@ async function route(argv) {
 				return projectTasks(rest, flags);
 			case 'case-study':
 				return caseStudy(rest, flags);
+			case 'closeout':
+				return projectCloseout(rest, flags);
 			default:
 				die(`unknown 'project' command: ${command}\n\n${HELP}`, EXIT.INVALID_CONFIG);
 		}

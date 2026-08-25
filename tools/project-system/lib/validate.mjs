@@ -40,3 +40,4 @@ export const validateBaselineRun = (data) => validateAgainst('baseline-run.schem
 export const validateSurveyResults = (data) => validateAgainst('survey-results.schema.json', data);
 export const validateObservations = (data) => validateAgainst('observations.schema.json', data);
 export const validateJourneys = (data) => validateAgainst('journeys.schema.json', data);
+export const validateCloseout = (data) => validateAgainst('closeout.schema.json', data);

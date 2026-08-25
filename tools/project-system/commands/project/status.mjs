@@ -21,6 +21,7 @@ export function projectStatus(_positional, flags) {
 		{ key: 'final', label: 'Final captured (at launch)', done: s.final.captured > 0, next: 'futurebase final run' },
 		{ key: 'compare', label: 'Before/after compared', done: s.comparison, next: 'futurebase compare' },
 		{ key: 'followup', label: 'Follow-up survey', done: s.followUp.length > 0, next: 'futurebase metrics survey --period 30-days --write' },
+		{ key: 'closeout', label: 'Closeout ready', done: s.closeout.ready || s.project.status === 'closed', next: s.closeout.initialized ? 'futurebase project closeout status' : 'futurebase project closeout init' },
 	];
 	const nextStep = steps.find((st) => !st.done);
 
@@ -44,6 +45,12 @@ export function projectStatus(_positional, flags) {
 		for (const r of stats.incomplete) info(`${r.id} — ${r.reason}`);
 	}
 	if (s.baseline.incomplete.length || s.final.incomplete.length) console.log('');
+	if (s.closeout.initialized) {
+		info(`closeout: ${s.closeout.pending} pending · ${s.closeout.overdue} overdue${s.closeout.retirement_date ? ` · retirement ${s.closeout.retirement_date}` : ''}`);
+		for (const task of s.closeout.tasks.filter((item) => item.overdue)) warn(`OVERDUE: ${task.title} (due ${task.due_date})`);
+		const nextDue = s.closeout.tasks.filter((item) => item.status === 'pending' && item.due_date && !item.overdue).sort((a, b) => a.due_date.localeCompare(b.due_date))[0];
+		if (nextDue) info(`next closeout due: ${nextDue.title} · ${nextDue.due_date}`);
+	}
 	if (nextStep) info(`next:  ${nextStep.next}`);
 	else info('lifecycle complete — consider a 90-day follow-up and a case study.');
 	process.exit(EXIT.OK);

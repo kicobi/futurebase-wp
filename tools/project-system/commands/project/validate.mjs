@@ -12,9 +12,10 @@ import { findProjectRoot, projectPaths, readRunSummary } from '../../lib/baselin
 import { listRuns } from '../../lib/record.mjs';
 import { surveyIssues } from '../../lib/survey.mjs';
 import { readYaml } from '../../lib/yaml.mjs';
-import { validateProject, validateBaselineConfig, validateObservations, validateJourneys, validateSurveyResults } from '../../lib/validate.mjs';
+import { validateProject, validateBaselineConfig, validateObservations, validateJourneys, validateSurveyResults, validateCloseout } from '../../lib/validate.mjs';
 import { checkMetrics } from '../../lib/metrics.mjs';
 import { scanFiles } from '../../lib/secret-scan.mjs';
+import { closeoutSemanticIssues } from '../../lib/closeout.mjs';
 
 const PRIVATE_DIRS = new Set(['private', 'credentials', 'auth']);
 
@@ -66,10 +67,7 @@ function validateDoc(path, validator, label, issues) {
 	if (!valid) for (const e of errors) issues.push(`${label}: ${e}`);
 }
 
-export function projectValidate(_positional, flags) {
-	const json = !!flags.json;
-	const root = findProjectRoot(process.cwd(), flags['project-root']);
-	if (!root) die('not inside an active project (no .project/ found).', EXIT.ACCESS_FAILURE, { json });
+export function inspectProjectRecord(root) {
 	const paths = projectPaths(root);
 	const pd = paths.projectDir;
 
@@ -102,6 +100,15 @@ export function projectValidate(_positional, flags) {
 			}
 		}
 	}
+	const closeoutPath = join(pd, 'closeout', 'closeout.yml');
+	validateDoc(closeoutPath, validateCloseout, 'closeout/closeout.yml', issues);
+	if (existsSync(closeoutPath)) {
+		try {
+			for (const issue of closeoutSemanticIssues(readYaml(closeoutPath))) issues.push(`closeout/closeout.yml: ${issue}`);
+		} catch {
+			/* parse errors are already reported by validateDoc */
+		}
+	}
 
 	// Baseline and final runs are the evidence every client report is built from,
 	// and the "whole record" validator never looked at them. A summary.json that
@@ -128,6 +135,15 @@ export function projectValidate(_positional, flags) {
 
 	// secret scan of the committed record (private classes excluded).
 	const findings = scanFiles(walkCommitted(pd));
+	return { paths, issues, findings };
+}
+
+export function projectValidate(_positional, flags) {
+	const json = !!flags.json;
+	const root = findProjectRoot(process.cwd(), flags['project-root']);
+	if (!root) die('not inside an active project (no .project/ found).', EXIT.ACCESS_FAILURE, { json });
+	const { paths, issues, findings } = inspectProjectRecord(root);
+	const pd = paths.projectDir;
 
 	const hasSecrets = findings.length > 0;
 	const status = hasSecrets ? 'secrets' : issues.length ? 'invalid' : 'ok';

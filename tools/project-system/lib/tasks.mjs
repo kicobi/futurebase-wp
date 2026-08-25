@@ -48,15 +48,32 @@ function addDays(dateStr, n) {
 }
 
 export function buildTaskTree(summary, { launchDate } = {}) {
-	return TASKS.map((t) => {
+	const lifecycle = TASKS.map((t) => {
 		const done = t.doneKey ? resolveDone(t.doneKey, summary) : false;
 		const due = launchDate && t.offset != null ? addDays(launchDate, t.offset) : null;
 		return { id: t.id, milestone: t.milestone, title: t.title, owner: t.owner, timing: t.timing, due_date: due, done, measurement_status: done ? 'done' : 'pending', result: null };
 	});
+	const closeout = summary.closeout?.initialized
+		? summary.closeout.tasks.map((task) => ({
+			id: `closeout:${task.id}`,
+			milestone: 'Project closeout',
+			title: task.title,
+			owner: task.owner,
+			timing: task.due_anchor,
+			due_date: task.due_date,
+			done: task.status !== 'pending',
+			measurement_status: task.status === 'pending' ? 'pending' : 'done',
+			result: task.status === 'not-applicable' ? 'not-applicable' : task.overdue ? 'overdue' : task.status,
+		}))
+		: [];
+	return [...lifecycle, ...closeout];
 }
 
-export function renderMarkdown(tasks, projectName) {
+export function renderMarkdown(tasks, projectName, closeout = null) {
 	const lines = [`# Lifecycle tasks — ${projectName}`, ''];
+	if (closeout?.initialized) {
+		lines.push(`Closeout: **${closeout.ready ? 'ready' : 'not ready'}** · ${closeout.pending} pending · ${closeout.overdue} overdue`, '');
+	}
 	let milestone = null;
 	for (const t of tasks) {
 		if (t.milestone !== milestone) {
@@ -65,29 +82,41 @@ export function renderMarkdown(tasks, projectName) {
 			lines.push(`## ${milestone}`, '');
 		}
 		const due = t.due_date ? ` _(due ${t.due_date})_` : '';
-		lines.push(`- [${t.done ? 'x' : ' '}] ${t.title} — owner ${t.owner}${due}`);
+		const result = t.result === 'overdue' ? ' **OVERDUE**' : t.result === 'not-applicable' ? ' _(not applicable)_' : '';
+		lines.push(`- [${t.done ? 'x' : ' '}] ${t.title} — owner ${t.owner}${due}${result}`);
 	}
 	lines.push('');
 	return lines.join('\n');
 }
 
-export function renderJson(tasks, project) {
-	return {
+export function renderJson(tasks, project, closeout = null) {
+	const output = {
 		project_id: project?.slug || null,
 		project_name: project?.name || null,
 		tasks: tasks.map((t) => ({ id: t.id, milestone: t.milestone, title: t.title, owner: t.owner, timing: t.timing, due_date: t.due_date, measurement_status: t.measurement_status, result: t.result })),
 	};
+	if (closeout?.initialized) {
+		output.closeout = {
+			ready: closeout.ready,
+			pending: closeout.pending,
+			overdue: closeout.overdue,
+			reminder_date: closeout.reminder_date,
+			retirement_date: closeout.retirement_date,
+		};
+	}
+	return output;
 }
 
 const shq = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 
 // gh issue create commands for the PENDING tasks only.
-export function renderGithub(tasks) {
+export function renderGithub(tasks, closeout = null) {
 	const lines = ['# Pending lifecycle tasks as GitHub issues — review, then run (or pipe to sh):', ''];
+	if (closeout?.initialized) lines.push(`# Closeout: ${closeout.ready ? 'ready' : 'not ready'} · ${closeout.pending} pending · ${closeout.overdue} overdue`, '');
 	for (const t of tasks.filter((x) => x.measurement_status === 'pending')) {
-		const body = `Milestone: ${t.milestone}\nOwner: ${t.owner}\nTiming: ${t.timing}${t.due_date ? `\nDue: ${t.due_date}` : ''}`;
+		const body = `Milestone: ${t.milestone}\nOwner: ${t.owner}\nTiming: ${t.timing}${t.due_date ? `\nDue: ${t.due_date}` : ''}${t.result === 'overdue' ? '\nStatus: OVERDUE' : ''}`;
 		lines.push(`gh issue create --title ${shq(t.title)} --body ${shq(body)} --label ${shq('lifecycle')}`);
 	}
-	if (lines.length === 2) lines.push('# (nothing pending — all lifecycle tasks are done)');
+	if (!tasks.some((x) => x.measurement_status === 'pending')) lines.push('# (nothing pending — all lifecycle tasks are done)');
 	return lines.join('\n') + '\n';
 }

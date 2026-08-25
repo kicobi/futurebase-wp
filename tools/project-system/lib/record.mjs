@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { readYaml, readJson } from './yaml.mjs';
 import { validateBaselineRun } from './validate.mjs';
 import { evidenceVerdict, isRunId, runDirFor } from './baseline.mjs';
+import { closeoutSummary, qualifyFinalRun } from './closeout.mjs';
 
 function safe(fn, fallback) {
 	try {
@@ -98,6 +99,15 @@ export function recordSummary(paths) {
 	});
 
 	const comparison = safe(() => readdirSync(paths.reportsDir).some((f) => /^comparison-.*\.html$/.test(f)), false);
+	const closeoutRecord = safe(() => readYaml(paths.at('closeout', 'closeout.yml')), null);
+	let closeout = { initialized: false, ready: false, pending: 0, overdue: 0, tasks: [], blockers: ['closeout is not initialized'] };
+	if (closeoutRecord) {
+		const runId = closeoutRecord.final_run?.run_id;
+		const qualification = runId
+			? safe(() => qualifyFinalRun(paths.finalDir, runId), { qualified: false, reason: 'referenced final run could not be read' })
+			: null;
+		closeout = { initialized: true, ...closeoutSummary(closeoutRecord, { finalQualification: qualification }) };
+	}
 
 	return {
 		project: project.project || {},
@@ -114,5 +124,6 @@ export function recordSummary(paths) {
 		final: runStats(paths.finalDir),
 		comparison,
 		followUp,
+		closeout,
 	};
 }

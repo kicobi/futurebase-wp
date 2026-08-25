@@ -31,6 +31,12 @@ export function caseStudy(_positional, flags) {
 	}
 	const name = project.name || root.split('/').pop();
 	const metrics = loadMetrics(paths.projectDir);
+	let closeout = null;
+	try {
+		closeout = readYaml(paths.at('closeout', 'closeout.yml'));
+	} catch {
+		/* closeout is optional for projects created before 2.1 */
+	}
 
 	const baseId = existsSync(paths.baselineDir) ? latestRunId(paths.baselineDir) : null;
 	const finalId = existsSync(paths.finalDir) ? latestRunId(paths.finalDir) : null;
@@ -97,6 +103,17 @@ export function caseStudy(_positional, flags) {
 	const post = (metrics?.items || []).filter((m) => (m.measure_at || []).some((w) => /30_days|90_days/.test(w)));
 	if (post.length) for (const m of post) md.push(`- ${m.title} (review post-launch)`);
 	else md.push('_(no post-launch measures scheduled)_');
+	md.push('');
+	md.push('## Internal delivery lessons (editable — do not publish)');
+	md.push('');
+	md.push('> This section is project-team working material. Remove it before publishing the case study.');
+	md.push('');
+	if (closeout?.lessons?.items?.length) {
+		for (const lesson of closeout.lessons.items) {
+			md.push(`- **${lesson.title}** [${lesson.classification}] — ${lesson.summary}`);
+			if (lesson.classification !== 'project-specific') md.push(`  Recommended: ${lesson.recommended_action} → ${lesson.recommended_target}`);
+		}
+	} else md.push('_(no closeout lessons recorded or explicitly reviewed yet)_');
 	md.push('');
 	if (comparison?.limitations?.length) {
 		md.push('## Caveats');

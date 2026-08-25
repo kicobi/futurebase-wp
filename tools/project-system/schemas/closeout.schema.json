@@ -1,0 +1,87 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "https://futurebase.local/schemas/closeout.schema.json",
+	"title": "Project closeout record",
+	"type": "object",
+	"required": ["schema_version", "kind", "final_run", "acceptance", "retention", "tasks", "lessons"],
+	"additionalProperties": false,
+	"properties": {
+		"schema_version": { "type": "integer", "const": 1 },
+		"kind": { "type": "string", "const": "closeout" },
+		"final_run": {
+			"type": "object",
+			"required": ["run_id", "evidence"],
+			"additionalProperties": false,
+			"properties": {
+				"run_id": { "type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z(-[0-9]{2})?$" },
+				"evidence": { "type": ["string", "null"], "minLength": 1 }
+			}
+		},
+		"acceptance": {
+			"type": "object",
+			"required": ["date", "evidence"],
+			"additionalProperties": false,
+			"properties": {
+				"date": { "type": ["string", "null"], "format": "date" },
+				"evidence": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+			}
+		},
+		"retention": {
+			"type": "object",
+			"required": ["days", "reminder_days_before", "retirement_date", "reminder_date"],
+			"additionalProperties": false,
+			"properties": {
+				"days": { "type": "integer", "minimum": 1, "maximum": 3650 },
+				"reminder_days_before": { "type": "integer", "minimum": 1, "maximum": 3649 },
+				"retirement_date": { "type": ["string", "null"], "format": "date" },
+				"reminder_date": { "type": ["string", "null"], "format": "date" }
+			}
+		},
+		"tasks": {
+			"type": "array",
+			"minItems": 1,
+			"items": {
+				"type": "object",
+				"required": ["id", "title", "owner", "required", "due_anchor", "status", "due_date", "date", "evidence", "notes"],
+				"additionalProperties": false,
+				"properties": {
+					"id": { "type": "string", "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$" },
+					"title": { "type": "string", "minLength": 1 },
+					"owner": { "type": "string", "enum": ["developer", "client", "shared", "third-party"] },
+					"required": { "type": "boolean" },
+					"due_anchor": { "type": "string", "enum": ["manual", "acceptance", "reminder", "retirement"] },
+					"status": { "type": "string", "enum": ["pending", "complete", "not-applicable"] },
+					"due_date": { "type": ["string", "null"], "format": "date" },
+					"date": { "type": ["string", "null"], "format": "date" },
+					"evidence": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+					"notes": { "type": ["string", "null"] }
+				}
+			}
+		},
+		"lessons": {
+			"type": "object",
+			"required": ["reviewed_at", "items"],
+			"additionalProperties": false,
+			"properties": {
+				"reviewed_at": { "type": ["string", "null"], "format": "date" },
+				"items": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"required": ["id", "title", "summary", "classification", "evidence"],
+						"additionalProperties": false,
+						"properties": {
+							"id": { "type": "string", "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$" },
+							"title": { "type": "string", "minLength": 1 },
+							"summary": { "type": "string", "minLength": 1 },
+							"classification": { "type": "string", "enum": ["project-specific", "starter-improvement", "plugin-capability", "process-documentation"] },
+							"evidence": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+							"recommended_target": { "type": "string", "minLength": 1 },
+							"recommended_action": { "type": "string", "minLength": 1 }
+						}
+					}
+				}
+			}
+		}
+	}
+}

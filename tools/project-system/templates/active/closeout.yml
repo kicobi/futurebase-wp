@@ -1,0 +1,137 @@
+schema_version: 1
+kind: closeout
+final_run:
+  run_id: null
+  evidence: null
+acceptance:
+  date: null
+  evidence: []
+retention:
+  days: 30
+  reminder_days_before: 7
+  retirement_date: null
+  reminder_date: null
+tasks:
+  - id: final-measurements
+    title: Final measurements captured
+    owner: developer
+    required: true
+    due_anchor: manual
+    status: pending
+    due_date: null
+    date: null
+    evidence: []
+    notes: null
+  - id: written-acceptance
+    title: Written acceptance received
+    owner: client
+    required: true
+    due_anchor: acceptance
+    status: pending
+    due_date: null
+    date: null
+    evidence: []
+    notes: null
+  - id: backup-integrity
+    title: Operational backup captured and integrity checked
+    owner: developer
+    required: true
+    due_anchor: acceptance
+    status: pending
+    due_date: null
+    date: null
+    evidence: []
+    notes: null
+  - id: restore-drill
+    title: Backup restore drill completed
+    owner: developer
+    required: true
+    due_anchor: acceptance
+    status: pending
+    due_date: null
+    date: null
+    evidence: []
+    notes: null
+  - id: credential-reset
+    title: Client-owned credentials reset
+    owner: client
+    required: true
+    due_anchor: acceptance
+    status: pending
+    due_date: null
+    date: null
+    evidence: []
+    notes: null
+  - id: final-backup
+    title: Final operational backup captured
+    owner: developer
+    required: true
+    due_anchor: acceptance
+    status: pending
+    due_date: null
+    date: null
+    evidence: []
+    notes: null
+  - id: credential-revocation
+    title: Temporary credentials revoked
+    owner: shared
+    required: true
+    due_anchor: acceptance
+    status: pending
+    due_date: null
+    date: null
+    evidence: []
+    notes: null
+  - id: expiry-warning
+    title: Retention expiry warning recorded
+    owner: developer
+    required: true
+    due_anchor: reminder
+    status: pending
+    due_date: null
+    date: null
+    evidence: []
+    notes: null
+  - id: offsite-deletion
+    title: Retained offsite data deleted
+    owner: developer
+    required: true
+    due_anchor: retirement
+    status: pending
+    due_date: null
+    date: null
+    evidence: []
+    notes: null
+  - id: staging-retirement
+    title: Staging environment retired
+    owner: developer
+    required: true
+    due_anchor: retirement
+    status: pending
+    due_date: null
+    date: null
+    evidence: []
+    notes: null
+  - id: rollback-deletion
+    title: Rollback copy deleted
+    owner: developer
+    required: true
+    due_anchor: retirement
+    status: pending
+    due_date: null
+    date: null
+    evidence: []
+    notes: null
+  - id: billing-closure
+    title: Billing and subscriptions closed or transferred
+    owner: shared
+    required: true
+    due_anchor: retirement
+    status: pending
+    due_date: null
+    date: null
+    evidence: []
+    notes: null
+lessons:
+  reviewed_at: null
+  items: []

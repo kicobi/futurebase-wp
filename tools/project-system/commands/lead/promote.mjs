@@ -21,12 +21,13 @@ import { readYaml, writeYaml } from '../../lib/yaml.mjs';
 import { validateProject } from '../../lib/validate.mjs';
 import { run, have, gitHead, isGitRepo, ghRepoExists } from '../../lib/proc.mjs';
 import { scanFiles } from '../../lib/secret-scan.mjs';
+import { newCloseoutRecord } from '../../lib/closeout.mjs';
 
 const DEFAULT_ORG = 'kicobi';
 const DEFAULT_TEMPLATE = 'kicobi/futurebase-wp';
 const LEGACY_TEMPLATE = 'studiokicobi/wp-starter';
 const DEFAULT_THEME_URI = 'https://kicobi.com';
-const PROJECT_DIRS = ['brief', 'analysis', 'proposal', 'decisions', 'metrics', 'baseline', 'final', 'reports', 'follow-up'];
+const PROJECT_DIRS = ['brief', 'analysis', 'proposal', 'decisions', 'metrics', 'baseline', 'final', 'closeout', 'reports', 'follow-up'];
 // The checkpoint survives until AFTER the promotion commit, so that a commit
 // failure is still resumable — which makes the ignore line load-bearing rather
 // than belt-and-braces: it is what keeps `git add -A` from committing the
@@ -920,6 +921,7 @@ export async function leadPromote(positional, flags) {
 	seedIfAbsent('metrics/metrics.yml', { schema_version: 1, kind: 'metrics', items: [] });
 	seedIfAbsent('metrics/journeys.yml', { schema_version: 1, kind: 'journeys', items: [] });
 	seedIfAbsent('observations.yml', { schema_version: 1, kind: 'observations', items: [] });
+	seedIfAbsent('closeout/closeout.yml', newCloseoutRecord());
 	copyInto(join(templatesDir, 'active', 'agent-context.md'), 'agent-context.md');
 	copyInto(join(templatesDir, 'active', 'PROJECT-RECORD.md'), 'PROJECT-RECORD.md');
 

@@ -12,7 +12,8 @@ success metrics → launch comparison → follow-up → case study.
 > follow-up (`metrics survey/follow-up`). Baseline and final share one capture
 > engine so their runs diff like-for-like; browser + WP-CLI tooling is resolved
 > from the host project and degrades gracefully. Phase 8 has begun with
-> `project tasks` (lifecycle task generation for Workledger / GitHub); the
+> `project tasks` (lifecycle task generation for Workledger / GitHub) and the
+> evidence-backed `project closeout` workflow; the
 > remaining Phase 8 items (analytics-API connectors, automated survey delivery,
 > scheduled reminders, anonymized benchmarking) are future work. Canonical
 > narrative:
@@ -97,12 +98,36 @@ output, and clear exit codes. **✓ = implemented; the rest are designed.**
 ✓ futurebase project status      # lifecycle checklist + next step
 ✓ futurebase project validate    # schema + structural + secret scan (exit 6 on a leak)
 ✓ futurebase project tasks [--format markdown|json|github] [--launch-date <date>]
+✓ futurebase project closeout init|set-final|accept|set|review-lessons|status|report|complete
 ```
 `tasks` generates the state-aware lifecycle task tree (spec §24) — Markdown
 checklist, a JSON sync payload (project/task id, milestone, owner, due date,
 measurement status — ready for Workledger or another tracker), or ready-to-run
 `gh issue create` commands for the pending tasks. It never creates issues or
 calls a tracker itself.
+`closeout` records final-run evidence, written acceptance, operational handoff
+evidence, retention dates, and classified lessons. It derives reminder and
+retirement dates, gates closure, and generates `closeout.md` plus an upstream-
+only lessons report. It never performs the operational work it records.
+
+```text
+futurebase project closeout init
+futurebase project closeout set-final --run-id <id>
+futurebase project closeout accept --date YYYY-MM-DD --evidence <ref>
+futurebase project closeout set --id <task> --status pending|complete|not-applicable
+    [--date YYYY-MM-DD] [--evidence <ref>] [--notes <text>]
+futurebase project closeout review-lessons [--date YYYY-MM-DD]
+futurebase project closeout status
+futurebase project closeout report
+futurebase project closeout complete --confirm
+```
+
+Repeating `accept` after acceptance has been recorded requires both `--force`
+and `--confirm`, even when the date is unchanged. This protects the acceptance
+evidence while providing an explicit recalculation path after retention values
+change. Setting a resolved task back to `pending` reopens it without erasing its
+previous date, evidence, or notes.
+
 `init` retrofits a `.project/` record onto a repo not created via `lead promote`
 (infers name/slug/type from package.json / style.css). `validate` schema-checks
 every structured doc, enforces `privacy.allow_credentials_in_project: false`, and
@@ -172,7 +197,7 @@ Read-only until `--apply --confirm`, and it writes only by path class:
 | `safe` | `tools/`, `.github/workflows/`, `fixtures/`, the portable verifier closure, and its support scripts/config | copied verbatim — slug-free *by contract*: rename never scans `tools/`, and `bin/test-rename.sh` asserts every portable path carries no slug literal |
 | `deps` | `package.json`, `package-lock.json`, `composer.json`, `composer.lock` | dependency blocks merged (starter wins on shared entries, project additions preserved); lockfiles adopted with the project's own package name restored |
 | `review` | `bin/`, `docs/`, `CLAUDE.md`, anything unclassified | reported only — these carry the theme slug, so copying them would undo the rename |
-| `never` | `patterns/`, `templates/`, `parts/`, `theme.json`, `style.css`, `functions.php`, `inc/`, `src/`, `assets/`, `.project/`, `.github/workflows/scorecard.yml` | untouched and unreported — the client's work, plus workflows that test the starter itself |
+| `never` | `patterns/`, `templates/`, `parts/`, `theme.json`, `style.css`, `functions.php`, `inc/`, `src/`, `assets/`, `.project/`, `.github/workflows/scorecard.yml`, `.github/workflows/wordpress-compatibility.yml` | untouched and unreported — the client's work, plus workflows that test the starter itself |
 
 > **Portability is a per-file property, not a per-directory one.** Both
 > directions of this bit us:

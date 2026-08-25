@@ -467,6 +467,7 @@ test('offline promotion completes, commits, and removes its checkpoint', () => {
 		assert.match(readFileSync(join(result.dest, 'style.css'), 'utf8'), /Text Domain: acme/);
 		assert.match(readFileSync(join(result.dest, 'style.css'), 'utf8'), /Theme URI: https:\/\/kicobi\.com/);
 		assert.equal(readFileSync(join(result.dest, '.project', 'brief', 'discovery.md'), 'utf8'), '# Client discovery\n');
+		assert.match(readFileSync(join(result.dest, '.project', 'closeout', 'closeout.yml'), 'utf8'), /^kind: closeout$/m);
 		assert.equal(existsSync(join(result.dest, '.futurebase-promotion.json')), false);
 		assert.match(readFileSync(join(workspace, 'acme', 'project.yml'), 'utf8'), /status: promoted/);
 

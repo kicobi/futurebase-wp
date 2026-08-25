@@ -16,7 +16,7 @@ test('lifecycle manifest, lockfile, VERSION, and both CLI entrypoints agree', ()
 	const lock = JSON.parse(readFileSync(join(TOOL_ROOT, 'package-lock.json'), 'utf8'));
 	const version = readFileSync(join(TOOL_ROOT, 'VERSION'), 'utf8').trim();
 
-	assert.equal(manifest.version, '2.0.0');
+	assert.equal(manifest.version, '2.1.0');
 	assert.equal(lock.version, manifest.version);
 	assert.equal(lock.packages[''].version, manifest.version);
 	assert.equal(version, manifest.version);
