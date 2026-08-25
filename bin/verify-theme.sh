@@ -249,6 +249,12 @@ else
 	fail "theme and lifecycle version surfaces — see output above"
 fi
 
+if node --test "$ROOT/bin/verify-version-surfaces.test.mjs" > /dev/null 2>&1; then
+	pass "version and compatibility audits reject drift"
+else
+	fail "bin/verify-version-surfaces.test.mjs failed — version audit behavior is not proven"
+fi
+
 if bash "$ROOT/bin/test-rename.sh"; then
 	pass "rename non-regression smoke test"
 else

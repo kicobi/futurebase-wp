@@ -80,6 +80,11 @@ test('client-owned WordPress readme metadata is never surfaced by sync', () => {
 	assert.equal(classifyPath('readme.txt'), CLASS.NEVER);
 });
 
+test('scheduled starter canaries never sync into client repositories', () => {
+	assert.equal(classifyPath('.github/workflows/scorecard.yml'), CLASS.NEVER);
+	assert.equal(classifyPath('.github/workflows/wordpress-compatibility.yml'), CLASS.NEVER);
+});
+
 test('companion plugins are review-only and map onto the promoted identity', () => {
 	assert.equal(classifyPath('plugins/futurebase-seo/futurebase-seo.php'), CLASS.REVIEW);
 	const starter = { slug: 'futurebase-seo' };

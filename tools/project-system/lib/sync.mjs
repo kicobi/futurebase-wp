@@ -34,7 +34,10 @@ export const CLASS = {
 // patterns, which are never-class theme content — a client project has its own
 // patterns, so the workflow fails on the next push. It is a regression gate for
 // the starter's published numbers and has no meaning downstream.
-const STARTER_ONLY = ['.github/workflows/scorecard.yml'];
+const STARTER_ONLY = [
+	'.github/workflows/scorecard.yml',
+	'.github/workflows/wordpress-compatibility.yml',
+];
 
 // Futurebase WP's own product material. bin/rename-theme.sh DELETES these from a
 // client during promotion, so reporting them as drift told the operator to port
@@ -74,6 +77,7 @@ export const VERIFIER_CLOSURE = [
 	'bin/_pm-detect.sh',
 	'bin/audit-identity.sh',
 	'bin/verify-version-surfaces.mjs',
+	'bin/verify-version-surfaces.test.mjs',
 	'bin/test-rename.sh',
 	'bin/a11y-wp-env.sh',
 	'bin/verify-contract.mjs',
