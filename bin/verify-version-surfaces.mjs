@@ -27,6 +27,15 @@ export function commentHeaderValue(text, label) {
 	return match?.[1]?.trim();
 }
 
+export function companionRuntimeVersion(text) {
+	const matches = [...String(text || '').matchAll(/define\(\s*['"]([A-Z0-9_]+_SEO_VERSION)['"]\s*,\s*['"]([^'"]+)['"]\s*\)/g)];
+	return matches.length === 1 ? matches[0][2] : null;
+}
+
+export function latestChangelogVersion(text) {
+	return /^=\s*(\d+\.\d+\.\d+)\s*=$/m.exec(String(text || ''))?.[1] ?? null;
+}
+
 export function wordpressFloor(core) {
 	const match = String(core || '').match(/^WordPress\/WordPress#(\d+\.\d+(?:\.\d+)?)$/);
 	return match?.[1] || null;
@@ -123,6 +132,17 @@ export function auditVersionSurfaces(root = DEFAULT_ROOT) {
 			],
 		},
 	];
+	if (plugin) {
+		productGroups.push({
+			name: 'companion SEO',
+			surfaces: [
+				[`${plugin.name} bootstrap Version`, commentHeaderValue(pluginBootstrap, 'Version')],
+				[`${plugin.name} runtime version constant`, companionRuntimeVersion(pluginBootstrap)],
+				[`${plugin.name} readme Stable tag`, headerValue(pluginReadme, 'Stable tag')],
+				[`${plugin.name} newest changelog heading`, latestChangelogVersion(pluginReadme)],
+			],
+		});
+	}
 	for (const group of productGroups) {
 		exactGroup(failures, group.name, group.surfaces, { versionPattern: /^\d+\.\d+\.\d+/ });
 		summaries.push(`${group.name} ${group.surfaces[0][1] ?? '?'}`);

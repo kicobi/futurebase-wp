@@ -66,7 +66,17 @@ if command -v node > /dev/null; then
 	if node --test bin/verify-contract.test.mjs > /dev/null 2>&1; then
 		pass "contract checks still reject known-bad markup"
 	else
-		fail "bin/verify-contract.test.mjs failed — the contract checks are not proven to reject violations"
+		fail "bin/verify-contract.test.mjs failed — the theme contract checks are not proven"
+	fi
+
+	if seo_plugin_dir > /dev/null 2>&1; then
+		if node --test bin/verify-seo-contract.test.mjs > /dev/null 2>&1; then
+			pass "companion SEO permanent contracts remain executable"
+		else
+			fail "bin/verify-seo-contract.test.mjs failed — the companion SEO contracts are not proven"
+		fi
+	else
+		pass "companion SEO contract not applicable (plugin not present)"
 	fi
 else
 	fail "node not found on PATH (cannot run the parsed contract checks)"

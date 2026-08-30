@@ -42,6 +42,37 @@ call_user_func(
 			return null;
 		};
 
+		$seo_namespace = static function () use ( $expect, $find_class_callback ): string {
+			static $namespace = '';
+			if ( '' !== $namespace ) {
+				return $namespace;
+			}
+
+			// Management remains registered even while a premium provider suppresses
+			// the runtime, so this callback is the stable identity seam for every
+			// fixture command.
+			$callback = $find_class_callback( 'admin_menu', '\\SEO\\Admin', 'register_page' );
+			$class    = is_array( $callback ) && isset( $callback[0] ) && is_string( $callback[0] ) ? $callback[0] : '';
+			$suffix   = '\\Admin';
+			$expect( '' !== $class && str_ends_with( $class, $suffix ), 'Could not discover the promoted companion SEO namespace.' );
+
+			$namespace = substr( $class, 0, -strlen( $suffix ) );
+			return $namespace;
+		};
+
+		$seo_class = static function ( string $short_name ) use ( $expect, $seo_namespace ): string {
+			$class = $seo_namespace() . '\\' . $short_name;
+			$expect( class_exists( $class ), sprintf( 'Companion SEO class is unavailable: %s.', $short_name ) );
+			return $class;
+		};
+
+		$seo_plugin_dir = static function () use ( $expect, $seo_class ): string {
+			$reflection = new ReflectionClass( $seo_class( 'Plugin' ) );
+			$file       = $reflection->getFileName();
+			$expect( is_string( $file ) && '' !== $file, 'Could not resolve the promoted companion SEO plugin directory.' );
+			return dirname( (string) $file, 2 );
+		};
+
 		$plugin_source = static function ( string $provider = '' ): string {
 			if ( 'yoast' === $provider ) {
 				return "<?php\n/**\n * Plugin Name: Companion SEO Yoast Fixture\n */\nif ( ! defined( 'WPSEO_VERSION' ) ) { define( 'WPSEO_VERSION', '99.0-test' ); }\n";
@@ -149,11 +180,36 @@ if ( get_option( 'compseo_runtime_force_index' ) ) {
 	);
 }
 
+if ( get_option( 'compseo_runtime_force_noindex' ) ) {
+	add_filter(
+		'compseo_indexing_decision',
+		static function ( array $decision ): array {
+			$decision['index']  = 'noindex';
+			$decision['follow'] = 'follow';
+			$decision['reason'] = 'fixture_noindex';
+			return $decision;
+		}
+	);
+}
+
+if ( get_option( 'compseo_runtime_force_cross_noindex' ) ) {
+	add_filter(
+		'compseo_indexing_decision',
+		static function ( array $decision ): array {
+			$decision['index']     = 'noindex';
+			$decision['follow']    = 'follow';
+			$decision['canonical'] = 'https://adapter.example/cross-document';
+			$decision['reason']    = 'fixture_cross_noindex';
+			return $decision;
+		}
+	);
+}
+
 if ( get_option( 'compseo_runtime_sitemap_page_size' ) ) {
 	add_filter(
 		'wp_sitemaps_max_urls',
 		static function (): int {
-			return 1;
+			return max( 1, (int) get_option( 'compseo_runtime_sitemap_page_size' ) );
 		}
 	);
 }
@@ -180,6 +236,192 @@ PHP;
 			$expect( is_array( $state ) && ! empty( $state['ids'] ), 'Companion SEO runtime state is missing.' );
 			return $state;
 		};
+
+		if ( 'assert-permanent-contract' === $command ) {
+			$manifest_json = file_get_contents( dirname( __DIR__ ) . '/fixtures/seo-permanent-contract.json' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Read-only committed test fixture.
+			$manifest      = is_string( $manifest_json ) ? json_decode( $manifest_json, true ) : null;
+			$expect( is_array( $manifest ) && isset( $manifest['filters'] ) && is_array( $manifest['filters'] ), 'Permanent SEO contract manifest is unreadable.' );
+
+			$contracts_class = $seo_class( 'Contracts' );
+			$context         = array(
+				'url'                => home_url( '/runtime-contract/' ),
+				'kind'               => 'singular',
+				'object_id'          => 0,
+				'post_type'          => 'post',
+				'taxonomy'           => '',
+				'paged'              => 1,
+				'query_args'         => array(),
+				'password_protected' => false,
+			);
+			$document        = array(
+				'title'           => 'Internal title',
+				'description'     => 'Internal description.',
+				'canonical'       => home_url( '/runtime-contract/' ),
+				'social_image_id' => 0,
+			);
+			$decision        = array(
+				'index'     => 'inherit',
+				'follow'    => 'inherit',
+				'canonical' => home_url( '/runtime-contract/' ),
+				'reason'    => 'runtime_contract',
+			);
+			$graph           = array( array( '@type' => 'WebSite' ) );
+
+			$cases = array(
+				'compseo_is_suppressed'        => array(
+					'arguments' => array( false, null ),
+					'invoke'    => static fn(): bool => $contracts_class::suppression( false, null ),
+					'adapt'     => static fn( array $arguments ): bool => ! $arguments[0],
+					'expected'  => true,
+					'invalid'   => 'COMPSEO_REJECTED_SUPPRESSION_SECRET',
+					'fallback'  => false,
+				),
+				'compseo_supported_post_types' => array(
+					'arguments' => array( array( 'post' ) ),
+					'invoke'    => static fn(): array => $contracts_class::supported_post_types( array( 'post' ) ),
+					'adapt'     => static fn( array $arguments ): array => array_merge( $arguments[0], array( 'compseo_book' ) ),
+					'expected'  => array( 'post', 'compseo_book' ),
+					'invalid'   => array( 'COMPSEO_REJECTED_POST_TYPE_SECRET' ),
+					'fallback'  => array( 'post' ),
+				),
+				'compseo_document'             => array(
+					'arguments' => array( $document, $context ),
+					'invoke'    => static fn(): array => $contracts_class::document( $document, $context ),
+					'adapt'     => static function ( array $arguments ): array {
+						$arguments[0]['title'] = 'Adapter title';
+						return $arguments[0];
+					},
+					'expected'  => array_merge( $document, array( 'title' => 'Adapter title' ) ),
+					'invalid'   => 'COMPSEO_REJECTED_DOCUMENT_SECRET',
+					'fallback'  => $document,
+				),
+				'compseo_schema_graph'         => array(
+					'arguments' => array( $graph, $context, $document ),
+					'invoke'    => static fn(): array => $contracts_class::schema_graph( $graph, $context, $document ),
+					'adapt'     => static function ( array $arguments ): array {
+						$arguments[0][] = array( '@type' => 'Thing' );
+						return $arguments[0];
+					},
+					'expected'  => array( array( '@type' => 'WebSite' ), array( '@type' => 'Thing' ) ),
+					'invalid'   => 'COMPSEO_REJECTED_SCHEMA_SECRET',
+					'fallback'  => $graph,
+				),
+				'compseo_indexable_query_vars' => array(
+					'arguments' => array( array() ),
+					'invoke'    => static fn(): array => $contracts_class::indexable_query_vars( array() ),
+					'adapt'     => static fn( array $arguments ): array => array_merge( $arguments[0], array( 'lang' ) ),
+					'expected'  => array( 'lang' ),
+					'invalid'   => array( 'COMPSEO_REJECTED_QUERY_SECRET' ),
+					'fallback'  => array(),
+				),
+				'compseo_indexing_decision'    => array(
+					'arguments' => array( $decision, $context ),
+					'invoke'    => static fn(): array => $contracts_class::indexing_decision( $decision, $context ),
+					'adapt'     => static function ( array $arguments ): array {
+						$arguments[0]['index']  = 'noindex';
+						$arguments[0]['follow'] = 'follow';
+						return $arguments[0];
+					},
+					'expected'  => array_merge(
+						$decision,
+						array(
+							'index'  => 'noindex',
+							'follow' => 'follow',
+						)
+					),
+					'invalid'   => array_merge( $decision, array( 'index' => 'COMPSEO_REJECTED_DECISION_SECRET' ) ),
+					'fallback'  => $decision,
+				),
+			);
+
+			$manifest_filters = array();
+			foreach ( $manifest['filters'] as $filter ) {
+				if ( is_array( $filter ) && isset( $filter['name'], $filter['arguments'] ) && is_string( $filter['name'] ) && is_array( $filter['arguments'] ) ) {
+					$manifest_filters[ $filter['name'] ] = count( $filter['arguments'] );
+				}
+			}
+			$expect( array_keys( $cases ) === array_keys( $manifest_filters ), 'Runtime filter cases drifted from the permanent manifest.' );
+
+			$wrong                   = array();
+			$suppress_doing_it_wrong = static fn(): bool => false;
+			add_filter( 'doing_it_wrong_trigger_error', $suppress_doing_it_wrong );
+			add_action(
+				'doing_it_wrong_run',
+				static function ( string $function_name, string $message, string $version ) use ( &$wrong ): void {
+					$wrong[] = array( $function_name, $message, $version );
+				},
+				10,
+				3
+			);
+
+			foreach ( $cases as $hook => $case ) {
+				$seen    = array();
+				$adapter = static function ( mixed ...$arguments ) use ( &$seen, $case ): mixed {
+					$seen = $arguments;
+					return $case['adapt']( $arguments );
+				};
+				add_filter( $hook, $adapter, PHP_INT_MAX, $manifest_filters[ $hook ] );
+				$result = $case['invoke']();
+				remove_filter( $hook, $adapter, PHP_INT_MAX );
+				$expect( $case['arguments'] === $seen, $hook . ' changed argument count or order.' );
+				$expect( $case['expected'] === $result, $hook . ' rejected valid adapter output.' );
+
+				$invalid_adapter = static fn(): mixed => $case['invalid'];
+				$before_count    = count( $wrong );
+				add_filter( $hook, $invalid_adapter, PHP_INT_MAX, $manifest_filters[ $hook ] );
+				$result = $case['invoke']();
+				remove_filter( $hook, $invalid_adapter, PHP_INT_MAX );
+				$expect( $case['fallback'] === $result, $hook . ' did not retain its fallback after invalid output.' );
+				$messages = wp_json_encode( array_slice( $wrong, $before_count ) );
+				$expect( is_string( $messages ) && str_contains( $messages, $hook ), $hook . ' did not raise a named development warning.' );
+				$expect( ! str_contains( (string) $messages, 'COMPSEO_REJECTED_' ), $hook . ' echoed rejected adapter data.' );
+			}
+			remove_filter( 'doing_it_wrong_trigger_error', $suppress_doing_it_wrong );
+
+			foreach ( array( 'index', 'noindex', 'inherit' ) as $index ) {
+				$adapter = static function ( array $value ) use ( $index ): array {
+					$value['index'] = $index;
+					return $value;
+				};
+				add_filter( 'compseo_indexing_decision', $adapter, PHP_INT_MAX, 2 );
+				$result = $contracts_class::indexing_decision( $decision, $context );
+				remove_filter( 'compseo_indexing_decision', $adapter, PHP_INT_MAX );
+				$expect( $index === $result['index'], 'Documented index tri-state value was rejected: ' . $index );
+			}
+			foreach ( array( 'follow', 'nofollow', 'inherit' ) as $follow ) {
+				$adapter = static function ( array $value ) use ( $follow ): array {
+					$value['follow'] = $follow;
+					return $value;
+				};
+				add_filter( 'compseo_indexing_decision', $adapter, PHP_INT_MAX, 2 );
+				$result = $contracts_class::indexing_decision( $decision, $context );
+				remove_filter( 'compseo_indexing_decision', $adapter, PHP_INT_MAX );
+				$expect( $follow === $result['follow'], 'Documented follow tri-state value was rejected: ' . $follow );
+			}
+
+			$decision_class = $seo_class( 'Decision' );
+			foreach (
+				array(
+					'feed'    => 'core_owned_feed',
+					'embed'   => 'core_owned_embed',
+					'unknown' => 'unknown_route',
+				) as $kind => $reason
+			) {
+				$reason_context         = $context;
+				$reason_context['kind'] = $kind;
+				$result                 = $decision_class::resolve( $reason_context );
+				$expect( $reason === $result['reason'], 'Stable resolver reason was not exercised: ' . $reason );
+			}
+
+			$previous_public = get_option( 'blog_public' );
+			update_option( 'blog_public', 0 );
+			$result = $decision_class::resolve( $context );
+			update_option( 'blog_public', $previous_public );
+			$expect( 'site_private' === $result['reason'], 'Stable resolver reason was not exercised: site_private' );
+
+			WP_CLI::success( 'Companion SEO permanent filter contracts pass.' );
+			return;
+		}
 
 		if ( 'setup' === $command ) {
 			$existing = get_option( $state_key, array() );
@@ -293,6 +535,17 @@ PHP;
 			update_post_meta( $authored_id, '_compseo_social_image_id', $default_id );
 			update_post_meta( $authored_id, '_compseo_noindex', true );
 
+			$paged_noindex_id = $insert_post(
+				array(
+					'post_type'    => 'post',
+					'post_status'  => 'publish',
+					'post_name'    => 'compseo-runtime-paged-noindex',
+					'post_title'   => 'Paged noindex runtime story',
+					'post_content' => '<!-- wp:paragraph --><p>First document page.</p><!-- /wp:paragraph --><!--nextpage--><!-- wp:paragraph --><p>Second document page.</p><!-- /wp:paragraph -->',
+				)
+			);
+			update_post_meta( $paged_noindex_id, '_compseo_noindex', true );
+
 			$protected_id = $insert_post(
 				array(
 					'post_type'     => 'post',
@@ -318,6 +571,7 @@ PHP;
 			);
 			update_post_meta( $protected_authored_id, '_compseo_title', 'Public protected title' );
 			update_post_meta( $protected_authored_id, '_compseo_description', 'Deliberately public protected description.' );
+			update_post_meta( $protected_authored_id, '_compseo_canonical', 'https://example.net/protected-reference' );
 			update_post_meta( $protected_authored_id, '_compseo_social_image_id', $featured_id );
 
 			$front_id      = $insert_post(
@@ -390,6 +644,18 @@ PHP;
 				)
 			);
 
+			$book_scale_ids = array();
+			for ( $index = 1; $index <= 10; ++$index ) {
+				$book_scale_ids[] = $insert_post(
+					array(
+						'post_type'   => 'compseo_book',
+						'post_status' => 'publish',
+						'post_name'   => sprintf( 'compseo-sitemap-scale-%02d', $index ),
+						'post_title'  => sprintf( 'Sitemap scale book %02d', $index ),
+					)
+				);
+			}
+
 			update_option( 'permalink_structure', '/%postname%/' );
 			update_option( 'posts_per_page', 1 );
 			update_option( 'blogdescription', 'Public site tagline' );
@@ -445,6 +711,7 @@ PHP;
 						'public'             => $public_id,
 						'no_image'           => $no_image_id,
 						'authored'           => $authored_id,
+						'paged_noindex'      => $paged_noindex_id,
 						'protected'          => $protected_id,
 						'protected_authored' => $protected_authored_id,
 						'front'              => $front_id,
@@ -454,6 +721,7 @@ PHP;
 						'book_noindex'       => $book_noindex_id,
 						'book_external'      => $book_external_id,
 						'book_protected'     => $book_protected_id,
+						'book_scale'         => $book_scale_ids,
 						'featured'           => $featured_id,
 						'default'            => $default_id,
 					),
@@ -648,7 +916,8 @@ PHP;
 					'label'        => 'Runtime genres',
 				)
 			);
-			$expect( 'noindex' === Futurebase\SEO\Policy::value( 'taxonomy', 'compseo_genre' ), 'A returning taxonomy did not recover its saved policy.' );
+			$policy_class = $seo_class( 'Policy' );
+			$expect( 'noindex' === $policy_class::value( 'taxonomy', 'compseo_genre' ), 'A returning taxonomy did not recover its saved policy.' );
 			remove_filter( 'sanitize_option_compseo_settings', $sanitize );
 			update_option( 'compseo_settings', $before );
 
@@ -676,7 +945,7 @@ PHP;
 			foreach ( array( 'wp-block-editor', 'wp-components', 'wp-data', 'wp-editor', 'wp-plugins' ) as $dependency ) {
 				$expect( in_array( $dependency, $editor_script->deps, true ), 'Editor asset dependency is missing: ' . $dependency );
 			}
-			$editor_build = file_get_contents( plugin_dir_path( FUTUREBASE_SEO_FILE ) . 'build/index.js' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Read-only assertion against the mounted plugin build.
+			$editor_build = file_get_contents( $seo_plugin_dir() . '/build/index.js' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Read-only assertion against the mounted plugin build.
 			$expect( is_string( $editor_build ) && false !== strpos( $editor_build, 'native WordPress sitemap' ), 'Noindex consequence copy does not disclose native sitemap exclusion.' );
 
 			WP_CLI::success( 'Companion SEO editor asset registration passes.' );
@@ -695,6 +964,11 @@ PHP;
 			$expect( ! isset( $taxonomies['category'] ), 'Noindex category taxonomy remained in native sitemaps.' );
 			$expect( ! isset( $taxonomies['compseo_genre'] ), 'Noindex custom taxonomy remained in native sitemaps.' );
 
+			update_option( 'compseo_runtime_sitemap_page_size', 1 );
+			$providers['posts']->get_url_list( 1, 'compseo_book' );
+			update_option( 'compseo_runtime_sitemap_page_size', 10 );
+			$providers['posts']->get_url_list( 1, 'compseo_book' );
+
 			$meta_reads = 0;
 			$meta_probe = static function ( mixed $value, int $object_id, string $meta_key ) use ( &$meta_reads ): mixed {
 				unset( $object_id );
@@ -706,26 +980,35 @@ PHP;
 			add_filter( 'get_post_metadata', $meta_probe, 10, 3 );
 
 			global $wpdb;
+			update_option( 'compseo_runtime_sitemap_page_size', 1 );
 			$before_queries = (int) $wpdb->num_queries;
-			$page_one       = $providers['posts']->get_url_list( 1, 'compseo_book' );
-			$page_one_count = (int) $wpdb->num_queries - $before_queries;
+			$small_page     = $providers['posts']->get_url_list( 1, 'compseo_book' );
+			$small_queries  = (int) $wpdb->num_queries - $before_queries;
+
+			update_option( 'compseo_runtime_sitemap_page_size', 10 );
 			$before_queries = (int) $wpdb->num_queries;
+			$large_page     = $providers['posts']->get_url_list( 1, 'compseo_book' );
+			$large_queries  = (int) $wpdb->num_queries - $before_queries;
 			$page_two       = $providers['posts']->get_url_list( 2, 'compseo_book' );
-			$page_two_count = (int) $wpdb->num_queries - $before_queries;
 			remove_filter( 'get_post_metadata', $meta_probe, 10 );
 
-			$locations = array_merge( wp_list_pluck( $page_one, 'loc' ), wp_list_pluck( $page_two, 'loc' ) );
+			$locations = array_merge( wp_list_pluck( $large_page, 'loc' ), wp_list_pluck( $page_two, 'loc' ) );
 			$expected  = array(
 				get_permalink( (int) $state['ids']['book'] ),
 				get_permalink( (int) $state['ids']['book_local'] ),
 			);
+			foreach ( $state['ids']['book_scale'] as $post_id ) {
+				$expected[] = get_permalink( (int) $post_id );
+			}
 			sort( $locations );
 			sort( $expected );
 
 			$expect( 2 === $providers['posts']->get_max_num_pages( 'compseo_book' ), 'Filtered post sitemap did not retain correct pagination.' );
-			$expect( $expected === $locations, 'Native post sitemap did not keep exactly the absent-meta and local-canonical fixtures.' );
+			$expect( 1 === count( $small_page ) && 10 === count( $large_page ) && 2 === count( $page_two ), 'Sitemap page sizes did not expose the intended scaling fixture.' );
+			$expect( $expected === $locations, 'Native post sitemap did not keep exactly the twelve eligible fixtures.' );
 			$expect( 0 === $meta_reads, 'Sitemap generation performed per-entry companion metadata reads.' );
-			$expect( $page_one_count <= 3 && $page_two_count <= 3, 'Sitemap query count exceeded the fixed provider-query budget.' );
+			$expect( $small_queries <= 4 && $large_queries <= 4, 'Sitemap query count exceeded the fixed provider-query budget.' );
+			$expect( $large_queries <= $small_queries + 1, 'Sitemap query count grew with the number of returned entries.' );
 
 			$existing_query = array(
 				array(
@@ -736,7 +1019,8 @@ PHP;
 			$existing_args  = array();
 			// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Fixture input verifies safe composition with an existing sitemap constraint.
 			$existing_args['meta_query'] = $existing_query;
-			$filtered_args               = Futurebase\SEO\Sitemaps::posts_query_args( $existing_args, 'post' );
+			$sitemaps_class              = $seo_class( 'Sitemaps' );
+			$filtered_args               = $sitemaps_class::posts_query_args( $existing_args, 'post' );
 			$expect( false === $filtered_args['has_password'], 'Password exclusion must use the posts-table query condition.' );
 			$expect( 'AND' === $filtered_args['meta_query']['relation'] && $existing_query === $filtered_args['meta_query'][0], 'Existing sitemap metadata constraints were not composed safely.' );
 
@@ -778,9 +1062,10 @@ PHP;
 			call_user_func( $admin_register );
 			$registered_settings = get_registered_settings();
 			$expect( isset( $registered_settings['compseo_settings'] ), 'Suppression must retain schema-backed settings registration.' );
-			$before   = Futurebase\SEO\Settings::all();
-			$sanitize = $registered_settings['compseo_settings']['sanitize_callback'];
-			$after    = call_user_func( $sanitize, array( 'verification' => array( 'google' => 'changed' ) ) );
+			$settings_class = $seo_class( 'Settings' );
+			$before         = $settings_class::all();
+			$sanitize       = $registered_settings['compseo_settings']['sanitize_callback'];
+			$after          = call_user_func( $sanitize, array( 'verification' => array( 'google' => 'changed' ) ) );
 			$expect( $before === $after, 'Suppressed settings must remain read-only.' );
 			WP_CLI::success( 'Companion SEO registrar is suppressed while management remains available.' );
 			return;
@@ -817,7 +1102,8 @@ PHP;
 				3
 			);
 
-			$query_vars = Futurebase\SEO\Contracts::indexable_query_vars( array() );
+			$contracts_class = $seo_class( 'Contracts' );
+			$query_vars      = $contracts_class::indexable_query_vars( array() );
 			$expect( array() === $query_vars, 'Invalid indexable-query output did not retain the internal fallback.' );
 
 			ob_start();
@@ -844,8 +1130,11 @@ PHP;
 			$state = get_option( $state_key, array() );
 			if ( is_array( $state ) && isset( $state['ids'] ) && is_array( $state['ids'] ) ) {
 				foreach ( $state['ids'] as $post_id ) {
-					if ( is_numeric( $post_id ) ) {
-						wp_delete_post( (int) $post_id, true );
+					$post_ids = is_array( $post_id ) ? $post_id : array( $post_id );
+					foreach ( $post_ids as $candidate ) {
+						if ( is_numeric( $candidate ) ) {
+							wp_delete_post( (int) $candidate, true );
+						}
 					}
 				}
 				if ( isset( $state['term_ids'] ) && is_array( $state['term_ids'] ) ) {
@@ -870,6 +1159,8 @@ PHP;
 			delete_option( 'compseo_runtime_invalid_query_contract' );
 			delete_option( 'compseo_runtime_indexable_lang' );
 			delete_option( 'compseo_runtime_force_index' );
+			delete_option( 'compseo_runtime_force_noindex' );
+			delete_option( 'compseo_runtime_force_cross_noindex' );
 			delete_option( 'compseo_runtime_sitemap_page_size' );
 			flush_rewrite_rules();
 			WP_CLI::success( 'Companion SEO runtime fixtures removed.' );

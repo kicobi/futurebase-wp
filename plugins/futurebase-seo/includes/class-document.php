@@ -59,15 +59,18 @@ final class Document {
 		}
 
 		$context ??= Context::current();
+		$decision = Decision::resolve( $context );
 
 		$document = array(
 			'title'           => self::title( $context ),
 			'description'     => self::description( $context ),
-			'canonical'       => Canonical::resolve( $context ),
+			'canonical'       => $decision['canonical'],
 			'social_image_id' => self::social_image_id( $context ),
 		);
 
-		self::$resolved = Contracts::document( $document, $context );
+		$document              = Contracts::document( $document, $context );
+		$document['canonical'] = Canonical::cohere( $document['canonical'], $decision, $context );
+		self::$resolved        = $document;
 		return self::$resolved;
 	}
 

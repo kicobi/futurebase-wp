@@ -15,14 +15,18 @@ fi
 source "$CONTRACT"
 
 REQUIRE_TEMPLATE=0
-if [ "${1:-}" = "--require-template" ]; then
-	REQUIRE_TEMPLATE=1
+RUN_RUNTIME=0
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		--require-template) REQUIRE_TEMPLATE=1 ;;
+		--runtime) RUN_RUNTIME=1 ;;
+		*)
+			echo "usage: bash bin/test-rename.sh [--require-template] [--runtime]" >&2
+			exit 1
+			;;
+	esac
 	shift
-fi
-if [ "$#" -ne 0 ]; then
-	echo "usage: bash bin/test-rename.sh [--require-template]" >&2
-	exit 1
-fi
+done
 
 if ! grep -qE "$FUTUREBASE_TEMPLATE_TEXT_DOMAIN_RE" style.css 2>/dev/null; then
 	if [ "$REQUIRE_TEMPLATE" -eq 1 ]; then
@@ -60,7 +64,7 @@ fi
 # around the run line so the guard is tied to that step rather than merely
 # present somewhere in the file, and either YAML key order is accepted.
 WORKFLOW="$ROOT/.github/workflows/ci.yml"
-guard_window="$(grep -B2 -A2 -F 'bash bin/test-rename.sh --require-template' "$WORKFLOW" 2>/dev/null || true)"
+guard_window="$(grep -B2 -A2 -F 'bash bin/test-rename.sh --require-template --runtime' "$WORKFLOW" 2>/dev/null || true)"
 guard_problem=""
 if [ -z "$guard_window" ]; then
 	guard_problem="the required-template step is missing from .github/workflows/ci.yml"
@@ -77,9 +81,13 @@ fi
 
 WORKTREES=()
 LOG="$(mktemp -t rename-contract-test-log.XXXXXX)"
+RUNTIME_WT=""
 
 cleanup() {
 	local code=$?
+	if [ -n "$RUNTIME_WT" ] && [ -d "$RUNTIME_WT" ]; then
+		(cd "$RUNTIME_WT" && npm run env:stop >/dev/null 2>&1) || true
+	fi
 	for worktree in "${WORKTREES[@]-}"; do
 		[ -n "$worktree" ] && [ -d "$worktree" ] && git worktree remove --force "$worktree" >/dev/null 2>&1 || true
 	done
@@ -206,6 +214,20 @@ elif ! diff -qr "$build_snapshot" "$client_plugin/build" >>"$LOG" 2>&1; then
 	problems+=("renamed companion plugin build output was stale")
 fi
 rm -rf "$build_snapshot"
+
+if [ "$RUN_RUNTIME" -eq 1 ]; then
+	RUNTIME_WT="$WT2"
+	if ! (cd "$WT2" && npm run env:start >>"$LOG" 2>&1); then
+		problems+=("renamed companion WordPress environment failed to start")
+	elif ! (cd "$WT2" && bash bin/test-seo-runtime.sh >>"$LOG" 2>&1); then
+		problems+=("renamed companion plugin failed the complete runtime suite")
+	fi
+	if ! (cd "$WT2" && npm run env:stop >>"$LOG" 2>&1); then
+		problems+=("renamed companion WordPress environment failed to stop cleanly")
+	fi
+	RUNTIME_WT=""
+fi
+
 rm -f "$WT2/node_modules"
 if grep -qF "$REAL_NAME WP" "$WT2/style.css" "$WT2/readme.txt" "$WT2/functions.php" 2>/dev/null; then
 	problems+=("client display name retained a trailing WP product suffix")
@@ -269,8 +291,11 @@ if [ -n "$upper_left" ]; then
 fi
 
 # PORTABLE_BIN is copied verbatim, so every listed file must derive identity at
-# runtime and contain no base slug after a client rename.
-SYNC_LIB="$WT2/tools/project-system/lib/sync.mjs"
+# runtime. Inspect the starter-side manifest entries themselves, regardless of
+# extension, before rename can rewrite a forbidden literal into client identity.
+# The renamed worktree remains the runtime proof; the source tree is the
+# portability proof.
+SYNC_LIB="$ROOT/tools/project-system/lib/sync.mjs"
 portable_bin="$(node -e "
 	const { pathToFileURL } = require('node:url');
 	import(pathToFileURL(process.argv[1]).href).then((module) => {
@@ -282,15 +307,25 @@ portable_bin="$(node -e "
 if [ -z "$portable_bin" ]; then
 	problems+=("could not read PORTABLE_BIN")
 fi
+portable_forbidden=(
+	"$FUTUREBASE_BASE_SLUG"
+	"$FUTUREBASE_SEO_BASE_NAMESPACE"
+	"${FUTUREBASE_BASE_UPPER}_SEO_VERSION"
+	"${FUTUREBASE_BASE_UPPER}_SEO_FILE"
+	"${FUTUREBASE_BASE_UPPER}_SEO_BUILD_HANDLE"
+)
 for probe in fixtures $portable_bin; do
-	target="$WT2/$probe"
+	target="$ROOT/$probe"
 	if [ ! -e "$target" ]; then
-		[ "$probe" = fixtures ] || problems+=("$probe is listed in PORTABLE_BIN but missing")
+		[ "$probe" = fixtures ] || problems+=("$probe is listed as portable but missing")
 		continue
 	fi
-	if grep -rInl -- "$FUTUREBASE_BASE_SLUG" "$target" >/dev/null 2>&1; then
-		problems+=("$probe contains the base slug but is copied verbatim")
-	fi
+	for forbidden in "${portable_forbidden[@]}"; do
+		if grep -rInlF -- "$forbidden" "$target" >/dev/null 2>&1; then
+			problems+=("$probe contains starter technical identity but is copied verbatim")
+			break
+		fi
+	done
 done
 
 # PRODUCT_ONLY in the sync classifier and FUTUREBASE_PRODUCT_EXCLUSIONS here are

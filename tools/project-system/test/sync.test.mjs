@@ -168,6 +168,7 @@ test('identity-only review drift is omitted while prose, real drift, and safe fi
 		write(starter, 'docs/technical.md', "`futurebase` futurebase_register FUTUREBASE_VERSION futurebase/home futurebase-main @package futurebase\n");
 		write(starter, 'docs/prose.md', 'The futurebase project has deliberate prose.\n');
 		write(starter, 'docs/changed.md', '`futurebase` original behavior.\n');
+		write(starter, 'docs/neutral.md', 'Identity-neutral review content.\n');
 		write(starter, 'tools/project-system/portable.txt', '`futurebase`\n');
 		const ref = commitAll(starter, 'starter identity');
 
@@ -175,13 +176,44 @@ test('identity-only review drift is omitted while prose, real drift, and safe fi
 		write(projectRoot, 'docs/technical.md', "`acme-client` acme_client_register ACME_CLIENT_VERSION acme-client/home acme-client-main @package acme-client\n");
 		write(projectRoot, 'docs/prose.md', 'The acme-client project has deliberate prose.\n');
 		write(projectRoot, 'docs/changed.md', '`acme-client` materially different behavior.\n');
+		write(projectRoot, 'docs/neutral.md', 'Identity-neutral review content.\n');
 		write(projectRoot, 'tools/project-system/portable.txt', '`acme-client`\n');
 
 		const byPath = new Map(planFiles({ projectRoot, starter, ref }).map((entry) => [entry.rel, entry]));
 		assert.equal(byPath.get('docs/technical.md').state, 'up-to-date');
 		assert.notEqual(byPath.get('docs/prose.md').state, 'up-to-date', 'unquoted client prose is never normalized');
 		assert.notEqual(byPath.get('docs/changed.md').state, 'up-to-date', 'real review drift remains visible');
+		assert.equal(byPath.get('docs/neutral.md').state, 'up-to-date', 'identity-free review bytes still compare directly');
 		assert.notEqual(byPath.get('tools/project-system/portable.txt').state, 'up-to-date', 'safe files retain byte comparison');
+
+		write(projectRoot, 'docs/technical.md', "`futurebase` futurebase_register FUTUREBASE_VERSION futurebase/home futurebase-main @package futurebase\n");
+		const rawStarter = new Map(planFiles({ projectRoot, starter, ref }).map((entry) => [entry.rel, entry]));
+		assert.equal(rawStarter.get('docs/technical.md').state, 'conflict', 'raw starter identity at a promoted review path stays visible');
+	} finally {
+		cleanup();
+	}
+});
+
+test('binary review files retain exact byte comparison', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const starter = join(dir, 'starter');
+		const projectRoot = join(dir, 'project');
+		initRepo(starter);
+		mkdirSync(projectRoot);
+		write(starter, 'style.css', '/*\nTheme Name: Futurebase WP\nText Domain: futurebase\n*/\n');
+		write(starter, 'docs/evidence.bin', Buffer.from([0x00, 0x66, 0x75, 0x74, 0x75, 0x72, 0x65]));
+		const ref = commitAll(starter, 'binary review evidence');
+
+		write(projectRoot, 'style.css', '/*\nTheme Name: Acme Client\nText Domain: acme-client\n*/\n');
+		write(projectRoot, 'docs/evidence.bin', Buffer.from([0x00, 0x66, 0x75, 0x74, 0x75, 0x72, 0x65]));
+		let entry = planFiles({ projectRoot, starter, ref }).find((candidate) => candidate.rel === 'docs/evidence.bin');
+		assert.equal(entry?.cls, CLASS.REVIEW);
+		assert.equal(entry?.state, 'up-to-date');
+
+		write(projectRoot, 'docs/evidence.bin', Buffer.from([0x00, 0x63, 0x6c, 0x69, 0x65, 0x6e, 0x74]));
+		entry = planFiles({ projectRoot, starter, ref }).find((candidate) => candidate.rel === 'docs/evidence.bin');
+		assert.equal(entry?.state, 'conflict');
 	} finally {
 		cleanup();
 	}
@@ -219,6 +251,14 @@ test('renamed plugin identity is omitted while real plugin drift remains review-
 		assert.equal(byPath.get('.wp-env.json').state, 'up-to-date');
 		assert.equal(byPath.get('plugins/acme-client-seo/includes/class-plugin.php').cls, CLASS.REVIEW);
 		assert.equal(byPath.get('plugins/acme-client-seo/includes/class-plugin.php').state, 'conflict');
+
+		write(
+			projectRoot,
+			'plugins/acme-client-seo/acme-client-seo.php',
+			" * Plugin Name:       Futurebase SEO\n * Text Domain:       futurebase-seo\n * @package futurebase-seo\nnamespace Futurebase\\SEO;\ndefine('FUTUREBASE_SEO_VERSION', '0.1.0');\ndefine('FUTUREBASE_SEO_HANDLE', 'futurebase-seo-editor');\nconst META = '_compseo_title';\n",
+		);
+		const rawStarter = new Map(planFiles({ projectRoot, starter, ref }).map((entry) => [entry.rel, entry]));
+		assert.equal(rawStarter.get('plugins/acme-client-seo/acme-client-seo.php').state, 'conflict', 'raw starter plugin identity at the mapped client path is never current');
 	} finally {
 		cleanup();
 	}
@@ -638,10 +678,12 @@ test('the sync-safe workflow receives the complete companion SEO runtime closure
 	}
 });
 
-test('the verifier runner invokes its checker and executable negative tests', () => {
+test('the verifier runner invokes theme and optional companion contract tests directly', () => {
 	const runner = readFileSync(resolve(TOOL_ROOT, '..', '..', 'bin', 'verify-theme.sh'), 'utf8');
 	assert.match(runner, /node bin\/verify-contract\.mjs/);
 	assert.match(runner, /node --test bin\/verify-contract\.test\.mjs/);
+	assert.match(runner, /node --test bin\/verify-seo-contract\.test\.mjs/);
+	assert.match(runner, /seo_plugin_dir/);
 	for (const rel of VERIFIER_CLOSURE) assert.equal(classifyPath(rel), CLASS.SAFE, `${rel} must travel with the verifier runner`);
 });
 
