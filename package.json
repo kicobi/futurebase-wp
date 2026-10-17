@@ -38,7 +38,7 @@
 		"tmp": "^0.2.6",
 		"uuid": "^11.1.1",
 		"postcss": "^8.5.25",
-		"js-yaml": "^5.2.2"
+		"js-yaml": "^5.5.0"
 	},
 	"scripts": {
 		"start": "wp-scripts start",
