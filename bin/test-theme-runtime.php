@@ -51,6 +51,16 @@ call_user_func(
 			$markup = $pattern( 'comments' );
 			$empty  = do_blocks( $markup );
 			$check( str_contains( $empty, 'id="commentform"' ), 'Empty open comments have no form.' );
+			$headings = new WP_HTML_Tag_Processor( $empty );
+			$check(
+				$headings->next_tag(
+					array(
+						'tag_name'   => 'H2',
+						'class_name' => 'comment-reply-title',
+					)
+				),
+				'Empty discussion skips a heading level before the reply form.'
+			);
 			foreach ( array( 'First visible comment', 'Second visible comment' ) as $content ) {
 				wp_insert_comment(
 					array(
