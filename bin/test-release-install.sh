@@ -24,6 +24,9 @@ const [root, target] = process.argv.slice(2);
 const baseline = JSON.parse(readFileSync(`${root}/.wp-env.json`, 'utf8'));
 writeFileSync(`${target}/.wp-env.json`, JSON.stringify({
     core: baseline.core, phpVersion: baseline.phpVersion,
+    // wp-env disables --auto-port in CI. Reserve a separate port from the
+    // mounted-source environment on 8888; local runs can still auto-fallback.
+    port: 8890,
     testsEnvironment: false, themes: [], plugins: [],
     mappings: { 'wp-content/release-tests': root },
     config: { WP_DEBUG: true, WP_DEBUG_LOG: true }

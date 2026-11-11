@@ -1,9 +1,13 @@
 # Public-release review evidence — 2026-11-11
 
 This report describes the upstream starter, before client customization.
-Reviewed implementation: `351d900b75620139e9016f3aa814ba3a6e6917f9`, based on
+Local implementation review: `351d900b75620139e9016f3aa814ba3a6e6917f9`, based on
 `main` at `35c030d425b97eb837f95ce998d0dcb82530f1f0`.
-Branch: `codex/public-release-hardening`. Nothing has been pushed or published.
+Branch: `codex/public-release-hardening`, pushed for
+[PR #173](https://github.com/kicobi/futurebase-wp/pull/173).
+The PR records the final reviewed commit and remote workflow results, including
+the CI installation follow-up described below. The repository remains private;
+no merge, deployment, or release has been performed.
 The existing README rewrite and both approved PNGs were retained.
 
 The implementation is prepared for human review. Public release still requires
@@ -134,15 +138,21 @@ review found no additional justified change after its runtime regressions passed
 
 ## Before making the repository public
 
-- Run the committed GitHub workflows on the pushed branch. The new remote
-  matrix has not run for these local commits. PR gates cover both corners;
-  scheduled/release/manual gates cover all six WordPress/PHP cells.
+- Require green CI, compatibility, and scorecard workflows on the PR. PR
+  compatibility gates cover both corners; scheduled/release/manual gates cover
+  all six WordPress/PHP cells. See PR #173 for the remote run links and results.
 - Complete human code review and real assistive-technology checks: screen
   reader operation, browser zoom/reflow, real devices, Firefox/Safari, and a
   full RTL-language/editor pass. Automated results and direction emulation do
   not establish WCAG 2.2 AA conformance.
 - Validate hosting-specific configuration and performance on the eventual demo
-  host. No deployment, visibility change, push, or release was performed here.
+  host.
+
+The first remote compatibility run caught a test-environment port collision:
+wp-env disables automatic port selection when `CI` is set. The clean ZIP
+installation harness now reserves port 8890 separately from the mounted-source
+instance on 8888, while retaining automatic fallback for local runs. The
+regression is exercised by running both installations together in CI mode.
 
 Enabling GitHub's private vulnerability reporting when the repository becomes
 public is recommended housekeeping, not a release gate. Its API returned 404
