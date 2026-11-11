@@ -8,8 +8,8 @@ synthetic credentials and anonymized fixtures.
 
 If the private form is unavailable, open an issue asking only for a private
 reporting channel. Do not include exploit details, credentials, or client data
-in public issues. Maintainers should enable private vulnerability reporting
-before making the repository public.
+in public issues. Enabling GitHub's private vulnerability reporting when the
+repository becomes public is recommended housekeeping, not a release gate.
 
 Security fixes target the current starter branch and its documented minimum
 WordPress/PHP versions. Promoted client projects own their update process;

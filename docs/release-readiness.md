@@ -141,11 +141,13 @@ review found no additional justified change after its runtime regressions passed
   reader operation, browser zoom/reflow, real devices, Firefox/Safari, and a
   full RTL-language/editor pass. Automated results and direction emulation do
   not establish WCAG 2.2 AA conformance.
-- Confirm private vulnerability reporting is available when changing repository
-  visibility. Its API returned 404 while this repository was private; availability
-  is not established. [SECURITY.md](../SECURITY.md) includes a safe fallback.
 - Validate hosting-specific configuration and performance on the eventual demo
   host. No deployment, visibility change, push, or release was performed here.
+
+Enabling GitHub's private vulnerability reporting when the repository becomes
+public is recommended housekeeping, not a release gate. Its API returned 404
+while this repository was private, so availability is not established.
+[SECURITY.md](../SECURITY.md) includes a safe fallback.
 
 Use the [review guide](full-repo-review-prompt.md) with the implementation commit
 above. Client projects must repeat their own acceptance checks after changing
