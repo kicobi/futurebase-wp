@@ -16,9 +16,10 @@ import { templatesDir, requirePath } from '../../lib/paths.mjs';
 import { writeYaml } from '../../lib/yaml.mjs';
 import { validateProject } from '../../lib/validate.mjs';
 import { newCloseoutRecord } from '../../lib/closeout.mjs';
+import { PROJECT_PRIVATE_IGNORES } from '../../lib/privacy-paths.mjs';
 
 const PROJECT_DIRS = ['brief', 'analysis', 'proposal', 'decisions', 'metrics', 'baseline', 'final', 'closeout', 'reports', 'follow-up', 'private'];
-const GITIGNORE_LINES = ['.project/private/', '.project/credentials/', '.project/auth/', '.project/**/raw-private/'];
+const GITIGNORE_LINES = PROJECT_PRIVATE_IGNORES;
 
 const titleize = (slug) => slug.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 

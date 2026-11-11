@@ -148,8 +148,12 @@ final class Cli {
 		}
 
 		$format = self::format( $assoc_args );
-		$before = Cleanup::report();
-		$data   = array(
+		try {
+			$before = Cleanup::report();
+		} catch ( \RuntimeException ) {
+			\WP_CLI::error( 'Companion SEO cleanup could not read database counts. No cleanup was attempted.' );
+		}
+		$data = array(
 			'action'              => 'dry-run',
 			'site_id'             => get_current_blog_id(),
 			'site_url'            => home_url( '/' ),
@@ -268,6 +272,12 @@ final class Cli {
 
 		try {
 			$wp = new \WP();
+			// Registered CPT/taxonomy query variables are attached during init to
+			// the existing WP instance. A fresh instance otherwise loses them.
+			if ( $original['wp'] instanceof \WP ) {
+				$wp->public_query_vars  = $original['wp']->public_query_vars;
+				$wp->private_query_vars = $original['wp']->private_query_vars;
+			}
 			if ( ! $wp->parse_request() ) {
 				\WP_CLI::error( 'WordPress could not parse the decision target.' );
 			}

@@ -770,3 +770,33 @@ test('the documented --allow-mismatch override is actually reachable', () => {
 	const result = spawnSync(process.execPath, [CLI, 'compare', '--project-root', '/nonexistent', '--allow-mismatch', '--json'], { encoding: 'utf8' });
 	assert.doesNotMatch(result.stderr + result.stdout, /unknown option/i, 'the flag must be registered');
 });
+
+test('lock adoption refuses optional client packages and unsupported dependency arrangements', () => {
+	const { dir, cleanup } = sandbox();
+	try {
+		const starter = join(dir, 'starter');
+		const projectRoot = join(dir, 'project');
+		initRepo(starter);
+		mkdirSync(projectRoot);
+		const identity = { name: 'futurebase', version: '2.0.0' };
+		write(starter, 'package.json', JSON.stringify(identity));
+		write(starter, 'package-lock.json', JSON.stringify({ ...identity, lockfileVersion: 3, packages: { '': identity } }));
+		const ref = commitAll(starter, 'dependency fixture');
+		for (const extra of [
+			{ optionalDependencies: { 'client-only': '^1.0.0' } },
+			{ peerDependencies: { 'client-peer': '^1.0.0' } },
+			{ workspaces: ['packages/*'] },
+			{ dependencies: { local: 'file:../local' } },
+			{ bundledDependencies: ['client-only'] },
+		]) {
+			write(projectRoot, 'package.json', JSON.stringify({ ...identity, name: 'client-theme', ...extra }));
+			const lock = planDeps({ projectRoot, starter, ref }).find((entry) => entry.rel === 'package-lock.json');
+			assert.equal(lock.state, 'blocked', JSON.stringify(extra));
+			assert.equal(lock.next, undefined);
+		}
+		write(projectRoot, 'package.json', JSON.stringify({ ...identity, name: 'client-theme' }));
+		assert.equal(planDeps({ projectRoot, starter, ref }).find((entry) => entry.rel === 'package-lock.json').state, 'add');
+	} finally {
+		cleanup();
+	}
+});

@@ -21,7 +21,7 @@ else
 fi
 
 wp() {
-	npx --silent wp-env run cli wp "$@"
+	(cd "${WP_ENV_TEST_ROOT:-$ROOT}" && "$ROOT/node_modules/.bin/wp-env" run cli wp "$@")
 }
 
 pass() { printf '  ✓ %s\n' "$1"; }
@@ -79,6 +79,7 @@ SEO_TEST_THEME_DIR=$(
 		|| true
 )
 [ -n "$SEO_TEST_THEME_DIR" ] || fail "could not resolve the container-side theme directory"
+SEO_TEST_THEME_DIR="${SEO_TEST_HARNESS_DIR:-$SEO_TEST_THEME_DIR}"
 
 wp eval-file "$SEO_TEST_THEME_DIR/bin/test-seo-runtime.php" install-plugins > /dev/null
 wp plugin activate compseo-runtime-fixture > /dev/null
@@ -92,6 +93,16 @@ wp eval-file "$SEO_TEST_THEME_DIR/bin/test-seo-runtime.php" assert-settings > /d
 pass "schema-versioned settings sanitize verification tags without echoing rejected values"
 wp eval-file "$SEO_TEST_THEME_DIR/bin/test-seo-runtime.php" assert-editor > /dev/null
 pass "supported block-editor screens receive the compiled SEO sidebar asset"
+wp eval-file "$SEO_TEST_THEME_DIR/bin/test-seo-runtime.php" assert-hardening > /dev/null
+pass "plain/pretty routing, pagination, raw query keys, shared URL validation, unrelated canonicals, and REST roles"
+for phase in initial final; do
+	if failure=$(wp eval-file "$SEO_TEST_THEME_DIR/bin/test-seo-runtime.php" "assert-cleanup-error-$phase" 2>&1); then
+		fail "cleanup succeeded after a $phase verification read failure"
+	fi
+	contains "$failure" 'Error: Companion SEO cleanup' || fail "cleanup did not return its controlled failure result"
+	not_contains "$failure" '"action":"purged"' || fail "cleanup emitted a success result after failed verification"
+done
+pass "cleanup fails with a nonzero CLI result on initial and final count-read errors"
 
 SEO_TEST_PUBLIC_ID=$(wp post list --post_type=post --name=compseo-runtime-public --field=ID --format=ids | tail -1 | tr -d '\r')
 SEO_TEST_NO_IMAGE_ID=$(wp post list --post_type=post --name=compseo-runtime-no-image --field=ID --format=ids | tail -1 | tr -d '\r')

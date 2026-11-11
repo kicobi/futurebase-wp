@@ -1,335 +1,392 @@
 <!-- project-intro:start -->
+
 # Futurebase WP
 
-**A futureproof base for accessible, maintainable WordPress websites.**
+**A WordPress block-theme starter for accessible, maintainable client websites.**
 
-Futurebase is the product family. Futurebase WP is its WordPress foundation: a modern Full Site Editing base with AI agent guardrails baked in. See [docs/futurebase-wp.md](docs/futurebase-wp.md) for the canonical product narrative and [docs/scorecard.md](docs/scorecard.md) for the evidence model behind it.
+Futurebase WP gives developers a starting point for custom WordPress sites:
+native Site Editor templates, reusable section patterns, and a design system
+defined in `theme.json`. It includes the build tools, checks, and project
+workflow used to turn that foundation into a client-owned theme.
+
+Built on [them.es/starter-fse](https://github.com/them-es/starter-fse), it includes:
+
+-   **Block-theme foundations:** composable patterns, style variations, fluid
+    typography, and a curated editor.
+-   **Development tooling:** `@wordpress/scripts`, SCSS, Docker-based `wp-env`,
+    block and post-type scaffolds, and installable ZIP packaging.
+-   **Quality checks:** WordPress coding standards, PHPStan, automated
+    accessibility checks, and Lighthouse regression budgets.
+-   **An optional companion SEO plugin:** developed here, built and deployed separately.
+-   **Optional delivery tools:** lead workspaces, baseline measurements,
+    before/after reports, and project closeout.
+-   **AI-assisted development support:** repository instructions and vendored
+    WordPress skills for Codex and Claude Code.
+
+This is a developer starter: expect to adapt its tokens, patterns, content,
+and editor choices to each project. See the [product overview](docs/futurebase-wp.md)
+for the wider context.
+
+The [compatibility workflow](.github/workflows/wordpress-compatibility.yml)
+checks the supported WordPress floor and latest stable release.
+
+[Get started](#get-started) · [Development](#local-development) ·
+[Validation](#validation-and-accessibility) · [Documentation](#documentation)
+
 <!-- project-intro:end -->
-
-## What this is
-
-A private WordPress foundation intended to be used as a [GitHub template repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-template-repository) for spinning up WordPress client sites. Built on top of [them.es/starter-fse](https://github.com/them-es/starter-fse), with:
-
-- **PHP 8.3+ / WordPress 6.9+ floor** — see "Hosting baseline" below
-- `@wordpress/scripts` + SCSS build pipeline
-- An intentionally light theme layer that leans on modern block-theme defaults
-- `wp-env` for local development (Docker)
-- PHPCS (WordPress Coding Standards) + PHPStan (`szepeviktor/phpstan-wordpress`)
-- AI agent skills preinstalled in `.claude/skills/` and `.codex/skills/` from the official [WordPress/agent-skills](https://github.com/WordPress/agent-skills) pack
-- Repo-level `AGENTS.md` (Codex) and `CLAUDE.md` (Claude Code) to keep agents on modern Gutenberg-era patterns
-- A `PostToolUse` hook in `.claude/settings.json` that runs `npm run lint` after Claude edits
 
 ## Hosting baseline
 
-**This starter targets modern managed/VPS WordPress hosting and current local dev stacks.** The PHP floor is **8.3**, the WordPress floor is **6.9**.
+Sites built with this starter require **WordPress 6.9+ and PHP 8.3+**.
+For new deployments, use current stable WordPress and PHP 8.5. Minimum
+compatibility, recommended hosting, and verified versions are distinguished in
+the [dependency policy](docs/dependency-policy.md) and
+[release evidence](docs/release-readiness.md).
 
-This is stricter than both WordPress core (which only requires PHP 7.4 in WP 7.0) and the upstream `WordPress/agent-skills` pack (PHP 7.2.24+). That is intentional — the target is Kinsta, WP Engine, Pressable, Pantheon, Rocket.net, Cloudways, and equivalent hosts, plus modern local dev (wp-env, Studio, LocalWP with PHP 8.3+).
+For local development:
 
-**Do not use this template as a base for projects targeting legacy shared hosts.** Fork a different starter for those.
+| Tool                | Requirement                                                                 |
+| ------------------- | --------------------------------------------------------------------------- |
+| Node.js and npm     | Node 26 LTS by default (`.nvmrc`); Node 22/24 supported; npm 11.16+ |
+| PHP and Composer    | PHP 8.3+ and Composer 2 for the local PHP checks                            |
+| Docker              | A running Docker environment with Compose for `wp-env`                      |
+| Git and shell tools | Git, Bash, Perl, and standard Unix utilities                                |
+| Packaging tools     | `rsync`, `zip`, and `unzip` for release ZIPs and their checks               |
 
-Dependency updates are reviewed as build-tooling changes, even when automated:
-rebase the update, inspect its direct and transitive changes, and run the full
-verification stack before merging. An alert in a development-only dependency
-does not affect the shipped theme runtime, but it can still affect local builds
-and CI.
-
-### Tested against
-
-| Package | Version |
-| --- | --- |
-| `@wordpress/scripts` | `34.0.0` |
-| `@wordpress/env` | `11.12.0` |
-| WordPress | 6.9 |
-| PHP | 8.3 |
+The shell scripts assume a Unix-like environment; use WSL on Windows.
+Local WordPress and PHP versions are pinned in [`.wp-env.json`](.wp-env.json)
+to 6.9 and 8.3. CI also gates current stable WordPress/PHP 8.5, with the full
+PHP 8.3–8.5 matrix scheduled and run for releases.
 
 <!-- template-setup:start -->
-## Quick start with GitHub CLI
 
-Requires [`gh`](https://cli.github.com) authenticated (`gh auth login`). The template repo must have the **Template repository** setting enabled on GitHub.
+## Get started
+
+### Try the starter locally
+
+Clone the repository, then follow [Local development](#local-development):
 
 ```bash
-gh repo create kicobi/<new-project-name> --template kicobi/futurebase-wp --private --clone
-cd <new-project-name>
-npm run rename -- <theme-slug> \
-  --theme-name "<Theme Name>" \
-  --theme-version 1.0.0 \
-  --theme-uri https://kicobi.com \
-  --repository kicobi/<new-project-name>
-composer update --lock --no-install --no-interaction
-npm install && npm ci --prefix tools/project-system --ignore-scripts && composer install
-npm run env:start
+git clone https://github.com/kicobi/futurebase-wp.git futurebase
+cd futurebase
 ```
 
-`<theme-slug>` follows the rename rules below (lowercase, dashes only, no underscores). Typically matches `<new-project-name>`, but doesn't have to.
+### Create a new project
 
-For the web-based flow, see the next section.
+Use GitHub's **Use this template → Create a new repository**, then clone your
+new repository. This requires the source repository's **Template repository**
+setting to be enabled.
 
-## Creating a new project from this template manually
+Alternatively, with [GitHub CLI](https://cli.github.com) installed and
+authenticated, replace `your-account` with your own user or organization:
 
-Enabling and verifying GitHub's **Template repository** flag is a manual repository-settings step on GitHub. Confirm that setting before relying on the **Use this template** flow below.
+```bash
+gh repo create your-account/acme-client \
+  --template kicobi/futurebase-wp --private --clone
+cd acme-client
+```
 
-1. On GitHub, confirm the repository has **Template repository** enabled, then click **"Use this template → Create a new repository"**.
-2. Clone the new repo locally into `wp-content/themes/<your-slug>/` (or anywhere, if using `wp-env`).
-3. Run the **rename checklist** below *before* writing any project code.
-4. `npm install && npm ci --prefix tools/project-system --ignore-scripts && composer install`.
-5. `npm run env:start` to boot a local WordPress at `http://localhost:8888` (admin at `/wp-admin`, user `admin` / password `password`).
-
-## Rename checklist (mandatory on every new project)
-
-The template ships with the slug `futurebase` everywhere. **Use the rename script** — doing this by hand is error-prone because the rename spans PHP, JSON, HTML, XML, shell scripts, and Markdown.
+Rename the theme **before writing project code**. Replace the example identity
+with your own:
 
 ```bash
 npm run rename -- acme-client \
-	--theme-name "Acme Client" \
-	--theme-version 1.0.0 \
-	--repository acme/acme-client \
-  --contributors "acme, jsmith" \
-  --theme-uri    https://example.com
+  --theme-name "Acme Client" \
+  --theme-version 1.0.0 \
+  --theme-uri https://example.com \
+  --repository your-account/acme-client \
+  --contributors "your-account"
+composer update --lock --no-install --no-interaction
 ```
 
-The positional `<slug>` is mandatory. Theme name defaults to the title-cased slug and version defaults to `1.0.0`; promotion supplies every identity field explicitly.
+Slugs must start with a lowercase letter and contain lowercase letters, digits,
+and single separating hyphens. They must not contain `futurebase`.
+The rename script runs without installed npm dependencies; the Composer
+command refreshes the lockfile hash after the package identity changes.
 
-The script performs the following edits in one pass:
+The script updates the theme name, version, text domain, PHP prefixes, pattern
+namespaces, repository metadata, and companion plugin identity. It also
+replaces this introduction, removes template-only setup and product assets,
+and preserves the companion plugin's permanent data keys. Use the script
+rather than a global search-and-replace.
 
-1. **Theme slug** — lowercase, dashes only, no underscores (e.g. `acme-client`, not `acme_client` or `AcmeClient`).
-2. **Text domain** = theme slug. Replaces `'futurebase'` → `'<slug>'` in every PHP i18n call.
-3. **Function prefix** — slug converted to `snake_case`. Replaces `futurebase_` → `<slug_snake>_`.
-4. **Constant prefix** — the same prefix in caps. Replaces `FUTUREBASE_` → `<SLUG_SNAKE>_`, covering PHP global constants and the one env var (`FUTUREBASE_DIST_DIR`) spelled that way. They share the global namespace `phpcs` checks against the renamed `prefixes` property, so a constant left behind fails lint.
-5. **Pattern slugs** — every `futurebase/…` pattern slug becomes `<slug>/…` in both pattern headers and template `wp:pattern` references.
-6. **Display identity** — updates the theme name, WordPress readme title, PHP docblocks, and the managed client README introduction.
-7. **Client version** — updates `style.css`, `readme.txt`, `package.json`, and both root-package version fields in `package-lock.json`.
-8. **Repository identity** — updates Theme URI, npm repository/homepage/bugs fields, and the Composer vendor/package when `--repository` is supplied.
-9. **`phpcs.xml.dist`** — updates the dashed text domain and snake-case prefix independently.
-10. **Client readme history** — resets `readme.txt` to one initial client release and leaves exactly one Futurebase WP provenance sentence in `README.md`.
-11. **Companion plugin identity** — renames `futurebase-seo` to `<slug>-seo`, including its bootstrap, display name, namespace, text domain, constants, asset handles, and configuration paths, while preserving every neutral `compseo` database key and hook.
-12. **Base-only product material** — removes the Futurebase WP narrative, company-site brief, social image, and branded theme screenshot from the client checkout while rewriting client-owned identity in `docs/`, `src/`, and `inc/`.
+Before continuing:
 
-Markdown lines that intentionally name the starter, product, or `futurebase` CLI carry the exact `<!-- futurebase-rename: keep-line -->` marker and remain unchanged. Client-specific technical examples continue to be renamed, so no starter-history prose needs manual repair. <!-- futurebase-rename: keep-line -->
+-   Match the checkout directory to your theme slug.
+-   Review the description, tags, author, and author URI in `style.css`,
+    contributors in `readme.txt`, and author in `package.json`. Kicobi author
+    fields are preserved by the rename and need your review.
+-   Add your own `screenshot.png`; the starter's branded screenshot is removed.
+-   Regenerate translation files in `languages/` when preparing a release.
 
-Re-running the script with the same arguments is a no-op — the `Contributors:` line isn't duplicated, and already-renamed references don't match the search pattern.
+Continue with [Local development](#local-development), then run the checks
+under [Validation](#validation-and-accessibility).
 
-After running, manually review:
+If you already have a lead workspace, use the
+[lead promotion workflow](docs/project-lifecycle.md#2-promotion-lead--active)
+instead of creating and renaming a second project by hand.
 
-- **Directory on disk** — the theme folder name must equal the slug.
-- **Theme metadata** — review `Description` and `Tags` in `style.css`, plus `Contributors` in `readme.txt`. The Kicobi author fields intentionally carry into client themes. If you skipped `--theme-uri` or `--contributors`, review those values too.
-- **`package.json`** — review the author after repository identity is set.
-- **`screenshot.png`** — add a client-branded theme screenshot; the Futurebase WP product screenshot is removed automatically.
-- **Translation files** — regenerate `.pot` / `.mo` in `languages/` if you carry them over.
-
-The rename is offline and reconciles npm lockfile identity without package resolution. Because Composer derives its lock hash from the renamed package, finish with `composer update --lock --no-install --no-interaction` before committing.
-
-Run `npm run verify` afterwards to confirm nothing drifted.
 <!-- template-setup:end -->
 
-## Troubleshooting
+## Local development
 
-**`npm run env:start` fails with "port already allocated".**
-A previous wp-env instance is still running on the same port. Run `docker ps` to find the lingering container, then `npm run env:stop` from the project directory that owns it. If the directory no longer exists, stop the container directly with `docker stop <container-id>` and `docker rm <container-id>`.
-
-## Scripts
+Run these commands from the repository root with Docker running:
 
 ```bash
-npm run start          # watch theme assets (assets/main.{js,scss})
-npm run start:blocks   # watch theme-bound blocks (src/blocks/**)
-npm run build          # production build — theme assets + blocks
-npm run build:theme    # theme assets only
-npm run build:blocks   # blocks only (skips cleanly if src/blocks/ is empty)
-npm run build:seo      # separately compile the companion SEO plugin
-npm run package:seo:check # validate its independent plugin ZIP
-npm run block:new -- <slug> # scaffold a theme-bound block at src/blocks/<slug>/
-npm run cpt:new -- <slug>   # scaffold a custom post type at inc/post-types/<slug>.php
-npm run lint           # lint JS (same as lint:js; matches the PostToolUse hook)
-npm run lint:js        # lint JS
-npm run lint:css       # lint SCSS/CSS
-npm run lint:pkg       # lint package.json against @wordpress/scripts rules
-npm run format         # format source/docs (honours .prettierignore)
-npm run verify         # block theme standards + lint + phpcs + phpstan + pa11y
-npm run a11y           # pa11y-ci against the local wp-env (expects :8888 — verify probes the real port)
-npm run test:navigation # destructive navigation-migration scenarios against disposable wp-env
-npm run lighthouse:sample -- --url=https://example.com/ # sample arbitrary public production content
-npm run rename -- <slug> --theme-name "<name>" --theme-version <semver> \
-  --theme-uri <url> --repository <owner/repository> [--contributors "foo, bar"]
-                       # rename client identity and reconcile root npm-lock metadata offline
-npm run env:start      # boot wp-env (latest stable WordPress, theme mounted)
-npm run env:stop       # stop wp-env containers (data preserved)
-npm run env:destroy    # stop and delete wp-env containers + volumes
-npm run env:clean      # wipe the wp-env database (all environments)
-npm run env:cli -- ... # run WP-CLI inside wp-env, e.g. `npm run env:cli -- plugin list`
-
-composer phpcs         # PHPCS against WordPress Coding Standards
-composer phpcbf        # auto-fix PHPCS issues where possible
-composer phpstan       # PHPStan level 6 with WordPress stubs
+npm install --global npm@11.16.0
+npm ci
+composer install
+npm run build
+npm run build:seo
+npm run env:start
+npm run env:cli -- theme activate "$(basename "$PWD")"
 ```
 
-Build scope: `npm run build` runs `build:theme` (compiles `assets/main.{js,scss}`
-into `build/`) and then `build:blocks` (compiles `src/blocks/*/block.json` into
-`build/blocks/` via `@wordpress/scripts`' standard block discovery). Blocks
-auto-register through `futurebase_register_blocks()` in
-[functions.php](functions.php) on `init`. A fresh repo with no blocks is fine
-— `build:blocks` exits 0 when `src/blocks/` is empty. The companion plugin uses
-its own `build:seo` command so theme builds and theme ZIPs never absorb plugin
-code.
+The theme activation command uses the checkout directory name, which is how
+`wp-env` mounts the theme. Building the companion plugin is separate from
+building the theme; both are mounted by the default local configuration.
 
-### Companion SEO plugin
+Open the URL printed by `env:start`. It normally starts at
+`http://localhost:8888`, but `--auto-port` selects another port if needed.
+The local [wp-env](https://developer.wordpress.org/block-editor/reference-guides/packages/packages-env/)
+admin is at `/wp-admin/`, with username `admin` and password `password`.
 
-The SEO companion is developed in this repository but packaged and deployed
-separately from the theme. Start with [the SEO stance](docs/seo.md) for the
-theme/plugin boundary and current status, read the
-[plugin README](plugins/futurebase-seo/README.md) for runtime behavior and
-permanent extension contracts, and see
-[the plugin strategy](docs/plugin-strategy.md) for promotion, ownership, sync,
-and maintenance policy.
+### Load the demo content
 
-## AI agents
+On a disposable local instance, import the fixture to explore the patterns
+and provide the pages used by the accessibility and performance checks:
 
-This repo is set up for two assistants in parallel:
+```bash
+npm run demo:import -- --force
+```
 
-- **Claude Code** reads [CLAUDE.md](CLAUDE.md) and the skills in `.claude/skills/`.
-- **Codex** reads [AGENTS.md](AGENTS.md) and the skills in `.codex/skills/`.
+**This deletes the local site's existing content and uploads before importing
+the demo.** It also activates the theme. Use a separate instance if you need
+to preserve your current work.
 
-### Block theme standards
+### Everyday commands
 
-The agent instructions define a nine-item [Technical Contract](CLAUDE.md#block-theme-standards) scoped to the homepage/front-page workflow — tokens, fluid type, template/pattern separation, role-based media, and others. See CLAUDE.md for the scope boundary (non-homepage templates and site chrome are exempt from specific items) and for which items are CI-enforced versus review-enforced. Supporting docs:
+| Command                            | Purpose                                                   |
+| ---------------------------------- | --------------------------------------------------------- |
+| `npm run start`                    | Watch the theme's `assets/main.js` and `assets/main.scss` |
+| `npm run start:blocks`             | Watch custom blocks under `src/blocks/`                   |
+| `npm run start:seo`                | Watch the companion plugin's assets                       |
+| `npm run build`                    | Build the theme and its custom blocks into `build/`       |
+| `npm run build:seo`                | Build the companion plugin's assets                       |
+| `npm run block:new -- author-card` | Scaffold a theme-bound dynamic block                      |
+| `npm run cpt:new -- case-study`    | Scaffold a theme-coupled custom post type                 |
+| `npm run env:cli -- plugin list`   | Run WP-CLI inside the local environment                   |
+| `npm run env:reset`               | Reset wp-env databases (destructive; `env:clean` remains an alias) |
+| `npm run env:stop`                 | Stop the containers while preserving their data           |
 
-- [docs/pattern-composition.md](docs/pattern-composition.md) — how templates, page patterns, and section patterns fit together.
-- [docs/media-conventions.md](docs/media-conventions.md) — the role-not-format rule for images, SVGs, and fonts.
-- [docs/weight-vs-size-terminology.md](docs/weight-vs-size-terminology.md) — disambiguating "medium" across size, weight, and spacing.
-- [docs/conventions.md](docs/conventions.md) — slug substitution, `[PLACEHOLDER]` grammar, and the `TODO(kind):` comment vocabulary.
+Compiled theme and plugin assets are committed. Include the relevant build
+output when changing source assets. Theme builds handle an empty
+`src/blocks/` directory without error.
 
-### Project workflow
+Prefer core blocks, patterns, variations, and block bindings before creating
+a custom block. Reusable blocks and content types that must survive a theme
+change belong in a plugin. See [block authoring](docs/block-authoring.md),
+[block bindings](docs/block-bindings.md), and [post types](docs/post-types.md).
 
-For building a site from a completed Figma design, see [docs/process/site-building-workflow.md](docs/process/site-building-workflow.md). The workflow targets 3-5 working days for a 10-page marketing site by leaning on this template's scaffolding and AI coding assistants. It depends on two supporting documents:
+## Validation and accessibility
 
-- [docs/process/design-intake-checklist.md](docs/process/design-intake-checklist.md) — defines what "a completed Figma design" means and gates Phase 0 of the build.
-- [docs/process/design-system.md](docs/process/design-system.md) — pre-structured token contract between Figma and `theme.json`. Fill it in before Phase 2.
+For the starter's runtime checks, first [load the demo](#load-the-demo-content)
+in a disposable instance. For an existing client site, adapt the shared page
+set in [bin/\_page-set.sh](bin/_page-set.sh) to real pages before auditing.
 
-For homepage-only work — or as a build-spec input to an AI agent — see the homepage spec below.
+```bash
+npm run verify
+```
 
-### Using with an AI agent
+This runs the block-theme contract checks, identity/version and rename checks,
+builds, JS/CSS/package linting, PHPCS, PHPStan, and companion plugin package
+checks. It also runs accessibility checks when the local site is reachable.
 
-The homepage build spec lives at [docs/homepage-build-spec.md](docs/homepage-build-spec.md). Fill the `[…]` fields in the paste-block and hand it to the agent. The spec enforces the Technical Contract and runs `npm run verify` (including the a11y gate) before handing back. It also doubles as human documentation of how the homepage was architected — read it without pasting if you're onboarding onto a project.
+**A passing `verify` does not mean accessibility was tested if wp-env is
+unavailable.** In that case it prints a warning and skips that stage. After
+loading the demo fixture, run the accessibility check directly:
 
-Both skill directories were installed from [WordPress/agent-skills](https://github.com/WordPress/agent-skills). To update when new skills ship upstream:
+```bash
+npm run a11y
+```
+
+The runner discovers the actual local URL, confirms this theme is active,
+and checks the shared fixture page set at desktop and mobile widths. It
+fails if the site is unavailable, the wrong theme is active, or pa11y reports
+WCAG2AA errors. The theme includes skip-link support, focus styles, and
+reduced-motion handling; manual keyboard, screen-reader, and zoom checks
+are still needed for each project's content and interactions.
+
+For focused checks, use `npm run lint:js`, `npm run lint:css`,
+`npm run lint:pkg`, `composer phpcs`, or `composer phpstan`.
+PHPStan is configured at level 6 with the PHP 8.3 target.
+`composer test:minimum-api` checks the PHP and WordPress version floors.
+Run `npm run test:navigation`, `npm run test:seo`, and
+`bin/test-theme-runtime.sh` in disposable WordPress for behavioral checks.
+After building both assets, `bin/test-release-install.sh` installs both ZIPs
+in its own empty WordPress and runs runtime/accessibility checks there.
+
+Performance measurement and its limits are documented in the
+[scorecard guide](docs/scorecard.md). Local `npm run scorecard -- --force`
+resets the demo content before running Lighthouse and accessibility checks.
+CI scores are regression evidence, not a promise of production performance.
+
+## Package and deploy
+
+```bash
+npm run package:check
+npm run package:seo:check
+```
+
+These commands build, create, and validate separate installable archives:
+
+-   `.dist/<theme-slug>.zip` — install under **Appearance → Themes**.
+-   `.dist/<theme-slug>-seo.zip` — install under **Plugins**, if using the companion.
+
+The theme ZIP contains runtime files and compiled assets. Development tools
+and companion plugin code are excluded. To package without the archive
+checks, use `npm run package` or `npm run package:seo`.
+
+See [deployment](docs/deployment.md) for the deployment checklist and
+[SEO](docs/seo.md) for choosing the site's SEO provider.
+
+## Repository structure
+
+```text
+assets/                  Theme JS, SCSS, images, and fonts
+build/                   Compiled theme assets and theme-bound blocks
+templates/               Site Editor templates
+parts/                   Header, footer, and other template parts
+patterns/                Page and section patterns
+styles/                  Theme style variations
+src/blocks/              Theme-bound custom block source
+inc/                     Theme PHP, navigation migration, and post-type scaffolds
+plugins/futurebase-seo/   Independently packaged SEO companion
+fixtures/                Demo content importer
+bin/                     Build, scaffold, validation, and packaging scripts
+tools/project-system/    Optional project lifecycle CLI
+docs/                    Architecture, workflows, and reference guides
+theme.json               Design tokens and editor configuration
+functions.php            Theme setup and registration
+AGENTS.md / CLAUDE.md     Instructions for AI coding assistants
+```
+
+## Optional tools
+
+### Project lifecycle
+
+The CLI in [tools/project-system](tools/project-system/README.md) supports
+isolated lead workspaces, promotion into client repositories, baseline and
+final measurements, success metrics, and evidence-backed closeout.
+It is separate from the theme runtime.
+
+Install its dependencies when using the CLI or running its tests:
+
+```bash
+npm ci --prefix tools/project-system --ignore-scripts
+```
+
+Keep prospective client planning in isolated lead workspaces, outside this
+starter. The repository's gitignored `planning/` directory is for
+starter-development notes. Start with the [lifecycle guide](docs/project-lifecycle.md)
+and [baseline guide](docs/baseline-system.md).
+
+### ACF Pro
+
+ACF Pro is optional and is not bundled. The theme works without it.
+For projects that use it, [ACF Pro setup](docs/acf-pro-setup.md) covers local
+installation, production setup, and license configuration.
+Local `auth.json` and `.wp-env.override.json` files are gitignored.
+
+### AI coding assistants
+
+AI tools are optional. [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md)
+describe the repository's WordPress conventions and validation expectations.
+The vendored skills in `.codex/skills/` and `.claude/skills/` come from
+[WordPress/agent-skills](https://github.com/WordPress/agent-skills).
+
+The instructions also reference user-installed Every Layout and Inclusive
+Components skills. Those private reference materials are not included in
+this repository; the applicable house rules are summarized in the agent
+instructions and still apply when the expanded references are unavailable.
+
+Claude Code's `PostToolUse` hook runs `npm run lint` after edits.
+That is a JS check; use the validation commands above for the wider checks.
+
+<details>
+<summary>Updating the vendored WordPress skills</summary>
+
+Build and install the selected skill pack from a separate upstream checkout:
 
 ```bash
 git clone https://github.com/WordPress/agent-skills.git /tmp/agent-skills
 cd /tmp/agent-skills
 node shared/scripts/skillpack-build.mjs --clean
 node shared/scripts/skillpack-install.mjs \
-  --dest=/path/to/this/repo \
+  --dest=/absolute/path/to/your/repo \
   --targets=codex,claude \
   --skills=wordpress-router,wp-project-triage,wp-block-development,wp-block-themes,wp-plugin-development,wp-rest-api,wp-interactivity-api,wp-abilities-api,wp-wpcli-and-ops,wp-performance,wp-phpstan,wp-playground
-rm -rf /tmp/agent-skills
 ```
 
-The installer writes into `.claude/skills/` and `.codex/skills/` at the target's root. Review and commit the diff.
+Review the generated diff before committing. Keep repository-specific
+overrides in the root agent instructions or `docs/`; the installer overwrites
+vendored skill files.
 
-### The `PostToolUse` hook
+</details>
 
-`.claude/settings.json` runs `scripts/ai-after-edit.sh` after Claude's Edit/Write/MultiEdit tools. The script runs `npm run lint` (JS only — fast). Heavier checks (`build`, `phpcs`, `phpstan`) stay as manual scripts; `CLAUDE.md`'s validation order tells the agent when to run them.
+## Documentation
 
-## Custom blocks
+| Topic                      | Start here                                                                                                                                                                        |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Building from a design     | [Site-building workflow](docs/process/site-building-workflow.md), [design intake](docs/process/design-intake-checklist.md), [design-system tokens](docs/process/design-system.md) |
+| Templates and patterns     | [Pattern composition](docs/pattern-composition.md), [homepage build spec](docs/homepage-build-spec.md)                                                                            |
+| Blocks and dynamic content | [Block authoring](docs/block-authoring.md), [block bindings](docs/block-bindings.md), [post types](docs/post-types.md)                                                            |
+| Naming and assets          | [Conventions](docs/conventions.md), [media conventions](docs/media-conventions.md), [weight vs. size](docs/weight-vs-size-terminology.md)                                         |
+| SEO and plugins            | [SEO stance](docs/seo.md), [companion README](plugins/futurebase-seo/README.md), [plugin strategy](docs/plugin-strategy.md)                                                       |
+| Project delivery           | [Lifecycle](docs/project-lifecycle.md), [baselines](docs/baseline-system.md), [content workbook](docs/process/content-workbook.md)                                                |
+| Releases and measurements  | [Deployment](docs/deployment.md), [scorecard](docs/scorecard.md)                                                                                                                  |
 
-Most "custom block" requests are better served by a pattern, a block style variation, or ACF block bindings. The full decision table and scaffolding flow live in [docs/block-authoring.md](docs/block-authoring.md).
+The editor intentionally limits custom color, gradient, font-size, and spacing
+choices through `theme.json`. Theme setup in `functions.php` also removes
+core and remote pattern libraries, the block-directory inserter, and Openverse.
+Review these choices when adapting the starter to your editors' needs.
 
-When a project genuinely needs a theme-bound custom block:
+## Troubleshooting
 
-```bash
-npm run block:new -- author-card
-npm run build
-```
+-   **The default WordPress theme appears:** run the activation command in
+    [Local development](#local-development). Mounting the repository alone is
+    not enough.
+-   **The site is on a different port:** use the URL printed by `env:start`,
+    or run `npm run env:cli -- option get home`.
+-   **A port is still blocked:** inspect `docker ps` and stop the owning
+    project's environment with `npm run env:stop` from that project directory.
+-   **Accessibility checks lack demo pages:** load the demo fixture in a
+    disposable environment. For client content, adapt the shared page set in
+    [bin/\_page-set.sh](bin/_page-set.sh).
+-   **You need to reset local data:** `npm run env:reset` wipes the wp-env
+    databases; `npm run env:destroy` removes the environment and its volumes.
+    Both are destructive.
 
-The scaffold generates `src/blocks/author-card/` with `block.json`, `index.js`, `edit.js`, and `render.php` (dynamic server render). `npm run build` compiles it to `build/blocks/author-card/`, and `futurebase_register_blocks()` in [functions.php](functions.php) auto-registers every compiled block on `init` — no per-block PHP wiring.
+## Contributing
 
-Reusable blocks that should outlive the theme belong in a **companion plugin**, not here. See [docs/block-authoring.md](docs/block-authoring.md#theme-bound-vs-plugin-block) for the rule, and [docs/plugin-strategy.md](docs/plugin-strategy.md) for which in-house plugins that means and how they reach client sites.
+Use the repository's issue tracker for reproducible bugs and proposed
+changes. Include the affected command or page, WordPress
+and PHP versions, and steps to reproduce.
 
-For the middle ground — a pattern with fixed shape but dynamic data (author card, pricing tier, meta display) — use **block bindings**. [docs/block-bindings.md](docs/block-bindings.md) covers `acf/field`, `core/post-meta`, and how to register custom binding sources.
+Keep pull requests focused and follow the existing WordPress conventions.
+Run the checks relevant to your change, describe what you verified, and
+include regenerated assets when source assets change. For theme or plugin
+changes, run `npm run verify` and the relevant package check; for lifecycle
+changes, run `npm test --prefix tools/project-system`.
+Review dependency updates as tooling changes, including their effect on
+local builds and CI.
 
-## Custom post types
+## License and credits
 
-```bash
-npm run cpt:new -- case-study
-```
+[GPL-2.0-or-later](LICENSE). Based on the original
+[them.es starter-fse](https://github.com/them-es/starter-fse) theme.
+Vendored WordPress agent skills retain their upstream
+[license](https://github.com/WordPress/agent-skills/blob/trunk/LICENSE).
 
-Generates `inc/post-types/case-study.php` with a full i18n-ready `register_post_type()` call; the file auto-loads via `futurebase_load_post_types()` in [functions.php](functions.php). Theme-coupled by default — move to a must-use plugin when the site needs CPTs to survive theme swaps. [docs/post-types.md](docs/post-types.md) walks through the ACF UI vs. code decision, taxonomies, post meta + block bindings, and common rewrite gotchas.
-
-## Project shape
-
-```
-futurebase/
-├── AGENTS.md / CLAUDE.md     # agent instructions
-├── .claude/
-│   ├── settings.json         # PostToolUse lint hook
-│   └── skills/               # WordPress/agent-skills (Claude)
-├── .codex/
-│   └── skills/               # WordPress/agent-skills (Codex)
-├── assets/                   # main.js, main.scss — theme bundle source
-├── build/                    # compiled output (committed)
-│   ├── main.js/.css/.asset.php
-│   └── blocks/<slug>/        # compiled theme-bound blocks
-├── parts/                    # template parts
-├── patterns/                 # starter patterns and template-only content
-├── plugins/
-│   └── futurebase-seo/       # separately built and packaged companion plugin
-├── src/
-│   └── blocks/<slug>/        # theme-bound block source (scaffold via block:new)
-├── templates/                # FSE templates
-├── bin/
-│   ├── build-blocks.sh       # compiles src/blocks/ → build/blocks/
-│   ├── new-block.sh          # scaffolds a theme-bound block
-│   ├── new-cpt.sh            # scaffolds a custom post type under inc/post-types/
-│   ├── rename-theme.sh
-│   └── verify-theme.sh
-├── inc/
-│   ├── navigation-migration.php # versioned navigation adoption/repair
-│   └── post-types/<slug>.php    # CPT registrations (auto-loaded)
-├── scripts/
-│   └── ai-after-edit.sh      # lint hook
-├── theme.json                # v3 — primary styling/config
-├── functions.php
-├── style.css
-├── composer.json
-├── phpcs.xml.dist
-├── phpstan.neon.dist
-├── .wp-env.json
-└── package.json
-```
-
-Reusable blocks and non-theme-specific features belong in a **separately packaged companion plugin**, not in theme runtime. The in-house plugin sources share this repository's CI and promotion tooling under `plugins/`, while producing independent WordPress plugin ZIPs. Themes swap; plugin-registered blocks survive theme changes. That follows [WordPress's own guidance](https://developer.wordpress.org/block-editor/getting-started/fundamentals/registration-of-a-block/) on where custom blocks should live.
-
-## Editor curation
-
-The inserter is pre-trimmed to match a design-system-first workflow. [functions.php](functions.php) (`futurebase_curate_editor`) removes:
-
-- **Block directory** — the "search a plugin block" UI. Admins still install plugins through `wp-admin` normally.
-- **Core block patterns** — WordPress's built-in patterns.
-- **Remote block patterns** — the WordPress.org pattern directory.
-- **Openverse** — the external media category. Local media library is untouched.
-
-[theme.json](theme.json) additionally disables the **custom color, gradient, font-size, and spacing pickers**, so editors can only pick from this theme's presets — no one-off hex values drifting the design system. Delete the relevant lines if a project needs any of them back.
-
-## Deploying
-
-Deployment specifics for the environments this template targets — host-by-host notes, env var conventions, the post-rename checklist, and a minimal CI workflow — live in [docs/deployment.md](docs/deployment.md).
-
-## ACF Pro
-
-Project work typically uses [Advanced Custom Fields Pro](https://www.advancedcustomfields.com/) for custom post types, field groups, and options pages. The template ships the integration scaffolding — a `.wp-env.override.json.example` for local installs and a full recipe at [docs/acf-pro-setup.md](docs/acf-pro-setup.md) covering:
-
-- Local `wp-env` flow (copy the example override, paste your license, `env:start`)
-- Production install options (project-level Composer via ACF's endpoint, or host-uploaded plugin)
-- License activation via the `ACF_PRO_LICENSE` constant
-- How to avoid the wp.org **Secure Custom Fields** (SCF) fork swap that was introduced in October 2024
-
-The template does **not** bundle the plugin or commit your license. `auth.json` and `.wp-env.override.json` are both gitignored.
-
-## Accessibility
-
-- **Skip link** — WordPress 6.9 auto-injects a skip link into every block-theme render, pointing at `#wp--skip-link--target`. Every template's `<main>` carries that `id` so core's link lands correctly. Focus styling (`.skip-link`) is token-driven in [assets/main.scss](assets/main.scss) so the theme's palette and spacing apply to core's injected anchor.
-- **Reduced motion** — [assets/main.scss](assets/main.scss) honours `prefers-reduced-motion: reduce` and neutralises animations/transitions for users who request it.
-- **Focus styles** — button *and* link `:focus-visible` outlines are defined in [theme.json](theme.json) and inherited by every style variation (see [styles/dark.json](styles/dark.json) for the pattern).
-- **Automated a11y gate** — [pa11y-ci](https://github.com/pa11y/pa11y-ci) runs against the live wp-env instance. Defaults in [.pa11yci.json](.pa11yci.json) set the standard (WCAG 2 AA) and Chromium launch args; the URL list is supplied at invocation time. `npm run verify` asks wp-env for its actual home URL (`wp option get home`) — wp-env shifts off the default port 8888 when another project already holds it, so a hardcoded 8888 would silently test the wrong site. When wp-env is reachable the gate is real (any violation fails verify); when it isn't, verify emits a yellow warning and continues so non-a11y workflows aren't blocked. Typical flow: `npm run env:start && npm run verify`. To exercise the gate directly against the default port, `npm run a11y` hits `http://localhost:8888/` and `/?p=1` — edit the script in [package.json](package.json) to add more URLs, or prefer a different tool (axe-core, lighthouse-ci) and swap it in; the script name is the only contract verify looks for.
-
-## License
-
-GPL-2.0-or-later. Original starter theme by [them.es](https://them.es/starter-fse/).
+Contributions: [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities
+privately using [SECURITY.md](SECURITY.md), not a public issue.

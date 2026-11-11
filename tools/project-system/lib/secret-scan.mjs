@@ -44,7 +44,7 @@ const RULES = [
 	// Group 1 is the assigned value — never the key, never a trailing comment.
 	{
 		rule: 'assigned-secret',
-		re: /\b(?:password|passwd|secret|api[_-]?key|apikey|access[_-]?token|auth[_-]?token|client[_-]?secret|private[_-]?key)\b\s*[:=]\s*(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([^\s#,;]+))/i,
+		re: /\b(?:password|passwd|secret|api[_-]?key|apikey|access[_-]?token|auth[_-]?token|client[_-]?secret|private[_-]?key)\b["']?\s*[:=]\s*(?:"([^"\r\n]+)"|'([^'\r\n]+)'|(\$\{[A-Z_][A-Z0-9_]*\}|[^\s#,;}]+))/i,
 		extract: (match) => match[1] ?? match[2] ?? match[3],
 		suppressible: true,
 		minLength: 16,
@@ -103,19 +103,19 @@ export function scanText(text) {
 	const lines = text.split(/\r?\n/);
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
-		for (const { rule, re, group, extract, suppressible, minLength = 0 } of RULES) {
-			const m = re.exec(line);
-			if (!m) continue;
-			// Suppress on the CREDENTIAL, and only where a placeholder is a thing
-			// a human would plausibly write. Testing the whole line let a trailing
-			// comment disarm the scanner; testing the whole match then let a
-			// username or a token's own body do the same. What is compared now is
-			// the captured value, for the rules where that is meaningful at all.
-			const value = (extract ? extract(m) : m[group] ?? m[0]).trim();
-			if (suppressible && isSuppressedCredentialValue(value)) continue;
-			if (value.length < minLength) continue;
-			findings.push({ line: i + 1, rule, snippet: WITHHELD });
-			break; // one finding per line is enough to flag it
+		rules: for (const { rule, re, group, extract, suppressible, minLength = 0 } of RULES) {
+			for (const m of line.matchAll(new RegExp(re.source, `${re.flags}g`))) {
+				// Suppress on the CREDENTIAL, and only where a placeholder is a thing
+				// a human would plausibly write. Testing the whole line let a trailing
+				// comment disarm the scanner; testing the whole match then let a
+				// username or a token's own body do the same. What is compared now is
+				// the captured value, for the rules where that is meaningful at all.
+				const value = (extract ? extract(m) : m[group] ?? m[0]).trim();
+				if (suppressible && isSuppressedCredentialValue(value)) continue;
+				if (value.length < minLength) continue;
+				findings.push({ line: i + 1, rule, snippet: WITHHELD });
+				break rules; // one finding per line is enough to flag it
+			}
 		}
 	}
 	return findings;

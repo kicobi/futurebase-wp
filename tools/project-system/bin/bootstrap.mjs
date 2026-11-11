@@ -1,5 +1,6 @@
 // Dependency-safe CLI bootstrap. Keep this file limited to Node built-ins so it
 // can explain how to restore the nested install even when dispatch cannot load.
+import { OutputExit, finishOutput } from '../lib/output.mjs';
 
 const INSTALL_COMMAND = 'npm ci --prefix tools/project-system --ignore-scripts';
 
@@ -17,6 +18,10 @@ export async function runCli(args) {
 		const { main } = await import('../cli/dispatch.mjs');
 		await main(args);
 	} catch (error) {
+		if (error instanceof OutputExit) {
+			await finishOutput(error);
+			return;
+		}
 		if (isDependencyImportFailure(error)) {
 			console.error('✗ project-system dependencies are missing or incompatible.');
 			console.error(`  Run: ${INSTALL_COMMAND}`);

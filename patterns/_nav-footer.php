@@ -17,7 +17,7 @@
  * reader users two identical landmarks to tell apart.
  */
 
-$futurebase_nav = get_page_by_path( 'footer-navigation', OBJECT, 'wp_navigation' );
+$futurebase_nav = futurebase_navigation_region_post( 'footer-navigation' );
 
 if ( $futurebase_nav instanceof WP_Post ) :
 	?>
@@ -26,9 +26,11 @@ if ( $futurebase_nav instanceof WP_Post ) :
 else :
 	?>
 	<!-- wp:navigation {"overlayMenu":"never","layout":{"type":"flex","justifyContent":"right","orientation":"horizontal"}} -->
-		<?php // See _nav-primary.php: home_url() so a subdirectory install links inside itself. ?>
-		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'About', 'futurebase' ); ?>","url":"<?php echo esc_url( home_url( '/about/' ) ); ?>"} /-->
-		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'Blog', 'futurebase' ); ?>","url":"<?php echo esc_url( home_url( '/blog/' ) ); ?>"} /-->
+		<?php
+		// Serialized block attributes are escaped by WordPress's block serializer.
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		echo futurebase_navigation_seed_content( 'footer-navigation' );
+		?>
 	<!-- /wp:navigation -->
 	<?php
 endif;

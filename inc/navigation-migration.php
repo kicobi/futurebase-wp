@@ -51,11 +51,14 @@ if ( ! function_exists( 'futurebase_navigation_seed_content' ) ) {
 		$content    = '';
 
 		foreach ( $definition['links'] as $link ) {
-			$content .= sprintf(
-				'<!-- wp:navigation-link {"label":"%s","url":"%s"} /-->' . "\n",
-				esc_attr( $link[0] ),
-				esc_url( home_url( $link[1] ) )
-			);
+			$content .= get_comment_delimited_block_content(
+				'core/navigation-link',
+				array(
+					'label' => $link[0],
+					'url'   => home_url( $link[1] ),
+				),
+				''
+			) . "\n";
 		}
 
 		return trim( $content );
@@ -156,9 +159,9 @@ if ( ! function_exists( 'futurebase_navigation_insert_region' ) ) {
 			array(
 				'post_type'    => 'wp_navigation',
 				'post_status'  => 'publish',
-				'post_title'   => $definition['title'],
+				'post_title'   => wp_slash( $definition['title'] ),
 				'post_name'    => $region,
-				'post_content' => futurebase_navigation_seed_content( $region ),
+				'post_content' => wp_slash( futurebase_navigation_seed_content( $region ) ),
 			),
 			true
 		);
@@ -196,8 +199,9 @@ if ( ! function_exists( 'futurebase_navigation_references' ) ) {
 	 * File-based theme templates are deliberately excluded: their patterns
 	 * resolve region posts by slug at render time and therefore store no
 	 * numeric ID. The scan covers customized templates and template parts,
-	 * reusable blocks/patterns, and published/private editor-supporting post
-	 * types (including custom types).
+	 * reusable blocks/patterns, and non-trash editor-supporting post types,
+	 * including draft, scheduled, and custom statuses. Historical revisions are
+	 * excluded because they do not render as current content.
 	 *
 	 * @param array<int, int> $candidate_ids Navigation IDs relevant to repair.
 	 * @return array<int, bool>
@@ -208,15 +212,13 @@ if ( ! function_exists( 'futurebase_navigation_references' ) ) {
 		$post_types = $special;
 
 		foreach ( get_post_types( array(), 'names' ) as $post_type ) {
-			if ( post_type_supports( $post_type, 'editor' ) && ! in_array( $post_type, $post_types, true ) && 'wp_navigation' !== $post_type ) {
+			if ( post_type_supports( $post_type, 'editor' ) && ! in_array( $post_type, $post_types, true ) && ! in_array( $post_type, array( 'wp_navigation', 'revision' ), true ) ) {
 				$post_types[] = $post_type;
 			}
 		}
 
 		foreach ( $post_types as $post_type ) {
-			$statuses = in_array( $post_type, $special, true )
-				? array( 'publish', 'private', 'draft', 'pending', 'future' )
-				: array( 'publish', 'private' );
+			$statuses = array_values( array_diff( get_post_stati(), array( 'trash', 'auto-draft' ) ) );
 			$query    = new WP_Query(
 				array(
 					'post_type'              => $post_type,
@@ -286,7 +288,7 @@ if ( ! function_exists( 'futurebase_navigation_restore' ) ) {
 			$snapshot,
 			array_flip( array( 'ID', 'post_status', 'post_title', 'post_name', 'post_content' ) )
 		);
-		wp_update_post( $post, true );
+		wp_update_post( wp_slash( $post ), true );
 
 		if ( $snapshot['migration_meta_exists'] ) {
 			update_post_meta( $snapshot['ID'], '_futurebase_navigation_migration', $snapshot['migration_meta'] );
@@ -368,8 +370,8 @@ if ( ! function_exists( 'futurebase_navigation_repair_seeded_state' ) ) {
 					'ID'           => $primary->ID,
 					'post_status'  => 'publish',
 					'post_name'    => 'primary-navigation',
-					'post_title'   => $title,
-					'post_content' => $legacy->post_content,
+					'post_title'   => wp_slash( $title ),
+					'post_content' => wp_slash( $legacy->post_content ),
 				),
 				true
 			);
@@ -399,7 +401,7 @@ if ( ! function_exists( 'futurebase_navigation_repair_seeded_state' ) ) {
 				'ID'          => $legacy->ID,
 				'post_status' => 'publish',
 				'post_name'   => 'primary-navigation',
-				'post_title'  => $title,
+				'post_title'  => wp_slash( $title ),
 			),
 			true
 		);
@@ -472,7 +474,7 @@ if ( ! function_exists( 'futurebase_navigation_apply_migration' ) ) {
 						'ID'          => $legacy->ID,
 						'post_status' => 'publish',
 						'post_name'   => 'primary-navigation',
-						'post_title'  => futurebase_navigation_primary_title( $legacy, $footer ),
+						'post_title'  => wp_slash( futurebase_navigation_primary_title( $legacy, $footer ) ),
 					),
 					true
 				);

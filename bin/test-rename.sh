@@ -81,13 +81,9 @@ fi
 
 WORKTREES=()
 LOG="$(mktemp -t rename-contract-test-log.XXXXXX)"
-RUNTIME_WT=""
 
 cleanup() {
 	local code=$?
-	if [ -n "$RUNTIME_WT" ] && [ -d "$RUNTIME_WT" ]; then
-		(cd "$RUNTIME_WT" && npm run env:stop >/dev/null 2>&1) || true
-	fi
 	for worktree in "${WORKTREES[@]-}"; do
 		[ -n "$worktree" ] && [ -d "$worktree" ] && git worktree remove --force "$worktree" >/dev/null 2>&1 || true
 	done
@@ -104,6 +100,10 @@ make_worktree() {
 		exit 1
 	fi
 	WORKTREES+=("$NEW_WT")
+	if ! node "$ROOT/bin/snapshot-working-tree.mjs" "$ROOT" "$NEW_WT"; then
+		echo "rename non-regression: FAIL (could not snapshot current source)" >&2
+		exit 1
+	fi
 }
 
 FAILED=0
@@ -205,6 +205,9 @@ fi
 if ! (cd "$WT2" && bash bin/test-seo-package.sh >>"$LOG" 2>&1); then
 	problems+=("renamed companion plugin package failed validation")
 fi
+if ! (cd "$WT2" && node --test bin/copyright-editor.test.mjs >>"$LOG" 2>&1); then
+	problems+=("renamed copyright editor bundle has a stale identity")
+fi
 build_snapshot="$WT2/.seo-build-before"
 cp -R "$client_plugin/build" "$build_snapshot"
 ln -s "$ROOT/node_modules" "$WT2/node_modules"
@@ -216,16 +219,11 @@ fi
 rm -rf "$build_snapshot"
 
 if [ "$RUN_RUNTIME" -eq 1 ]; then
-	RUNTIME_WT="$WT2"
-	if ! (cd "$WT2" && npm run env:start >>"$LOG" 2>&1); then
-		problems+=("renamed companion WordPress environment failed to start")
-	elif ! (cd "$WT2" && bash bin/test-seo-runtime.sh >>"$LOG" 2>&1); then
-		problems+=("renamed companion plugin failed the complete runtime suite")
+	# A renamed source mount cannot prove that either distributed ZIP installs.
+	# The release runner owns and destroys a separate, initially empty database.
+	if ! (cd "$WT2" && npm run build >>"$LOG" 2>&1 && node --test bin/copyright-editor.test.mjs >>"$LOG" 2>&1 && bash bin/test-release-install.sh >>"$LOG" 2>&1); then
+		problems+=("renamed theme/companion ZIPs failed clean-install runtime validation")
 	fi
-	if ! (cd "$WT2" && npm run env:stop >>"$LOG" 2>&1); then
-		problems+=("renamed companion WordPress environment failed to stop cleanly")
-	fi
-	RUNTIME_WT=""
 fi
 
 rm -f "$WT2/node_modules"

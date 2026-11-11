@@ -93,3 +93,14 @@ and methodology.
 
 See [plugin-strategy.md](plugin-strategy.md) for ownership, promotion,
 packaging, sync, and maintenance policy.
+
+## Release verification
+
+The optional plugin is suitable for public source review as part of the
+starter, with its own separately installable ZIP and permanent API contracts.
+See [release evidence](release-readiness.md) for the reviewed commit and
+verification limits. Current tests cover plain/pretty archive routing,
+pagination, raw query keys and tracking removal, unrelated-post canonical
+calls, subscriber/author/editor/administrator REST writes, revisions, and
+initial/final cleanup count failures. Database-read failures never count as a
+verified empty result.

@@ -20,25 +20,21 @@
 		"url": "https://github.com/kicobi/futurebase-wp/issues"
 	},
 	"private": true,
-	"devDependencies": {
-		"@lhci/cli": "^0.15.1",
-		"@wordpress/env": "^11.11.0",
-		"@wordpress/prettier-config": "^4.51.0",
-		"@wordpress/scripts": "^34.0.0",
-		"@wordpress/stylelint-config": "^23.36.0",
-		"lighthouse": "12.6.1",
-		"pa11y-ci": "^4.1.1",
-		"webpack-remove-empty-scripts": "^1.0.4"
+	"engines": {
+		"node": "^22.22.2 || ^24.15.0 || ^26.0.0",
+		"npm": ">=11.16.0"
 	},
-	"overrides": {
-		"lodash": "^4.18.1",
-		"serialize-javascript": "^7.0.5",
-		"adm-zip": "^0.6.0",
-		"markdownlint-cli": "^0.49.1",
-		"tmp": "^0.2.6",
-		"uuid": "^11.1.1",
-		"postcss": "^8.5.25",
-		"js-yaml": "^5.2.2"
+	"devDependencies": {
+		"@lhci/cli": "^0.16.0",
+		"@wordpress/env": "^12.1.0",
+		"@wordpress/prettier-config": "^5.1.0",
+		"@wordpress/scripts": "^37.1.0",
+		"@wordpress/stylelint-config": "^27.1.0",
+		"lighthouse": "13.6.0",
+		"pa11y-ci": "^5.0.0",
+		"prettier": "npm:wp-prettier@^3.9.6",
+		"proxy-agent": "^8.0.2",
+		"webpack-remove-empty-scripts": "^1.0.4"
 	},
 	"scripts": {
 		"start": "wp-scripts start",
@@ -48,8 +44,8 @@
 		"build:theme": "wp-scripts build",
 		"build:blocks": "./bin/build-blocks.sh",
 		"build:seo": "./bin/build-seo-plugin.sh build",
-		"lint": "wp-scripts lint-js assets webpack.config.js 'plugins/*-seo/webpack.config.js' 'plugins/*-seo/src/**/*.{js,jsx}' 'src/**/*.{js,jsx}' --no-error-on-unmatched-pattern",
-		"lint:js": "wp-scripts lint-js assets webpack.config.js 'plugins/*-seo/webpack.config.js' 'plugins/*-seo/src/**/*.{js,jsx}' 'src/**/*.{js,jsx}' --no-error-on-unmatched-pattern",
+		"lint": "wp-scripts lint-js assets webpack.config.js 'plugins/*-seo/webpack.config.js' 'plugins/*-seo/src/**/*.{js,jsx,mjs}' 'src/**/*.{js,jsx}' --no-error-on-unmatched-pattern",
+		"lint:js": "wp-scripts lint-js assets webpack.config.js 'plugins/*-seo/webpack.config.js' 'plugins/*-seo/src/**/*.{js,jsx,mjs}' 'src/**/*.{js,jsx}' --no-error-on-unmatched-pattern",
 		"lint:css": "wp-scripts lint-style --allow-empty-input 'assets/**/*.scss' 'plugins/*-seo/src/**/*.scss' 'src/**/*.scss'",
 		"lint:pkg": "wp-scripts lint-pkg-json",
 		"lighthouse:sample": "node ./bin/lighthouse-sample.mjs",
@@ -68,13 +64,30 @@
 		"env:start": "wp-env start --auto-port",
 		"env:stop": "wp-env stop",
 		"env:destroy": "wp-env destroy",
-		"env:clean": "wp-env clean all",
+		"env:clean": "npm run env:reset",
 		"env:cli": "wp-env run cli wp",
 		"test:navigation": "./bin/test-navigation-migration.sh",
 		"test:seo": "./bin/test-seo-runtime.sh",
 		"test:contract": "node --test bin/verify-contract.test.mjs bin/verify-seo-contract.test.mjs",
 		"test:seo:contract": "node --test bin/verify-seo-contract.test.mjs",
 		"identity:audit": "./bin/audit-identity.sh",
-		"version:audit": "node bin/verify-version-surfaces.mjs"
+		"version:audit": "node bin/verify-version-surfaces.mjs",
+		"env:reset": "wp-env reset all"
+	},
+	"overrides": {
+		"@wordpress/env": {
+			"@wp-playground/cli": "3.1.54"
+		},
+		"basic-ftp": "^6.2.6",
+		"isomorphic-git": "^1.44.12",
+		"serialize-javascript": "^7.1.4",
+		"markdownlint-cli": {
+			"js-yaml": "^5.5.0"
+		},
+		"qs": "^6.17.1",
+		"smol-toml": "^1.9.1",
+		"minimatch@>=7 <11.0.1": "^11.0.7",
+		"glob@>=9 <14.0.2": "^14.0.4",
+		"katex": "^0.19.1"
 	}
 }

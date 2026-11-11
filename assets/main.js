@@ -1,30 +1,30 @@
 ( function () {
 	'use strict';
 
-	// Switching to mobile: https://developer.mozilla.org/en-US/docs/Web/API/MediaQueryList/onchange
-	// 782px matches WordPress's admin-bar / editor mobile breakpoint.
-	const isMobile = window.matchMedia( '(max-width: 782px)' );
-	const navigationResponsiveContainer = document.querySelector(
-		'.site-header .wp-block-navigation__responsive-container'
+	// Follow core's actual toggle visibility instead of a separate breakpoint.
+	// When desktop navigation replaces the toggle, close through core so its
+	// dialog state, focus handling, and document scroll lock stay in sync.
+	const navigation = document.querySelector(
+		'.site-header .wp-block-navigation'
 	);
-	isMobile.onchange = ( e ) => {
-		if ( ! e.matches ) {
-			// > Mobile
-			// Autoclose header nav container if modal is open and browser window gets resized.
+	const opener = navigation?.querySelector(
+		'.wp-block-navigation__responsive-container-open'
+	);
+	if ( opener ) {
+		const observer = new window.ResizeObserver( () => {
 			if (
-				document.body.contains( navigationResponsiveContainer ) &&
-				navigationResponsiveContainer.classList.contains(
-					'is-menu-open'
-				)
+				! opener.getClientRects().length &&
+				navigation.querySelector( '.is-menu-open' )
 			) {
-				document
+				navigation
 					.querySelector(
-						'.site-header .wp-block-navigation__responsive-container-close'
+						'.wp-block-navigation__responsive-container-close'
 					)
 					?.click();
 			}
-		}
-	};
+		} );
+		observer.observe( opener );
+	}
 
 	// Style password protected post form.
 	const passwordButton = document.querySelector(

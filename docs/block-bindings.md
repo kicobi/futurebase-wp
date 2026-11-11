@@ -16,11 +16,14 @@ Bindings sit in the middle. They're the right choice when you catch yourself thi
 
 ## Shipped binding sources
 
-Three sources you can use in this starter without additional code:
+Sources available at the WordPress 6.9 floor (ACF is optional):
 
 | Source | Shipped by | Use when |
 | --- | --- | --- |
-| `core/post-meta` | WordPress core | Reading post meta keys registered with `show_in_rest: true` |
+| `core/post-meta` | WordPress core | Reading unprotected post meta keys registered with `show_in_rest: true` |
+| `core/post-data` | WordPress 6.9 | Reading supported post fields such as date, modified date, and link |
+| `core/term-data` | WordPress 6.9 | Reading term fields when term context is available |
+| `futurebase/copyright` | This theme | Read-only paragraph content with the WordPress-timezone year and current site title |
 | `acf/field` | ACF Pro 6.3+ | Reading ACF fields (only available when ACF Pro is active — see [docs/acf-pro-setup.md](acf-pro-setup.md)) |
 | `core/pattern-overrides` | WordPress core | Turning a synced pattern's inner blocks into editable slots |
 
@@ -82,7 +85,7 @@ Assumes ACF Pro is installed (see [docs/acf-pro-setup.md](acf-pro-setup.md)) and
 <!-- /wp:group -->
 ```
 
-Editors see the *default* content ("Author Name", "Author bio.") in the editor, and the site renders real data from ACF on the frontend. No custom block, no save-format drift.
+Frontend values come from the registered PHP source. Editor previews and editing depend on that source’s JavaScript registration, permissions, field configuration, and ACF version. Test both surfaces; fallback text is not proof that a source has resolved.
 
 ## Worked example — reading post meta
 
@@ -150,21 +153,42 @@ Use in a pattern:
 <!-- /wp:paragraph -->
 ```
 
-Hide the banner on production via CSS (`.env-banner:has-text("production") { display: none; }`) or branch inside the callback.
+For a production-only condition, branch in PHP before including the banner, or return the intended bound content from the source. CSS cannot select an element by its text content; `:has-text()` is not a CSS selector. A binding replaces an attribute, so returning an empty value alone is not a general way to remove the surrounding block.
 
-Every custom source must be registered on `init` (or later), must return a string, and should check capabilities if the value is sensitive. A source that reads arbitrary user input must sanitise before returning.
+Register a PHP source on `init`. Return a value appropriate for the supported attribute; return `null` when no replacement should be supplied. Escape HTML-valued content and apply appropriate permissions for sensitive data. Do not expose secrets through public block output.
 
 ## What bindings can't do
 
-- **Replace part of an attribute.** Bindings replace the *whole* attribute value. Mixed strings like `"© 2026 Site Name. All rights reserved."` can't be "partly bound" — either bind the whole paragraph content to a source that returns the full string ([patterns/_copyright.php](../patterns/_copyright.php) is the PHP-pattern approach for this), or split into multiple blocks.
+- **Replace part of an attribute.** Bindings replace the *whole* attribute value. Mixed strings like `"© 2026 Site Name. All rights reserved."` can't be "partly bound" — either bind the whole paragraph content to a source that returns the full string ([patterns/_copyright.php](../patterns/_copyright.php) binds the complete paragraph to `futurebase/copyright`), or split into multiple blocks.
 - **Bind inner blocks.** Only the named attributes on the block schema (`content`, `url`, `id`, `alt`, etc.) are bindable. The block's inner block list is structural, not attribute-bound.
-- **Compute per-render on static blocks.** Bindings run through the server render path. A block using `save()` to write static HTML bypasses bindings on the frontend.
+- **Bind arbitrary attributes automatically.** Only supported block/attribute pairs participate. Static blocks such as Paragraph, Heading, Image, and Button can use bindings: WordPress replaces supported attributes while rendering their saved markup.
 
 If your use case hits one of these walls, promote to a **dynamic custom block** — see [docs/block-authoring.md](block-authoring.md).
 
 ## Editing bindings in the UI
 
-As of WordPress 6.7, the editor shows a small badge on bound attributes and a panel in the block inspector listing the binding source. Editors can't change bindings through the UI today — the binding metadata is authored in the pattern file — but they can see at a glance which attributes are dynamic.
+WordPress provides editor APIs for registering sources, reading bound values,
+checking edit permission, and updating bindings. Supported sources can expose
+fields through the Attributes panel; available controls depend on the source,
+block, and WordPress version. Do not assume that every custom PHP source has a
+complete editor interface. See the [Block Bindings reference](https://developer.wordpress.org/block-editor/reference-guides/block-api/block-bindings/).
+
+The copyright source has matching PHP and JavaScript implementations. Its
+editor preview uses the server-supplied WordPress-timezone year and the edited
+site title. It has no `setValues` callback, so the bound paragraph is read-only.
+Reload an editor left open across New Year to refresh its server-supplied year.
+Frontend rendering always resolves the current year.
+
+## Existing saved footers
+
+Updating theme files does not overwrite saved Site Editor templates or parts.
+A footer saved before this change may contain an ordinary, unbound paragraph.
+Back up that customized footer, then replace only its old copyright paragraph
+with the current bound paragraph (or add its `metadata.bindings.content.source`
+value, `futurebase/copyright`, in the code editor). Save and verify the preview
+and frontend. Keep the surrounding custom layout and content. Renaming a client
+project also renames this theme-owned binding source.
+
 
 ## Related
 

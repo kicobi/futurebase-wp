@@ -36,6 +36,8 @@ footer.site-footer {
 
 	&:focus,
 	&:focus-visible {
+		// Core's .screen-reader-text still sets clip; undo it on keyboard focus.
+		/* stylelint-disable-next-line property-no-deprecated */
 		clip: auto !important;
 		clip-path: none !important;
 		height: auto !important;

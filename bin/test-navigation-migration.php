@@ -55,7 +55,7 @@ function futurebase_navigation_test_owned_ids( $post_id = null, $clear = false )
  * @throws RuntimeException When WordPress refuses the insert.
  */
 function futurebase_navigation_test_insert( $post ) {
-	$result = wp_insert_post( $post, true );
+	$result = wp_insert_post( wp_slash( $post ), true );
 	if ( is_wp_error( $result ) ) {
 		throw new RuntimeException( esc_html( $result->get_error_message() ) );
 	}
@@ -170,6 +170,7 @@ function futurebase_navigation_test_reference_post( $refs, $post_type = 'wp_bloc
 		array(
 			'post_type'    => $post_type,
 			'post_status'  => $status,
+			'post_date'    => 'future' === $status ? '2099-01-01 12:00:00' : current_time( 'mysql' ),
 			'post_title'   => 'Navigation migration reference',
 			'post_content' => $content,
 		)
@@ -204,6 +205,67 @@ function futurebase_navigation_test_run() {
 		futurebase_navigation_test_assert( $fresh_footer instanceof WP_Post, 'Fresh migration did not create footer navigation.' );
 		futurebase_navigation_test_assert( $fresh_primary->ID !== $fresh_footer->ID, 'Fresh regions share an ID.' );
 		futurebase_navigation_test_state_is( 'complete' );
+
+		// A translated label can contain JSON delimiters and literal slashes.
+		futurebase_navigation_test_reset();
+		$translated = 'About "quoted" \\ café -->';
+		$translate  = static function ( $translation, $text, $domain ) use ( $translated ) {
+			return 'futurebase' === $domain && 'About' === $text ? $translated : $translation;
+		};
+		add_filter( 'gettext', $translate, 10, 3 );
+		try {
+			futurebase_migrate_navigation_regions();
+			$translated_menu   = futurebase_navigation_region_post( 'primary-navigation' );
+			$translated_blocks = parse_blocks( $translated_menu->post_content );
+			futurebase_navigation_test_assert( $translated === $translated_blocks[0]['attrs']['label'], 'Translated navigation label did not round-trip through storage and block JSON.' );
+		} finally {
+			remove_filter( 'gettext', $translate, 10 );
+		}
+
+		// Draft, scheduled, and pending content owns referenced menu IDs too.
+		foreach ( array( 'draft', 'future', 'pending' ) as $status ) {
+			$damaged   = futurebase_navigation_test_damaged_state();
+			$reference = futurebase_navigation_test_reference_post( array( $damaged['primary'] ), 'page', $status );
+			// Core normalizes a past scheduled date; set a real future date.
+			if ( 'future' === $status ) {
+				wp_update_post(
+					array(
+						'ID'          => $reference,
+						'post_status' => 'future',
+						'post_date'   => '2099-01-01 12:00:00',
+					)
+				);
+			}
+			futurebase_migrate_navigation_regions();
+			futurebase_navigation_test_assert( futurebase_navigation_region_post( 'primary-navigation' )->ID === $damaged['primary'], $status . ' reference lost its menu ID.' );
+			futurebase_navigation_test_assert( false !== strpos( get_post_field( 'post_content', $damaged['primary'] ), 'Client link' ), $status . ' reference lost client content.' );
+
+			$damaged = futurebase_navigation_test_damaged_state();
+			futurebase_navigation_test_reference_post( array( $damaged['primary'] ), 'page', $status );
+			futurebase_navigation_test_reference_post( array( $damaged['legacy'] ) );
+			$snapshot = static fn( $id ) => get_post( $id, ARRAY_A );
+			$before   = array_map( $snapshot, array_values( $damaged ) );
+			futurebase_migrate_navigation_regions();
+			futurebase_navigation_test_state_is( 'needs_attention' );
+			futurebase_navigation_test_assert( array_map( $snapshot, array_values( $damaged ) ) === $before, 'Conflicting references mutated navigation records.' );
+		}
+
+		// Unpublished records never become the fallback menu in either region.
+		foreach ( array( 'primary', 'footer' ) as $region ) {
+			futurebase_navigation_test_reset();
+			$draft = futurebase_navigation_test_insert_menu( 'Draft', $region . '-navigation', '<!-- wp:navigation-link {"label":"Private draft","url":"/draft/"} /-->', '2026-01-01 10:00:00' );
+			wp_update_post(
+				array(
+					'ID'          => $draft,
+					'post_status' => 'draft',
+				)
+			);
+			ob_start();
+			include get_theme_file_path( 'patterns/_nav-' . $region . '.php' );
+			$markup = ob_get_clean();
+			futurebase_navigation_test_assert( false === strpos( $markup, '"ref":' . $draft ) && false === strpos( $markup, 'Private draft' ), 'Unpublished menu leaked into pattern output.' );
+			futurebase_navigation_test_assert( false !== strpos( $markup, 'wp:navigation-link' ), 'Unpublished menu suppressed inline fallback links.' );
+		}
 
 		// Normal adoption: preserve the client ID/content and a custom footer.
 		futurebase_navigation_test_reset();

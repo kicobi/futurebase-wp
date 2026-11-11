@@ -29,6 +29,7 @@ auth.json
 # Local evidence artifacts (scorecard reports, a11y runs). CI uploads these
 # as workflow artifacts; only curated summaries are committed deliberately.
 /.artifacts/
+/.playwright-mcp/
 
 # Lighthouse CI working directory
 /.lighthouseci/

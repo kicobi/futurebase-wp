@@ -26,7 +26,7 @@ final class Canonical {
 		}
 
 		$document = Document::prepared();
-		if ( null !== $document ) {
+		if ( null !== $document && is_singular() && get_queried_object_id() === $post->ID ) {
 			return $document['canonical'] ?? false;
 		}
 
@@ -74,7 +74,7 @@ final class Canonical {
 			return null;
 		}
 
-		return self::same_document( $decision_canonical, $self ) ? $decision_canonical : $self;
+		return self::same_document( $decision_canonical, $self, $context ) ? $decision_canonical : $self;
 	}
 
 	/**
@@ -124,17 +124,20 @@ final class Canonical {
 	 * @param array<string, mixed> $query_args Query arguments to retain.
 	 */
 	public static function self_url( array $context, array $query_args = array() ): ?string {
-		$kind      = isset( $context['kind'] ) && is_string( $context['kind'] ) ? $context['kind'] : 'unknown';
-		$paged     = isset( $context['paged'] ) ? max( 1, absint( $context['paged'] ) ) : 1;
-		$all_query = isset( $context['query_args'] ) && is_array( $context['query_args'] ) ? $context['query_args'] : array();
-
-		$url = in_array( $kind, array( 'home', 'archive' ), true ) ? get_pagenum_link( $paged, false ) : (string) ( $context['url'] ?? '' );
-		if ( ! empty( $all_query ) ) {
-			$url = remove_query_arg( array_keys( $all_query ), $url );
+		$kind  = isset( $context['kind'] ) && is_string( $context['kind'] ) ? $context['kind'] : 'unknown';
+		$paged = isset( $context['paged'] ) ? max( 1, absint( $context['paged'] ) ) : 1;
+		$url   = in_array( $kind, array( 'home', 'archive' ), true ) ? get_pagenum_link( $paged, false ) : (string) ( $context['url'] ?? '' );
+		// Replace the entire query: WordPress's query mutation helpers normalize
+		// dotted keys through parse_str(), which changes document identity.
+		$url     = explode( '?', $url, 2 )[0];
+		$routing = Context::routing_query_args( $context );
+		if ( in_array( $kind, array( 'home', 'archive' ), true ) && empty( get_option( 'permalink_structure' ) ) && $paged > 1 ) {
+			$routing['paged'] = $paged;
 		}
+		$query_args = array_merge( $routing, $query_args );
 		if ( ! empty( $query_args ) ) {
 			ksort( $query_args );
-			$url = add_query_arg( $query_args, $url );
+			$url .= '?' . http_build_query( $query_args, '', '&', PHP_QUERY_RFC3986 );
 		}
 
 		$url = Url::canonical( $url );
@@ -153,31 +156,41 @@ final class Canonical {
 	}
 
 	/**
-	 * Whether two canonicals identify the same document independent of query.
+	 * Compare path and native routing state, allowing same-document filters.
 	 *
-	 * @param string $left  Candidate canonical.
-	 * @param string $right Normalized current-document URL.
+	 * @param string               $left  Candidate canonical.
+	 * @param string               $right Normalized current-document URL.
+	 * @param array<string, mixed> $context Current request.
 	 */
-	private static function same_document( string $left, string $right ): bool {
+	private static function same_document( string $left, string $right, array $context ): bool {
 		$left_parts  = wp_parse_url( $left );
 		$right_parts = wp_parse_url( $right );
 		if ( ! is_array( $left_parts ) || ! is_array( $right_parts ) ) {
 			return false;
 		}
 
-		$identity = static function ( array $parts ): array {
+		$routing_keys = array_merge(
+			array( 'p', 'page_id', 'pagename', 'name', 'attachment', 'attachment_id', 'cat', 'category_name', 'tag', 'tag_id', 'taxonomy', 'term', 'post_type', 'author', 'author_name', 'm', 'year', 'monthnum', 'day', 'hour', 'minute', 'second', 'w', 'page', 'paged' ),
+			array_keys( Context::routing_query_args( $context ) )
+		);
+		$identity     = static function ( array $parts ) use ( $routing_keys ): array {
 			$scheme = strtolower( (string) ( $parts['scheme'] ?? '' ) );
 			$port   = isset( $parts['port'] ) ? (int) $parts['port'] : ( 'https' === $scheme ? 443 : 80 );
 			$path   = '/' . ltrim( (string) ( $parts['path'] ?? '' ), '/' );
 			if ( '/' !== $path ) {
 				$path = untrailingslashit( $path );
 			}
+			$query = array();
+			wp_parse_str( (string) ( $parts['query'] ?? '' ), $query );
+			$routing = array_intersect_key( $query, array_fill_keys( $routing_keys, true ) );
+			ksort( $routing );
 
 			return array(
 				$scheme,
 				strtolower( (string) ( $parts['host'] ?? '' ) ),
 				$port,
 				$path,
+				$routing,
 			);
 		};
 

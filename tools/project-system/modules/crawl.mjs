@@ -4,15 +4,45 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { targetUrlHasSecret, sanitizeTargetUrl } from '../lib/targets.mjs';
 
 const TIMEOUT_MS = 15000;
 const MAX_LINK_CHECKS = 50;
 
-async function fetchWithTimeout(url, opts = {}) {
-	const ctrl = new AbortController();
-	const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+function eligibleUrl(value, origin) {
 	try {
-		return await fetch(url, { ...opts, signal: ctrl.signal, redirect: 'follow' });
+		const url = new URL(value);
+		if (!['http:', 'https:'].includes(url.protocol) || url.origin !== origin || targetUrlHasSecret(value)) return null;
+		// A crawl must not follow administrative or account-action links.
+		if (/(?:^|\/)(?:wp-admin|wp-login\.php|login|logout|reset|reset-password|password-reset|magic-link)(?:\/|$)/i.test(url.pathname)) return null;
+		url.hash = '';
+		return url.toString();
+	} catch {
+		return null;
+	}
+}
+
+export async function fetchWithTimeout(url, { method = 'GET', origin = new URL(url).origin, timeoutMs = TIMEOUT_MS } = {}) {
+	const ctrl = new AbortController();
+	const t = setTimeout(() => ctrl.abort(), timeoutMs);
+	try {
+		let target = url;
+		for (let hop = 0; hop <= 5; hop++) {
+			target = eligibleUrl(target, origin);
+			if (!target) throw new Error('unsafe or external crawl target refused');
+			const res = await fetch(target, { method, signal: ctrl.signal, redirect: 'manual' });
+			if ([301, 302, 303, 307, 308].includes(res.status)) {
+				const location = res.headers.get('location');
+				await res.body?.cancel();
+				if (!location) throw new Error('redirect has no location');
+				target = new URL(location, target).toString();
+				continue;
+			}
+			const html = method === 'GET' && /text\/html/i.test(res.headers.get('content-type') || '') ? await res.text() : '';
+			if (!html) await res.body?.cancel();
+			return { status: res.status, headers: res.headers, url: target, redirected: hop > 0, html };
+		}
+		throw new Error('too many redirects');
 	} finally {
 		clearTimeout(t);
 	}
@@ -25,11 +55,11 @@ function parseHtml(html, pageUrl) {
 	const descTag = (html.match(/<meta[^>]+name=["']description["'][^>]*>/i) || [])[0] || '';
 	const metaDescription = descTag ? attr(descTag, 'content') : null;
 	const canonTag = (html.match(/<link[^>]+rel=["']canonical["'][^>]*>/i) || [])[0] || '';
-	const canonical = canonTag ? attr(canonTag, 'href') : null;
+	const canonical = canonTag ? sanitizeTargetUrl(decodeAttribute(attr(canonTag, 'href') || ''), { baseUrl: pageUrl }) : null;
 	const h1Count = (html.match(/<h1[\s>]/gi) || []).length;
 	const links = [];
 	for (const m of html.matchAll(/<a\s+[^>]*href=["']([^"']+)["']/gi)) {
-		const href = m[1];
+		const href = decodeAttribute(m[1]);
 		if (/^(#|mailto:|tel:|javascript:)/i.test(href)) continue;
 		try {
 			links.push(new URL(href, pageUrl).toString());
@@ -51,6 +81,13 @@ const HEADER_KEYS = [
 	'server',
 ];
 
+function decodeAttribute(value) {
+	return value.replace(/&amp;/gi, '&').replace(/&#(?:x([0-9a-f]+)|(\d+));/gi, (_match, hex, decimal) => {
+		const code = parseInt(hex || decimal, hex ? 16 : 10);
+		return code <= 0x10ffff ? String.fromCodePoint(code) : '';
+	});
+}
+
 export async function run(ctx) {
 	const { pages, runDir, config } = ctx;
 	const outDir = join(runDir, 'crawl');
@@ -64,18 +101,19 @@ export async function run(ctx) {
 
 	for (const page of pages) {
 		try {
-			const res = await fetchWithTimeout(page.url);
-			const html = /text\/html/i.test(res.headers.get('content-type') || '') ? await res.text() : '';
+			const res = await fetchWithTimeout(page.url, { origin });
+			const html = res.html;
 			const parsed = html ? parseHtml(html, res.url) : { title: null, metaDescription: null, canonical: null, h1Count: 0, links: [] };
 			if (!headers) {
 				headers = {};
 				for (const k of HEADER_KEYS) headers[k] = res.headers.get(k);
 				headers.https = res.url.startsWith('https://');
 			}
-			for (const l of parsed.links) if (origin && l.startsWith(origin)) allInternalLinks.add(l.split('#')[0]);
+			const internalLinks = [...new Set(parsed.links.map((link) => eligibleUrl(link, origin)).filter(Boolean))];
+			for (const link of internalLinks) allInternalLinks.add(link);
 			results.push({
 				name: page.name,
-				url: page.url,
+				url: sanitizeTargetUrl(page.url),
 				final_url: res.url,
 				status: res.status,
 				redirected: res.redirected,
@@ -83,11 +121,11 @@ export async function run(ctx) {
 				metaDescription: parsed.metaDescription,
 				canonical: parsed.canonical,
 				h1Count: parsed.h1Count,
-				internalLinks: parsed.links.length,
+				internalLinks: internalLinks.length,
 			});
 			anyOk = true;
 		} catch (err) {
-			results.push({ name: page.name, url: page.url, status: null, error: String(err.message || err) });
+			results.push({ name: page.name, url: sanitizeTargetUrl(page.url), status: null, error: err.name === 'AbortError' ? 'request timed out' : 'request failed or target refused' });
 		}
 	}
 
@@ -96,11 +134,11 @@ export async function run(ctx) {
 	const brokenLinks = [];
 	for (const url of toCheck) {
 		try {
-			let res = await fetchWithTimeout(url, { method: 'HEAD' });
-			if (res.status === 405 || res.status === 501) res = await fetchWithTimeout(url, { method: 'GET' });
+			let res = await fetchWithTimeout(url, { method: 'HEAD', origin });
+			if (res.status === 405 || res.status === 501) res = await fetchWithTimeout(url, { method: 'GET', origin });
 			if (res.status >= 400) brokenLinks.push({ url, status: res.status });
 		} catch (err) {
-			brokenLinks.push({ url, error: String(err.message || err) });
+			brokenLinks.push({ url: sanitizeTargetUrl(url), error: err.name === 'AbortError' ? 'request timed out' : 'request failed or target refused' });
 		}
 	}
 

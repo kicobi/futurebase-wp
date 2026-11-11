@@ -75,6 +75,8 @@ for (const [name, dispatch] of [
 		try {
 			mkdirSync(join(dir, 'bin'), { recursive: true });
 			mkdirSync(join(dir, 'cli'), { recursive: true });
+			mkdirSync(join(dir, 'lib'), { recursive: true });
+			writeFileSync(join(dir, 'lib', 'output.mjs'), readFileSync(join(TOOL_ROOT, 'lib', 'output.mjs'), 'utf8'));
 			writeFileSync(join(dir, 'bin', 'futurebase.mjs'), readFileSync(FUTUREBASE_CLI, 'utf8'));
 			writeFileSync(join(dir, 'bin', 'bootstrap.mjs'), readFileSync(join(TOOL_ROOT, 'bin', 'bootstrap.mjs'), 'utf8'));
 			writeFileSync(join(dir, 'cli', 'dispatch.mjs'), dispatch);

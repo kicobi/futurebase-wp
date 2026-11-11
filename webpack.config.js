@@ -21,7 +21,7 @@ module.exports = {
 		},
 	},
 	context: path.resolve( __dirname, 'assets' ),
-	entry: [ './main.js', './main.scss' ],
+	entry: { main: [ './main.js', './main.scss' ], editor: './editor.js' },
 	plugins: [
 		// Include @wordpress plugins config.
 		...webpackConfig.plugins,

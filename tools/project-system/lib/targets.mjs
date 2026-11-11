@@ -72,6 +72,8 @@ function decoded(value) {
 
 function hasSecretPath(url) {
 	const pathname = decoded(url.pathname);
+	const segments = pathname.split('/').filter(Boolean);
+	if (segments.some((name, index) => index < segments.length - 1 && isSecretParameter(name))) return true;
 	for (const match of pathname.matchAll(PATH_PARAMETER_RE)) {
 		if (isSecretParameter(decoded(match[1]))) return true;
 	}

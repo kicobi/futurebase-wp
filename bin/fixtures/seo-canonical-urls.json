@@ -1,0 +1,17 @@
+[
+	{ "value": "", "valid": true },
+	{ "value": "https://example.com/path?lang=sv", "valid": true },
+	{ "value": " https://example.com/path ", "valid": true },
+	{ "value": "https://elsewhere.example:8443/", "valid": true },
+	{ "value": "https://example.com/#", "valid": false },
+	{ "value": "https://example.com/#fragment", "valid": false },
+	{ "value": "https://user:pass@example.com/", "valid": false },
+	{ "value": "https://@example.com/", "valid": false },
+	{ "value": "https://exam\tple.com/", "valid": false },
+	{ "value": "https://example.com/pa\nth", "valid": false },
+	{ "value": "https://example.com\\path", "valid": false },
+	{ "value": "https:example.com", "valid": false },
+	{ "value": "/relative", "valid": false },
+	{ "value": "//example.com/", "valid": false },
+	{ "value": "ftp://example.com/", "valid": false }
+]

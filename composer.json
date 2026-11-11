@@ -10,12 +10,14 @@
 		"wp-coding-standards/wpcs": "^3.1",
 		"phpcompatibility/phpcompatibility-wp": "^2.1",
 		"dealerdirect/phpcodesniffer-composer-installer": "^1.0",
-		"szepeviktor/phpstan-wordpress": "^2.0"
+		"szepeviktor/phpstan-wordpress": "^2.0.4",
+		"php-stubs/wordpress-stubs": "~6.9.0"
 	},
 	"scripts": {
 		"phpcs": "phpcs",
 		"phpcbf": "phpcbf",
-		"phpstan": "phpstan analyse --memory-limit=1G"
+		"phpstan": "phpstan analyse --memory-limit=1G",
+		"test:minimum-api": "php bin/test-minimum-api.php"
 	},
 	"config": {
 		"allow-plugins": {

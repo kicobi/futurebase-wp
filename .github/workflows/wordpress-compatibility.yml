@@ -2,8 +2,13 @@ name: WordPress compatibility
 
 # Futurebase-only compatibility canary. This workflow is intentionally listed
 # in tools/project-system/lib/sync.mjs STARTER_ONLY: promoted projects keep
-# their normal CI without inheriting this scheduled two-environment matrix.
+# their normal CI without inheriting this starter compatibility matrix.
 on:
+    pull_request:
+    push:
+        branches: [main]
+    release:
+        types: [published]
     schedule:
         - cron: '0 6 * * 1'
     workflow_dispatch:
@@ -16,24 +21,40 @@ concurrency:
     cancel-in-progress: true
 
 jobs:
-    wordpress:
-        name: WordPress ${{ matrix.label }}
+    matrix:
         runs-on: ubuntu-latest
-        timeout-minutes: 20
+        outputs:
+            include: ${{ steps.matrix.outputs.include }}
+        steps:
+            - id: matrix
+              env:
+                  FULL_MATRIX: ${{ github.event_name == 'schedule' || github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
+              run: |
+                  node <<'JS'
+                  const fs = require('node:fs');
+                  const include = [];
+                  for (const channel of ['floor', 'latest']) {
+                      for (const php of ['8.3', '8.4', '8.5']) {
+                          if (process.env.FULL_MATRIX !== 'true' && !((channel === 'floor' && php === '8.3') || (channel === 'latest' && php === '8.5'))) continue;
+                          include.push({ channel, php, core: channel === 'floor' ? '' : 'https://wordpress.org/latest.zip' });
+                      }
+                  }
+                  fs.appendFileSync(process.env.GITHUB_OUTPUT, `include=${JSON.stringify(include)}\n`);
+                  JS
+    wordpress:
+        needs: matrix
+        name: WordPress ${{ matrix.channel }} / PHP ${{ matrix.php }}
+        runs-on: ubuntu-latest
+        timeout-minutes: 40
         strategy:
             fail-fast: false
             matrix:
-                include:
-                    - label: supported floor
-                      channel: floor
-                      core: ''
-                    - label: latest stable
-                      channel: latest
-                      core: https://wordpress.org/latest.zip
+                include: ${{ fromJSON(needs.matrix.outputs.include) }}
         env:
             CI: 'true'
             # An empty value leaves .wp-env.json authoritative for the floor.
             WP_ENV_CORE: ${{ matrix.core }}
+            WP_ENV_PHP_VERSION: ${{ matrix.php }}
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -42,8 +63,10 @@ jobs:
                   node-version-file: .nvmrc
                   cache: npm
 
+            - run: npm install --global npm@11.16.0
             - run: npm ci
             - run: npm run build
+            - run: npm run build:seo
             - run: npm run env:start
 
             - name: Verify the WordPress version under test
@@ -60,7 +83,7 @@ jobs:
                       exit 1
                   fi
                   {
-                      echo "### WordPress ${{ matrix.label }}"
+                      echo "### WordPress ${{ matrix.channel }} / PHP ${{ matrix.php }}"
                       echo
                       echo "Resolved version: \`$installed\`"
                   } >> "$GITHUB_STEP_SUMMARY"
@@ -85,11 +108,17 @@ jobs:
             - name: Navigation migration
               run: npm run test:navigation
 
+            - name: Theme hardening runtime
+              run: bin/test-theme-runtime.sh
+
             - name: Render smoke test
               run: bin/smoke-render.sh
 
             - name: Accessibility
               run: npm run a11y
+
+            - name: Install release ZIPs in clean WordPress
+              run: bin/test-release-install.sh
 
             - name: Stop wp-env
               if: always()

@@ -23,6 +23,9 @@ if ( ! function_exists( 'futurebase_theme_support' ) ) {
 		add_theme_support( 'responsive-embeds' );
 		// Add support for Block Styles.
 		add_theme_support( 'wp-block-styles' );
+		// Keep site chrome and motion preferences consistent in the editor canvas.
+		add_theme_support( 'editor-styles' );
+		add_editor_style( 'build/main.css' );
 		// Opt into HTML5 markup for core form/gallery output surfaced outside block contexts.
 		add_theme_support(
 			'html5',
@@ -143,6 +146,7 @@ if ( ! function_exists( 'futurebase_register_block_styles' ) ) {
 }
 
 require_once __DIR__ . '/inc/navigation-migration.php';
+require_once __DIR__ . '/inc/copyright.php';
 
 if ( ! function_exists( 'futurebase_load_post_types' ) ) {
 	/**

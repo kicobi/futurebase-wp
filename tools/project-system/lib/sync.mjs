@@ -79,6 +79,13 @@ export const VERIFIER_CLOSURE = [
 	'bin/verify-version-surfaces.mjs',
 	'bin/verify-version-surfaces.test.mjs',
 	'bin/test-rename.sh',
+	'bin/snapshot-working-tree.mjs',
+	'bin/snapshot-working-tree.test.mjs',
+	'bin/test-seo-url.test.mjs',
+	'bin/copyright-editor.test.mjs',
+	'bin/fixtures/seo-canonical-urls.json',
+	'bin/test-minimum-api.php',
+	'bin/fixtures/minimum-api-negative.php',
 	'bin/a11y-wp-env.sh',
 	'bin/verify-contract.mjs',
 	'bin/verify-contract.test.mjs',
@@ -99,6 +106,10 @@ export const PORTABLE_BIN = [
 	'bin/test-seo-install.sh',
 	'bin/test-seo-package.sh',
 	'bin/test-seo-runtime.php',
+	'bin/test-seo-hardening.php',
+	'bin/test-theme-runtime.php',
+	'bin/test-theme-runtime.sh',
+	'bin/test-release-install.sh',
 	'bin/test-seo-runtime.sh',
 	...VERIFIER_CLOSURE,
 ];
@@ -615,7 +626,7 @@ export function planDeps({ projectRoot, starter, ref }) {
 		}
 	};
 
-	const NPM_KEYS = ['dependencies', 'devDependencies', 'overrides'];
+	const NPM_KEYS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies', 'overrides'];
 	const COMPOSER_KEYS = ['require', 'require-dev'];
 
 	// package.json — merge only the dependency-governing blocks.
@@ -630,6 +641,16 @@ export function planDeps({ projectRoot, starter, ref }) {
 		projectPkgName = pkg.name;
 		projectPkgVersion = pkg.version;
 		npmExtra = projectOnlyDeps(pkg, up, NPM_KEYS);
+		// A root lock cannot safely be transplanted into a workspace or a
+		// package with local/link dependencies or different peer/bundle policy.
+		for (const key of ['workspaces', 'peerDependenciesMeta', 'bundledDependencies', 'bundleDependencies']) {
+			if (pkg[key] != null || up[key] != null) npmExtra.push(`unsupported ${key}`);
+		}
+		for (const key of NPM_KEYS.filter((key) => key !== 'overrides')) {
+			if (Object.values(pkg[key] || {}).some((value) => /^(?:file:|link:|workspace:|\.{0,2}\/)/.test(String(value)))) {
+				npmExtra.push(`local ${key}`);
+			}
+		}
 		propose('package.json', serialize(unionKeys({ ...pkg }, up, NPM_KEYS), detectIndent(pkgRaw)));
 	}
 
