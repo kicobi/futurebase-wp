@@ -34,6 +34,8 @@ required_paths=(
 	"build/main.asset.php"
 	"build/main.css"
 	"build/main.js"
+	"build/editor.js"
+	"build/editor.asset.php"
 	"templates/index.html"
 	"parts/header.html"
 	"patterns/home.php"

@@ -2,7 +2,7 @@
 Contributors: kicobi
 Tags: full-site-editing, block-patterns, block-styles, style-variations, wide-blocks, template-editing, one-column, accessibility-ready, custom-colors, custom-logo, featured-images, rtl-language-support, sticky-post, threaded-comments, translation-ready
 Requires at least: 6.9
-Tested up to: 6.9
+Tested up to: 7.1
 Requires PHP: 8.3
 Stable tag: 2.0.0
 License: GPLv2 or later

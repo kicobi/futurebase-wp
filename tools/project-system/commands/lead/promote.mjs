@@ -22,6 +22,7 @@ import { validateProject } from '../../lib/validate.mjs';
 import { run, have, gitHead, isGitRepo, ghRepoExists } from '../../lib/proc.mjs';
 import { scanFiles } from '../../lib/secret-scan.mjs';
 import { newCloseoutRecord } from '../../lib/closeout.mjs';
+import { PROJECT_PRIVATE_IGNORES } from '../../lib/privacy-paths.mjs';
 
 const DEFAULT_ORG = 'kicobi';
 const DEFAULT_TEMPLATE = 'kicobi/futurebase-wp';
@@ -33,10 +34,7 @@ const PROJECT_DIRS = ['brief', 'analysis', 'proposal', 'decisions', 'metrics', '
 // than belt-and-braces: it is what keeps `git add -A` from committing the
 // checkpoint into the project's first commit.
 const GITIGNORE_LINES = [
-	'.project/private/',
-	'.project/credentials/',
-	'.project/auth/',
-	'.project/**/raw-private/',
+	...PROJECT_PRIVATE_IGNORES,
 	'.futurebase-promotion.json',
 	'.wp-starter-promotion.json',
 ];

@@ -23,6 +23,9 @@ if ( ! function_exists( 'futurebase_theme_support' ) ) {
 		add_theme_support( 'responsive-embeds' );
 		// Add support for Block Styles.
 		add_theme_support( 'wp-block-styles' );
+		// Keep site chrome and motion preferences consistent in the editor canvas.
+		add_theme_support( 'editor-styles' );
+		add_editor_style( 'build/main.css' );
 		// Opt into HTML5 markup for core form/gallery output surfaced outside block contexts.
 		add_theme_support(
 			'html5',
@@ -31,6 +34,25 @@ if ( ! function_exists( 'futurebase_theme_support' ) ) {
 	}
 	add_action( 'after_setup_theme', 'futurebase_theme_support' );
 }
+
+/**
+ * Keep the native reply form at section level, including empty discussions.
+ *
+ * Core hides Comments Title when there are no comments. Its form block has no
+ * heading-level attribute at our WordPress floor, so the default h3 skips h2.
+ * Preserve a heading explicitly customized by another comment-form filter.
+ *
+ * @param array<string, mixed> $defaults Comment form defaults.
+ * @return array<string, mixed>
+ */
+function futurebase_comment_form_heading( $defaults ) {
+	if ( '<h3 id="reply-title" class="comment-reply-title">' === $defaults['title_reply_before'] && '</h3>' === $defaults['title_reply_after'] ) {
+		$defaults['title_reply_before'] = '<h2 id="reply-title" class="comment-reply-title">';
+		$defaults['title_reply_after']  = '</h2>';
+	}
+	return $defaults;
+}
+add_filter( 'comment_form_defaults', 'futurebase_comment_form_heading' );
 
 if ( ! function_exists( 'futurebase_curate_editor' ) ) {
 	/**
@@ -143,6 +165,7 @@ if ( ! function_exists( 'futurebase_register_block_styles' ) ) {
 }
 
 require_once __DIR__ . '/inc/navigation-migration.php';
+require_once __DIR__ . '/inc/copyright.php';
 
 if ( ! function_exists( 'futurebase_load_post_types' ) ) {
 	/**

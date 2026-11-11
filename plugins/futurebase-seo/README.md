@@ -1,6 +1,6 @@
 # Futurebase SEO
 
-This directory is the source for the private SEO companion plugin. It lives in
+This directory is the source for the optional SEO companion plugin. It lives in
 the same repository as the theme so both products share promotion tooling and
 quality gates, but it is built, packaged, installed, and deployed separately.
 

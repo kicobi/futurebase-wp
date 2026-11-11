@@ -132,18 +132,36 @@ final class Context {
 	 * @return array<string, mixed>
 	 */
 	private static function query_args(): array {
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only public request context; no state change occurs.
-		$input = wp_unslash( $_GET );
+		// PHP changes dots and spaces in top-level $_GET keys. Parse the wire
+		// query with temporary keys so canonicals retain their actual identity.
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Parsed and recursively sanitized below; never emitted raw.
+		$request = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+		$query   = (string) wp_parse_url( $request, PHP_URL_QUERY );
+		$names   = array();
+		$pairs   = array();
+		foreach ( explode( '&', $query ) as $pair ) {
+			$pieces = explode( '=', $pair, 2 );
+			$key    = urldecode( $pieces[0] );
+			$base   = explode( '[', $key, 2 )[0];
+			if ( '' === $base ) {
+				continue;
+			}
+			$alias = array_search( $base, $names, true );
+			if ( false === $alias ) {
+				$alias           = 'key' . count( $names );
+				$names[ $alias ] = $base;
+			}
+			$pairs[] = rawurlencode( $alias . substr( $key, strlen( $base ) ) ) . '=' . ( $pieces[1] ?? '' );
+		}
+		$parsed = array();
+		wp_parse_str( implode( '&', $pairs ), $parsed );
+		$input = array();
+		foreach ( $parsed as $alias => $value ) {
+			$input[ $names[ $alias ] ] = $value;
+		}
 		$clean = array();
 
 		foreach ( $input as $key => $value ) {
-			if ( ! is_string( $key ) ) {
-				continue;
-			}
-			$key = sanitize_key( $key );
-			if ( '' === $key ) {
-				continue;
-			}
 			$clean[ $key ] = self::sanitize_query_value( $value );
 		}
 
@@ -160,12 +178,47 @@ final class Context {
 		if ( is_array( $value ) ) {
 			$clean = array();
 			foreach ( $value as $key => $item ) {
-				$clean[ is_string( $key ) ? sanitize_key( $key ) : $key ] = self::sanitize_query_value( $item );
+				$clean[ $key ] = self::sanitize_query_value( $item );
 			}
 			return $clean;
 		}
 
 		return is_scalar( $value ) ? sanitize_text_field( (string) $value ) : '';
+	}
+
+	/**
+	 * Query arguments that identify the native archive rather than filter it.
+	 *
+	 * Preserve original keys; normalization belongs only in classification.
+	 *
+	 * @param array<string, mixed> $context Request context.
+	 * @return array<string, mixed>
+	 */
+	public static function routing_query_args( array $context ): array {
+		$names = array();
+		if ( 'home' === ( $context['kind'] ?? '' ) && is_home() ) {
+			$names = array( 'page_id', 'pagename' );
+		} elseif ( 'archive' === ( $context['kind'] ?? '' ) ) {
+			if ( is_category() ) {
+				$names = array( 'cat', 'category_name' );
+			} elseif ( is_tag() ) {
+				$names = array( 'tag', 'tag_id' );
+			} elseif ( is_tax() ) {
+				$names    = array( 'taxonomy', 'term' );
+				$taxonomy = get_taxonomy( (string) ( $context['taxonomy'] ?? '' ) );
+				if ( $taxonomy && is_string( $taxonomy->query_var ) ) {
+					$names[] = $taxonomy->query_var;
+				}
+			} elseif ( is_post_type_archive() ) {
+				$names = array( 'post_type' );
+			} elseif ( is_author() ) {
+				$names = array( 'author', 'author_name' );
+			} elseif ( is_date() ) {
+				$names = array( 'm', 'year', 'monthnum', 'day', 'hour', 'minute', 'second', 'w' );
+			}
+		}
+		$query = isset( $context['query_args'] ) && is_array( $context['query_args'] ) ? $context['query_args'] : array();
+		return array_intersect_key( $query, array_fill_keys( $names, true ) );
 	}
 
 	/**
@@ -178,7 +231,7 @@ final class Context {
 
 		$request = $wp instanceof \WP ? $wp->request : '';
 		$url     = home_url( '/' . ltrim( $request, '/' ) );
-		return empty( $query_args ) ? $url : add_query_arg( $query_args, $url );
+		return empty( $query_args ) ? $url : $url . '?' . http_build_query( $query_args, '', '&', PHP_QUERY_RFC3986 );
 	}
 
 	/**

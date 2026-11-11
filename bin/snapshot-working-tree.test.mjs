@@ -1,0 +1,36 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { snapshotWorkingTree } from './snapshot-working-tree.mjs';
+
+test('rename snapshots exercise current edits, deletions and new source without secrets or index changes', (t) => {
+	const dir = mkdtempSync(join(tmpdir(), 'theme-snapshot-'));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const source = join(dir, 'source');
+	const destination = join(dir, 'destination');
+	mkdirSync(source);
+	const git = (...args) => execFileSync('git', args, { cwd: source, encoding: 'utf8' });
+	git('init', '-q');
+	writeFileSync(join(source, '.gitignore'), '.env\n');
+	writeFileSync(join(source, 'changed.txt'), 'old');
+	writeFileSync(join(source, 'removed.txt'), 'remove me');
+	git('add', '.');
+	git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'fixture');
+	git('clone', '-q', source, destination);
+	writeFileSync(join(source, 'changed.txt'), 'current');
+	rmSync(join(source, 'removed.txt'));
+	writeFileSync(join(source, 'new.sh'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+	writeFileSync(join(source, 'new.png'), Buffer.from([0, 255, 128, 32]));
+	writeFileSync(join(source, '.env'), 'private fixture');
+	const before = git('status', '--porcelain');
+	snapshotWorkingTree(source, destination);
+	assert.equal(git('status', '--porcelain'), before);
+	assert.equal(readFileSync(join(destination, 'changed.txt'), 'utf8'), 'current');
+	assert.equal(existsSync(join(destination, 'removed.txt')), false);
+	assert.equal(existsSync(join(destination, '.env')), false);
+	assert.equal(statSync(join(destination, 'new.sh')).mode & 0o777, 0o755);
+	assert.deepEqual(readFileSync(join(destination, 'new.png')), Buffer.from([0, 255, 128, 32]));
+});

@@ -31,11 +31,11 @@ final class Cleanup {
 					$meta_key
 				)
 			);
-			$metadata_by_key[ $meta_key ] = (int) $count;
+			$metadata_by_key[ $meta_key ] = self::verified_count( $count );
 		}
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Read-only maintenance count over a core table.
-		$settings_options = (int) $wpdb->get_var(
+		$settings_options = $wpdb->get_var(
 			$wpdb->prepare(
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Core table name supplied by wpdb.
 				"SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name = %s",
@@ -45,7 +45,7 @@ final class Cleanup {
 
 		$meta_keys = self::meta_keys();
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared -- Fixed placeholders and core table name; all values pass through prepare().
-		$posts_with_metadata = (int) $wpdb->get_var(
+		$posts_with_metadata = $wpdb->get_var(
 			$wpdb->prepare(
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Core table name supplied by wpdb.
 				"SELECT COUNT(DISTINCT post_id) FROM {$wpdb->postmeta} WHERE meta_key IN (%s, %s, %s, %s, %s)",
@@ -58,11 +58,25 @@ final class Cleanup {
 		);
 
 		return array(
-			'settings_options'    => $settings_options,
+			'settings_options'    => self::verified_count( $settings_options ),
 			'metadata_rows'       => array_sum( $metadata_by_key ),
-			'posts_with_metadata' => $posts_with_metadata,
+			'posts_with_metadata' => self::verified_count( $posts_with_metadata ),
 			'metadata_by_key'     => $metadata_by_key,
 		);
+	}
+
+	/**
+	 * Refuse failed count queries instead of treating them as an empty result.
+	 *
+	 * @param mixed $value Database count.
+	 * @return int
+	 * @throws \RuntimeException When the count could not be read.
+	 */
+	private static function verified_count( mixed $value ): int {
+		if ( ! is_scalar( $value ) || ! ctype_digit( (string) $value ) ) {
+			throw new \RuntimeException( 'Companion SEO cleanup could not verify database counts.' );
+		}
+		return (int) $value;
 	}
 
 	/**

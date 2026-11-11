@@ -30,21 +30,30 @@ concurrency:
 
 jobs:
     node:
-        name: Node (lint + build)
+        strategy:
+            fail-fast: false
+            matrix:
+                node: [22, 24, 26]
+        name: Node ${{ matrix.node }} (lint + build)
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
             - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
               with:
-                  node-version-file: .nvmrc
+                  node-version: ${{ matrix.node }}
                   cache: npm
 
+            - run: npm install --global npm@11.16.0
             - run: npm ci
+            - run: npm ls --all
+            - run: npm audit --audit-level=high
             - run: npm run lint
             - run: npm run lint:css
             - run: npm run lint:pkg
             - run: npm run build
+            - name: Node regression tests
+              run: node --test bin/*.test.mjs
             - name: Production Lighthouse sampler parser tests
               if: hashFiles('bin/lighthouse-sample.test.mjs') != ''
               run: node --test bin/lighthouse-sample.test.mjs
@@ -91,6 +100,9 @@ jobs:
             - run: composer install --prefer-dist --no-progress --no-interaction
             - run: composer phpcs
             - run: composer phpstan
+            - run: composer test:minimum-api
+              if: hashFiles('bin/test-minimum-api.php') != ''
+            - run: composer audit
 
     scaffold:
         name: Scaffold smoke tests
@@ -109,6 +121,7 @@ jobs:
                   tools: composer:v2
                   coverage: none
 
+            - run: npm install --global npm@11.16.0
             - run: npm ci
             - run: composer install --prefer-dist --no-progress --no-interaction
 
@@ -116,7 +129,7 @@ jobs:
             # These decide what gets copied into a client repository and what is
             # examined before it goes, so they are gated rather than trusted.
             - name: Project-system guard tests
-              run: npm ci --prefix tools/project-system && npm test --prefix tools/project-system
+              run: npm ci --prefix tools/project-system && npm audit --prefix tools/project-system --audit-level=high && npm test --prefix tools/project-system
 
             - name: Run scaffold probes
               run: |
@@ -158,6 +171,7 @@ jobs:
                   node-version-file: .nvmrc
                   cache: npm
 
+            - run: npm install --global npm@11.16.0
             - run: npm ci
             - run: npm run package:check
             - name: Companion SEO plugin package
@@ -177,6 +191,7 @@ jobs:
                   node-version-file: .nvmrc
                   cache: npm
 
+            - run: npm install --global npm@11.16.0
             - run: npm ci
             - run: npm run build
             - run: npm run env:start
@@ -219,6 +234,7 @@ jobs:
                   tools: composer:v2
                   coverage: none
 
+            - run: npm install --global npm@11.16.0
             - run: npm ci
             - run: composer install --prefer-dist --no-progress --no-interaction
             - run: bin/verify-theme.sh

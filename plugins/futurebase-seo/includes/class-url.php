@@ -27,7 +27,7 @@ final class Url {
 		}
 
 		$value = trim( $value );
-		if ( '' === $value || preg_match( '/[\x00-\x1F\x7F]/', $value ) ) {
+		if ( '' === $value || str_contains( $value, '\\' ) || preg_match( '/[\x00-\x1F\x7F]/', $value ) ) {
 			return '';
 		}
 

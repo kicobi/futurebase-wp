@@ -247,6 +247,19 @@ fi
 # ---------------------------------------------------------------------------
 section "Rename collision safety (Issue #4)"
 
+if node --test bin/snapshot-working-tree.test.mjs > /dev/null 2>&1; then
+	pass "rename snapshots use current working source"
+else
+	fail "working-tree snapshot regression"
+fi
+if seo_plugin_dir > /dev/null 2>&1; then
+	if node --test bin/test-seo-url.test.mjs > /dev/null 2>&1; then
+		pass "canonical URL editor validation"
+	else
+		fail "canonical URL editor validation"
+	fi
+fi
+
 if bash "$ROOT/bin/audit-identity.sh"; then
 	pass "legacy identity allowlist"
 else
@@ -291,6 +304,7 @@ run() {
 
 if command -v npm > /dev/null; then
 	run "npm run build"     npm run --silent build
+	run "compiled copyright editor binding" node --test bin/copyright-editor.test.mjs
 	if seo_plugin_dir > /dev/null 2>&1; then
 		run "companion SEO build" "$ROOT/bin/build-seo-plugin.sh" build
 		run "companion SEO package" "$ROOT/bin/test-seo-package.sh"
@@ -305,6 +319,7 @@ fi
 if command -v composer > /dev/null; then
 	run "composer phpcs"    composer phpcs
 	run "composer phpstan"  composer phpstan
+	run "minimum API canaries" php bin/test-minimum-api.php
 else
 	fail "composer not found on PATH"
 fi

@@ -150,6 +150,7 @@ final class Decision {
 	 */
 	private static function meaningful_query_args( array $context ): array {
 		$query_args = isset( $context['query_args'] ) && is_array( $context['query_args'] ) ? $context['query_args'] : array();
+		$query_args = array_diff_key( $query_args, Context::routing_query_args( $context ) );
 		foreach ( array_keys( $query_args ) as $name ) {
 			if ( in_array( $name, array( 'page', 'paged' ), true ) || self::is_tracking_argument( (string) $name ) ) {
 				unset( $query_args[ $name ] );
@@ -165,6 +166,7 @@ final class Decision {
 	 * @param string $name Query-variable name.
 	 */
 	private static function is_tracking_argument( string $name ): bool {
+		$name = strtolower( $name );
 		return str_starts_with( $name, 'utm_' ) || in_array( $name, array( 'gclid', 'fbclid', 'msclkid' ), true );
 	}
 

@@ -7,10 +7,11 @@ What's different about deploying a site built from this template vs. any other W
 Checklist — all must be true before pushing to a production host:
 
 - [ ] `npm run rename -- <slug>` ran; theme slug is the project's, not `futurebase`. Verify by grep: `grep -rn "futurebase" --include="*.php" --include="*.json"` returns nothing unexpected. <!-- futurebase-rename: keep-line -->
-- [ ] `style.css` header is project-specific: `Theme Name`, `Description`, `Author`, `Author URI`, `Tags`. The rename script does *not* touch these.
+- [ ] Run rename with `--theme-name`, `--theme-version`, `--repository`, and `--contributors` as shown in the README. It updates identity/version surfaces and the companion plugin. Review `Description`, `Author`, `Author URI`, `Tags`, and the project’s attribution separately; the defaults intentionally retain Kicobi provenance.
 - [ ] `npm run verify` passes locally. CI should run the same script.
-- [ ] ACF Pro license is wired — either `ACF_PRO_LICENSE` env var on the host, or a `composer.json` with `auth.json` / `COMPOSER_AUTH`. See [acf-pro-setup.md](acf-pro-setup.md).
+- [ ] **If this project uses ACF Pro**, its license is wired — either `ACF_PRO_LICENSE` env var on the host, or a `composer.json` with `auth.json` / `COMPOSER_AUTH`. See [acf-pro-setup.md](acf-pro-setup.md).
 - [ ] `WP_ENVIRONMENT_TYPE` is set on the host (`production` on live, `staging` / `development` elsewhere). Plugins and code increasingly branch on this.
+- [ ] Run `npm run build` and `npm run build:seo` after renaming. The copyright editor source and shipped bundle follow the client binding identity; rebuilding also refreshes their version hashes.
 - [ ] `build/` contains fresh compiled output. It's committed — don't rely on running `npm run build` on the server.
 
 ## What ships
@@ -19,7 +20,8 @@ This template commits build artifacts so hosts don't need Node. A deploy is a co
 
 Tracked:
 
-- `build/main.{js,css,asset.php}` — theme bundle
+- `build/main.{js,css,asset.php}` — frontend bundle
+- `build/editor.{js,asset.php}` — copyright binding editor preview
 - `build/blocks/<slug>/*` — compiled theme-bound blocks (when any exist)
 - `vendor/` — **not** tracked. If the project uses Composer runtime dependencies, run `composer install --no-dev --prefer-dist` once on the host or inside the deploy pipeline.
 
@@ -164,12 +166,15 @@ and run the full build, static analysis, package, and disposable-WordPress
 checks before merging; do not accept a dependency PR solely because it is
 automated.
 
-`package.json` ships an `overrides` block that pins newer patched versions for a few transitives where the upgrade is low-risk (`lodash`, `serialize-javascript`, `markdownlint-cli`'s `minimatch`). Alerts that would require a major downgrade of a direct dep (e.g. `webpack-dev-server` 4 → 5 via a `@wordpress/scripts` downgrade) are intentionally left to upstream — revisit them when `@wordpress/scripts` cuts a new major. If a new override is warranted, run `npm audit` to confirm the fix version, add the pin, and re-run `npm run verify` before committing.
+The [dependency policy](dependency-policy.md) records each current override,
+its scope, and the remaining low-severity upstream advisory. Root and lifecycle
+npm audits must have no unexplained high/critical findings. Use clean installs
+with npm 11.16+ and rerun the relevant checks after dependency updates.
 
 ## First deploy — step by step
 
 1. **Provision the host.** Fresh WordPress install, admin user created, site URL configured.
-2. **Set env vars.** `ACF_PRO_LICENSE`, `WP_ENVIRONMENT_TYPE=production`.
+2. **Set env vars.** `WP_ENVIRONMENT_TYPE=production`; configure `ACF_PRO_LICENSE` only if the project uses ACF Pro.
 3. **Push code.** Git integration if the host actually offers it (WP Engine, Pressable — *not* Kinsta), otherwise `npm run package` and install the zip, or SFTP the theme directory to `wp-content/themes/<slug>/`.
 4. **Install Composer deps** (only if the project uses them): `composer install --no-dev --prefer-dist` over SSH.
 5. **Activate the theme.** `wp theme activate <slug>` or via wp-admin.

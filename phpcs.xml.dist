@@ -6,6 +6,8 @@
 	<exclude-pattern>*/build/*</exclude-pattern>
 	<exclude-pattern>*/node_modules/*</exclude-pattern>
 	<exclude-pattern>*/vendor/*</exclude-pattern>
+	<!-- Intentionally newer APIs: this negative fixture must fail PHPStan. -->
+	<exclude-pattern>bin/fixtures/minimum-api-negative.php</exclude-pattern>
 
 	<arg value="sp"/>
 	<arg name="colors"/>

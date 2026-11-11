@@ -29,18 +29,34 @@ export const warn = (msg) => console.log(`${c.yellow('!')} ${msg}`);
 export const info = (msg) => console.log(`  ${c.dim(msg)}`);
 export const fail = (msg) => console.error(`${c.red('✗')} ${msg}`);
 
-// Emit a machine-readable result and exit. Used for --json.
+// Terminate command control flow synchronously; the CLI boundary flushes output
+// asynchronously. Returning a promise here would let existing callers continue
+// into mutations or human output while the pipe is still draining.
+export class OutputExit extends Error {
+	constructor(text, code, stream = 'stdout') {
+		super('command completed');
+		this.text = text;
+		this.code = code;
+		this.stream = stream;
+	}
+}
+
+export async function finishOutput(error) {
+	await new Promise((resolve, reject) => {
+		process[error.stream].write(error.text, (failure) => failure ? reject(failure) : resolve());
+	});
+	process.exitCode = error.code;
+}
+
+// Emit a machine-readable result and terminate the command. Used for --json.
 export function emitJson(obj, code = EXIT.OK) {
-	process.stdout.write(JSON.stringify(obj, null, 2) + '\n');
-	process.exit(code);
+	throw new OutputExit(JSON.stringify(obj, null, 2) + '\n', code);
 }
 
 // Fatal error: print (or emit JSON) and exit with a structured code.
 export function die(message, code = EXIT.INVALID_CONFIG, { json = false } = {}) {
 	if (json) {
-		process.stdout.write(JSON.stringify({ status: 'error', code, message }, null, 2) + '\n');
-	} else {
-		fail(message);
+		emitJson({ status: 'error', code, message }, code);
 	}
-	process.exit(code);
+	throw new OutputExit(`${c.red('✗')} ${message}\n`, code, 'stderr');
 }

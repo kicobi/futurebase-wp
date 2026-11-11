@@ -3,6 +3,7 @@ includes:
 
 parameters:
     level: 6
+    phpVersion: 80300
     stubFiles:
         - phpstan-stubs/wp-cli.stub
     scanFiles:

@@ -1,3 +1,4 @@
+import { isValidCanonical } from './canonical-url.mjs';
 /**
  * Companion SEO document sidebar.
  */
@@ -49,26 +50,8 @@ const counterHelp = ( value, recommendation, label ) => {
 					'__compseo_text_domain__'
 				),
 				countText
-		  )
+			)
 		: countText;
-};
-
-const isValidCanonical = ( value ) => {
-	if ( ! value ) {
-		return true;
-	}
-
-	try {
-		const parsed = new URL( value );
-		return (
-			[ 'http:', 'https:' ].includes( parsed.protocol ) &&
-			! parsed.username &&
-			! parsed.password &&
-			! parsed.hash
-		);
-	} catch {
-		return false;
-	}
 };
 
 const SocialImageControl = ( { imageId, onChange } ) => {
@@ -127,11 +110,11 @@ const SocialImageControl = ( { imageId, onChange } ) => {
 									? __(
 											'Replace image',
 											'__compseo_text_domain__'
-									  )
+										)
 									: __(
 											'Select image',
 											'__compseo_text_domain__'
-									  ) }
+										) }
 							</Button>
 							{ imageId > 0 && (
 								<Button

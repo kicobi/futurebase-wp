@@ -7,6 +7,7 @@
 
 import { existsSync, readdirSync, lstatSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { EXIT, die, ok, warn, info, fail, emitJson, c } from '../../lib/output.mjs';
 import { findProjectRoot, projectPaths, readRunSummary } from '../../lib/baseline.mjs';
 import { listRuns } from '../../lib/record.mjs';
@@ -17,7 +18,7 @@ import { checkMetrics } from '../../lib/metrics.mjs';
 import { scanFiles } from '../../lib/secret-scan.mjs';
 import { closeoutSemanticIssues } from '../../lib/closeout.mjs';
 
-const PRIVATE_DIRS = new Set(['private', 'credentials', 'auth']);
+import { isPrivateProjectPath } from '../../lib/privacy-paths.mjs';
 
 // Every committed file, not a chosen few. The scanner decides what it can read
 // (and reports what it cannot) — an extension allowlist here meant a secret in
@@ -45,7 +46,6 @@ function walkCommitted(dir, base = '', acc = []) {
 		}
 		if (st.isSymbolicLink()) continue;
 		if (st.isDirectory()) {
-			if (PRIVATE_DIRS.has(entry) || entry === 'raw-private') continue;
 			walkCommitted(full, rel, acc);
 		} else if (st.isFile()) {
 			acc.push(full);
@@ -133,8 +133,21 @@ export function inspectProjectRecord(root) {
 		}
 	}
 
-	// secret scan of the committed record (private classes excluded).
-	const findings = scanFiles(walkCommitted(pd));
+	// A private path is excluded only while Git actually ignores that file.
+	// check-ignore deliberately includes tracked/force-added files in the scan;
+	// missing Git/ignore configuration fails closed by excluding nothing.
+	const files = walkCommitted(pd);
+	const privateFiles = files.filter((file) => isPrivateProjectPath(relative(pd, file)));
+	const ignored = new Set();
+	if (privateFiles.length) {
+		const result = spawnSync('git', ['check-ignore', '-z', '--stdin'], {
+			cwd: root, encoding: 'utf8', input: privateFiles.map((file) => relative(root, file)).join('\0') + '\0',
+		});
+		if (result.status === 0) {
+			for (const path of result.stdout.split('\0').filter(Boolean)) ignored.add(join(root, path));
+		}
+	}
+	const findings = scanFiles(files.filter((file) => !ignored.has(file)));
 	return { paths, issues, findings };
 }
 

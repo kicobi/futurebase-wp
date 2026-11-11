@@ -74,3 +74,9 @@ content recursively with `parse_blocks()` and inspects numeric
 File-based theme templates and parts are excluded because this starter's
 patterns resolve navigation posts by slug at render time; they do not store a
 numeric navigation ID.
+
+Reference scanning includes draft, pending, scheduled, private, published, and
+registered non-trash statuses on editor-backed post types. Historical revisions
+and auto-drafts are excluded. If both candidate menus are referenced, repair
+stops without changing either menu. Translated labels use WordPress block
+serialization, and patterns resolve only published region menus.

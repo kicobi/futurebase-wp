@@ -7,6 +7,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+wp() {
+	(cd "${WP_ENV_TEST_ROOT:-$ROOT}" && "$ROOT/node_modules/.bin/wp-env" run cli wp "$@")
+}
+
 if ! command -v npx > /dev/null 2>&1; then
 	echo "error: npx not found on PATH" >&2
 	exit 1
@@ -18,7 +22,7 @@ if ! command -v curl > /dev/null 2>&1; then
 fi
 
 WP_URL=$(
-	npx --silent wp-env run cli wp option get home --skip-themes --skip-plugins 2>/dev/null \
+	wp option get home --skip-themes --skip-plugins 2>/dev/null \
 		| grep -oE '^https?://[^[:space:]]+$' \
 		| head -1 \
 		|| true
@@ -41,9 +45,9 @@ fi
 # because it reads as proof. Assert the active stylesheet before measuring
 # anything. bin/demo-content.sh performs the activation, and imports content so
 # the archive and search templates have something to render.
-theme_slug="$(basename "$ROOT")"
+theme_slug="${A11Y_THEME_SLUG:-$(basename "$ROOT")}"
 active_theme=$(
-	npx --silent wp-env run cli wp option get stylesheet --skip-themes --skip-plugins 2>/dev/null \
+	wp option get stylesheet --skip-themes --skip-plugins 2>/dev/null \
 		| tr -d '\r' \
 		| grep -v '^$' \
 		| head -1 \
@@ -95,5 +99,26 @@ JSON
 . "$ROOT/bin/_page-set.sh"
 IFS=$'\n' read -r -d '' -a A11Y_URLS < <(page_set_with_404 "$WP_URL" && printf '\0')
 
-npx --silent pa11y-ci --config "$desktop_cfg" "${A11Y_URLS[@]}"
-npx --silent pa11y-ci --config "$mobile_cfg" "${A11Y_URLS[@]}"
+# A valid 404 template must not masquerade as eight missing fixture pages.
+for url in "${A11Y_URLS[@]}"; do
+	expected=200
+	[[ "$url" == */this-page-does-not-exist/ ]] && expected=404
+	status=$(curl --silent --show-error --max-time 15 --output /dev/null --write-out '%{http_code}' "$url")
+	if [ "$status" != "$expected" ]; then
+		echo "error: expected HTTP $expected for $url, got $status; load the disposable fixture or adapt the page set" >&2
+		exit 1
+	fi
+done
+
+# Pass URLs as configuration, not filesystem globs. Globby's transitive glob
+# updates can otherwise silently drop non-matching HTTP paths from coverage.
+for config in "$desktop_cfg" "$mobile_cfg"; do
+	node - "$config" "${A11Y_URLS[@]}" <<'JS'
+const fs = require('node:fs');
+const [path, ...urls] = process.argv.slice(2);
+const config = JSON.parse(fs.readFileSync(path, 'utf8'));
+config.urls = urls;
+fs.writeFileSync(path, JSON.stringify(config));
+JS
+	npx --silent pa11y-ci --config "$config"
+done

@@ -34,7 +34,7 @@
  * functions.php rather than labelled here.
  */
 
-$futurebase_nav = get_page_by_path( 'primary-navigation', OBJECT, 'wp_navigation' );
+$futurebase_nav = futurebase_navigation_region_post( 'primary-navigation' );
 
 if ( $futurebase_nav instanceof WP_Post ) :
 	?>
@@ -43,10 +43,11 @@ if ( $futurebase_nav instanceof WP_Post ) :
 else :
 	?>
 	<!-- wp:navigation {"overlayMenu":"mobile","layout":{"type":"flex","justifyContent":"right","orientation":"horizontal","flexWrap":"wrap"}} -->
-		<?php // home_url(), not a bare path: "/about/" is relative to the domain, so a subdirectory install linked outside itself. ?>
-		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'About', 'futurebase' ); ?>","url":"<?php echo esc_url( home_url( '/about/' ) ); ?>"} /-->
-		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'Services', 'futurebase' ); ?>","url":"<?php echo esc_url( home_url( '/services/' ) ); ?>"} /-->
-		<!-- wp:navigation-link {"label":"<?php echo esc_attr__( 'Blog', 'futurebase' ); ?>","url":"<?php echo esc_url( home_url( '/blog/' ) ); ?>"} /-->
+		<?php
+		// Serialized block attributes are escaped by WordPress's block serializer.
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		echo futurebase_navigation_seed_content( 'primary-navigation' );
+		?>
 	<!-- /wp:navigation -->
 	<?php
 endif;

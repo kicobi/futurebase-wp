@@ -732,6 +732,11 @@ PHP;
 			return;
 		}
 
+		if ( 'assert-hardening' === $command || str_starts_with( $command, 'assert-cleanup-error-' ) ) {
+			require __DIR__ . '/test-seo-hardening.php';
+			return;
+		}
+
 		if ( 'assert-contracts' === $command ) {
 			$state = $load_state();
 			$ids   = $state['ids'];

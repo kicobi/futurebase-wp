@@ -154,12 +154,16 @@ echo
 
 # Keep the surface narrow. readme.txt is the only .txt file intentionally
 # included; package-manager locks, fixtures, tools, vendor, and the theme build
-# stay outside text substitution. Companion plugin source and committed JS
+# stay outside text substitution except the identity-bearing editor bundle.
+# Companion plugin source and committed JS
 # bundles are included because promotion must leave an installable renamed
 # plugin before a client dependency install is available.
 TARGETS=()
 while IFS= read -r file; do TARGETS+=("$file"); done < <(
 	scan_roots=(functions.php style.css composer.json package.json phpcs.xml.dist phpstan.neon.dist readme.txt .wp-env.json)
+	for editor_file in assets/editor.js build/editor.js; do
+		[ ! -f "$editor_file" ] || scan_roots+=("$editor_file")
+	done
 	[ -f README.md ] && scan_roots+=(README.md)
 	[ -f CLAUDE.md ] && scan_roots+=(CLAUDE.md)
 	for dir in patterns templates parts docs src inc bin plugins; do
@@ -204,7 +208,7 @@ for file in "${TARGETS[@]}"; do
 	KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" perl -pi -e "next if index(\$_, \$ENV{KEEP_MARKER}) >= 0; s#/${FUTUREBASE_BASE_SLUG}\"#/${NEW_SLUG}\"#g" "$file"
 	# Only these dashed identifiers belong to the theme. Family-level lifecycle
 	# names such as futurebase-context and --futurebase-path remain canonical.
-	KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" perl -pi -e "next if index(\$_, \$ENV{KEEP_MARKER}) >= 0; s/\b${FUTUREBASE_BASE_SLUG}-(style|main|script)\b/${NEW_SLUG}-\$1/g" "$file"
+	KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" perl -pi -e "next if index(\$_, \$ENV{KEEP_MARKER}) >= 0; s/\b${FUTUREBASE_BASE_SLUG}-(style|main|script|editor)\b/${NEW_SLUG}-\$1/g" "$file"
 	KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" perl -pi -e "next if index(\$_, \$ENV{KEEP_MARKER}) >= 0; s/(\@package\s+)${FUTUREBASE_BASE_SLUG}\b/\$1${NEW_SLUG}/g" "$file"
 	KEEP_MARKER="$FUTUREBASE_RENAME_KEEP_MARKER" perl -pi -e "next if index(\$_, \$ENV{KEEP_MARKER}) >= 0; s/(Text Domain:\s*)${FUTUREBASE_BASE_SLUG}\b/\$1${NEW_SLUG}/g" "$file"
 	# Consume the full two-token product display name. Bare family references are
